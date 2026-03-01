@@ -1,0 +1,400 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+module Polysemy.Tagged
+(
+Tagged (..)
+, tag
+, tagged
+, untag
+, retag
+) where
+import Polysemy
+import Polysemy.Internal
+import Polysemy.Internal.Union
+newtype Tagged k e m a where
+Tagged :: forall k e m a. e m a -> Tagged k e m a
+tag
+:: forall k e r a
+. Member (Tagged k e) r
+=> Sem (e ': r) a
+-> Sem r a
+tag :: forall {k} (k :: k) (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Member (Tagged k e) r =>
+Sem (e : r) a -> Sem r a
+tag = (forall x. Union (e : r) (Sem (e : r)) x -> Union r (Sem r) x)
+-> Sem (e : r) a -> Sem r a
+forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+hoistSem ((forall x. Union (e : r) (Sem (e : r)) x -> Union r (Sem r) x)
+-> Sem (e : r) a -> Sem r a)
+-> (forall x. Union (e : r) (Sem (e : r)) x -> Union r (Sem r) x)
+-> Sem (e : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \Union (e : r) (Sem (e : r)) x
+u -> case Union (e : r) (Sem (e : r)) x
+-> Either (Union r (Sem (e : r)) x) (Weaving e (Sem (e : r)) x)
+forall (e :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp Union (e : r) (Sem (e : r)) x
+u of
+Right (Weaving e (Sem rInitial) a
+e f ()
+s forall x. f (Sem rInitial x) -> Sem (e : r) (f x)
+wv f a -> x
+ex forall x. f x -> Maybe x
+ins) ->
+Weaving (Tagged k e) (Sem r) x -> Union r (Sem r) x
+forall (e :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+Member e r =>
+Weaving e m a -> Union r m a
+injWeaving (Weaving (Tagged k e) (Sem r) x -> Union r (Sem r) x)
+-> Weaving (Tagged k e) (Sem r) x -> Union r (Sem r) x
+forall a b. (a -> b) -> a -> b
+$ Tagged k e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> Sem r (f x))
+-> (f a -> x)
+-> (forall x. f x -> Maybe x)
+-> Weaving (Tagged k e) (Sem r) x
+forall (f :: * -> *) (e :: (* -> *) -> * -> *)
+(rInitial :: EffectRow) a resultType (mAfter :: * -> *).
+Functor f =>
+e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> mAfter (f x))
+-> (f a -> resultType)
+-> (forall x. f x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving (forall (k :: k) (e :: (* -> *) -> * -> *) (m :: * -> *) a.
+e m a -> Tagged k e m a
+forall {k} {k} {k} (k :: k) (e :: k -> k -> *) (m :: k) (a :: k).
+e m a -> Tagged k e m a
+Tagged @k e (Sem rInitial) a
+e) f ()
+s (forall (k :: k) (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Member (Tagged k e) r =>
+Sem (e : r) a -> Sem r a
+forall {k} (k :: k) (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Member (Tagged k e) r =>
+Sem (e : r) a -> Sem r a
+tag @k (Sem (e : r) (f x) -> Sem r (f x))
+-> (f (Sem rInitial x) -> Sem (e : r) (f x))
+-> f (Sem rInitial x)
+-> Sem r (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> Sem (e : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (e : r) (f x)
+wv) f a -> x
+ex f x -> Maybe x
+forall x. f x -> Maybe x
+ins
+Left Union r (Sem (e : r)) x
+g -> (forall x. Sem (e : r) x -> Sem r x)
+-> Union r (Sem (e : r)) x -> Union r (Sem r) x
+forall (m :: * -> *) (n :: * -> *) (r :: EffectRow) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist (forall (k :: k) (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Member (Tagged k e) r =>
+Sem (e : r) a -> Sem r a
+forall {k} (k :: k) (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Member (Tagged k e) r =>
+Sem (e : r) a -> Sem r a
+tag @k) Union r (Sem (e : r)) x
+g
+{-# INLINE tag #-}
+tagged
+:: forall k e r a
+. Sem (e ': r) a
+-> Sem (Tagged k e ': r) a
+tagged :: forall {k} (k :: k) (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Sem (e : r) a -> Sem (Tagged k e : r) a
+tagged = (forall x.
+Union (e : r) (Sem (e : r)) x
+-> Union (Tagged k e : r) (Sem (Tagged k e : r)) x)
+-> Sem (e : r) a -> Sem (Tagged k e : r) a
+forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+hoistSem ((forall x.
+Union (e : r) (Sem (e : r)) x
+-> Union (Tagged k e : r) (Sem (Tagged k e : r)) x)
+-> Sem (e : r) a -> Sem (Tagged k e : r) a)
+-> (forall x.
+Union (e : r) (Sem (e : r)) x
+-> Union (Tagged k e : r) (Sem (Tagged k e : r)) x)
+-> Sem (e : r) a
+-> Sem (Tagged k e : r) a
+forall a b. (a -> b) -> a -> b
+$ \Union (e : r) (Sem (e : r)) x
+u ->
+case Union (e : r) (Sem (e : r)) x
+-> Either
+(Union (Tagged k e : r) (Sem (e : r)) x)
+(Weaving e (Sem (e : r)) x)
+forall (e :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a
+(f :: (* -> *) -> * -> *).
+Union (e : r) m a -> Either (Union (f : r) m a) (Weaving e m a)
+decompCoerce Union (e : r) (Sem (e : r)) x
+u of
+Right (Weaving e (Sem rInitial) a
+e f ()
+s forall x. f (Sem rInitial x) -> Sem (e : r) (f x)
+wv f a -> x
+ex forall x. f x -> Maybe x
+ins) ->
+Weaving (Tagged k e) (Sem (Tagged k e : r)) x
+-> Union (Tagged k e : r) (Sem (Tagged k e : r)) x
+forall (e :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+Member e r =>
+Weaving e m a -> Union r m a
+injWeaving (Weaving (Tagged k e) (Sem (Tagged k e : r)) x
+-> Union (Tagged k e : r) (Sem (Tagged k e : r)) x)
+-> Weaving (Tagged k e) (Sem (Tagged k e : r)) x
+-> Union (Tagged k e : r) (Sem (Tagged k e : r)) x
+forall a b. (a -> b) -> a -> b
+$ Tagged k e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> Sem (Tagged k e : r) (f x))
+-> (f a -> x)
+-> (forall x. f x -> Maybe x)
+-> Weaving (Tagged k e) (Sem (Tagged k e : r)) x
+forall (f :: * -> *) (e :: (* -> *) -> * -> *)
+(rInitial :: EffectRow) a resultType (mAfter :: * -> *).
+Functor f =>
+e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> mAfter (f x))
+-> (f a -> resultType)
+-> (forall x. f x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving (forall (k :: k) (e :: (* -> *) -> * -> *) (m :: * -> *) a.
+e m a -> Tagged k e m a
+forall {k} {k} {k} (k :: k) (e :: k -> k -> *) (m :: k) (a :: k).
+e m a -> Tagged k e m a
+Tagged @k e (Sem rInitial) a
+e) f ()
+s (forall (k :: k) (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Sem (e : r) a -> Sem (Tagged k e : r) a
+forall {k} (k :: k) (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Sem (e : r) a -> Sem (Tagged k e : r) a
+tagged @k (Sem (e : r) (f x) -> Sem (Tagged k e : r) (f x))
+-> (f (Sem rInitial x) -> Sem (e : r) (f x))
+-> f (Sem rInitial x)
+-> Sem (Tagged k e : r) (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> Sem (e : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (e : r) (f x)
+wv) f a -> x
+ex f x -> Maybe x
+forall x. f x -> Maybe x
+ins
+Left Union (Tagged k e : r) (Sem (e : r)) x
+g -> (forall x. Sem (e : r) x -> Sem (Tagged k e : r) x)
+-> Union (Tagged k e : r) (Sem (e : r)) x
+-> Union (Tagged k e : r) (Sem (Tagged k e : r)) x
+forall (m :: * -> *) (n :: * -> *) (r :: EffectRow) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist (forall (k :: k) (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Sem (e : r) a -> Sem (Tagged k e : r) a
+forall {k} (k :: k) (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Sem (e : r) a -> Sem (Tagged k e : r) a
+tagged @k) Union (Tagged k e : r) (Sem (e : r)) x
+g
+{-# INLINE tagged #-}
+untag
+:: forall k e r a
+. Sem (Tagged k e ': r) a
+-> Sem (e ': r) a
+untag :: forall {k} (k :: k) (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Sem (Tagged k e : r) a -> Sem (e : r) a
+untag = (forall x.
+Union (Tagged k e : r) (Sem (Tagged k e : r)) x
+-> Union (e : r) (Sem (e : r)) x)
+-> Sem (Tagged k e : r) a -> Sem (e : r) a
+forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+hoistSem ((forall x.
+Union (Tagged k e : r) (Sem (Tagged k e : r)) x
+-> Union (e : r) (Sem (e : r)) x)
+-> Sem (Tagged k e : r) a -> Sem (e : r) a)
+-> (forall x.
+Union (Tagged k e : r) (Sem (Tagged k e : r)) x
+-> Union (e : r) (Sem (e : r)) x)
+-> Sem (Tagged k e : r) a
+-> Sem (e : r) a
+forall a b. (a -> b) -> a -> b
+$ \Union (Tagged k e : r) (Sem (Tagged k e : r)) x
+u -> case Union (Tagged k e : r) (Sem (Tagged k e : r)) x
+-> Either
+(Union (e : r) (Sem (Tagged k e : r)) x)
+(Weaving (Tagged k e) (Sem (Tagged k e : r)) x)
+forall (e :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a
+(f :: (* -> *) -> * -> *).
+Union (e : r) m a -> Either (Union (f : r) m a) (Weaving e m a)
+decompCoerce Union (Tagged k e : r) (Sem (Tagged k e : r)) x
+u of
+Right (Weaving (Tagged e (Sem rInitial) a
+e) f ()
+s forall x. f (Sem rInitial x) -> Sem (Tagged k e : r) (f x)
+wv f a -> x
+ex forall x. f x -> Maybe x
+ins) ->
+ElemOf e (e : r)
+-> Weaving e (Sem (e : r)) x -> Union (e : r) (Sem (e : r)) x
+forall (e :: (* -> *) -> * -> *) (r :: EffectRow)
+(mWoven :: * -> *) a.
+ElemOf e r -> Weaving e mWoven a -> Union r mWoven a
+Union ElemOf e (e : r)
+forall {k} (r :: [k]) (e :: k) (r' :: [k]).
+(r ~ (e : r')) =>
+ElemOf e r
+Here (e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> Sem (e : r) (f x))
+-> (f a -> x)
+-> (forall x. f x -> Maybe x)
+-> Weaving e (Sem (e : r)) x
+forall (f :: * -> *) (e :: (* -> *) -> * -> *)
+(rInitial :: EffectRow) a resultType (mAfter :: * -> *).
+Functor f =>
+e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> mAfter (f x))
+-> (f a -> resultType)
+-> (forall x. f x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving e (Sem rInitial) a
+e f ()
+s (Sem (Tagged k e : r) (f x) -> Sem (e : r) (f x)
+forall {k} (k :: k) (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Sem (Tagged k e : r) a -> Sem (e : r) a
+untag (Sem (Tagged k e : r) (f x) -> Sem (e : r) (f x))
+-> (f (Sem rInitial x) -> Sem (Tagged k e : r) (f x))
+-> f (Sem rInitial x)
+-> Sem (e : r) (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> Sem (Tagged k e : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (Tagged k e : r) (f x)
+wv) f a -> x
+ex f x -> Maybe x
+forall x. f x -> Maybe x
+ins)
+Left Union (e : r) (Sem (Tagged k e : r)) x
+g -> (forall x. Sem (Tagged k e : r) x -> Sem (e : r) x)
+-> Union (e : r) (Sem (Tagged k e : r)) x
+-> Union (e : r) (Sem (e : r)) x
+forall (m :: * -> *) (n :: * -> *) (r :: EffectRow) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist Sem (Tagged k e : r) x -> Sem (e : r) x
+forall x. Sem (Tagged k e : r) x -> Sem (e : r) x
+forall {k} (k :: k) (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Sem (Tagged k e : r) a -> Sem (e : r) a
+untag Union (e : r) (Sem (Tagged k e : r)) x
+g
+{-# INLINE untag #-}
+retag
+:: forall k1 k2 e r a
+. Member (Tagged k2 e) r
+=> Sem (Tagged k1 e ': r) a
+-> Sem r a
+retag :: forall {k} {k} (k1 :: k) (k2 :: k) (e :: (* -> *) -> * -> *)
+(r :: EffectRow) a.
+Member (Tagged k2 e) r =>
+Sem (Tagged k1 e : r) a -> Sem r a
+retag = (forall x.
+Union (Tagged k1 e : r) (Sem (Tagged k1 e : r)) x
+-> Union r (Sem r) x)
+-> Sem (Tagged k1 e : r) a -> Sem r a
+forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+hoistSem ((forall x.
+Union (Tagged k1 e : r) (Sem (Tagged k1 e : r)) x
+-> Union r (Sem r) x)
+-> Sem (Tagged k1 e : r) a -> Sem r a)
+-> (forall x.
+Union (Tagged k1 e : r) (Sem (Tagged k1 e : r)) x
+-> Union r (Sem r) x)
+-> Sem (Tagged k1 e : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \Union (Tagged k1 e : r) (Sem (Tagged k1 e : r)) x
+u -> case Union (Tagged k1 e : r) (Sem (Tagged k1 e : r)) x
+-> Either
+(Union r (Sem (Tagged k1 e : r)) x)
+(Weaving (Tagged k1 e) (Sem (Tagged k1 e : r)) x)
+forall (e :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp Union (Tagged k1 e : r) (Sem (Tagged k1 e : r)) x
+u of
+Right (Weaving (Tagged e (Sem rInitial) a
+e) f ()
+s forall x. f (Sem rInitial x) -> Sem (Tagged k1 e : r) (f x)
+wv f a -> x
+ex forall x. f x -> Maybe x
+ins) ->
+Weaving (Tagged k2 e) (Sem r) x -> Union r (Sem r) x
+forall (e :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+Member e r =>
+Weaving e m a -> Union r m a
+injWeaving (Weaving (Tagged k2 e) (Sem r) x -> Union r (Sem r) x)
+-> Weaving (Tagged k2 e) (Sem r) x -> Union r (Sem r) x
+forall a b. (a -> b) -> a -> b
+$ Tagged k2 e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> Sem r (f x))
+-> (f a -> x)
+-> (forall x. f x -> Maybe x)
+-> Weaving (Tagged k2 e) (Sem r) x
+forall (f :: * -> *) (e :: (* -> *) -> * -> *)
+(rInitial :: EffectRow) a resultType (mAfter :: * -> *).
+Functor f =>
+e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> mAfter (f x))
+-> (f a -> resultType)
+-> (forall x. f x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving (forall (k :: k) (e :: (* -> *) -> * -> *) (m :: * -> *) a.
+e m a -> Tagged k e m a
+forall {k} {k} {k} (k :: k) (e :: k -> k -> *) (m :: k) (a :: k).
+e m a -> Tagged k e m a
+Tagged @k2 e (Sem rInitial) a
+e) f ()
+s (forall (k1 :: k) (k2 :: k) (e :: (* -> *) -> * -> *)
+(r :: EffectRow) a.
+Member (Tagged k2 e) r =>
+Sem (Tagged k1 e : r) a -> Sem r a
+forall {k} {k} (k1 :: k) (k2 :: k) (e :: (* -> *) -> * -> *)
+(r :: EffectRow) a.
+Member (Tagged k2 e) r =>
+Sem (Tagged k1 e : r) a -> Sem r a
+retag @_ @k2 (Sem (Tagged k1 e : r) (f x) -> Sem r (f x))
+-> (f (Sem rInitial x) -> Sem (Tagged k1 e : r) (f x))
+-> f (Sem rInitial x)
+-> Sem r (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> Sem (Tagged k1 e : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (Tagged k1 e : r) (f x)
+wv) f a -> x
+ex f x -> Maybe x
+forall x. f x -> Maybe x
+ins
+Left Union r (Sem (Tagged k1 e : r)) x
+g -> (forall x. Sem (Tagged k1 e : r) x -> Sem r x)
+-> Union r (Sem (Tagged k1 e : r)) x -> Union r (Sem r) x
+forall (m :: * -> *) (n :: * -> *) (r :: EffectRow) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist (forall (k1 :: k) (k2 :: k) (e :: (* -> *) -> * -> *)
+(r :: EffectRow) a.
+Member (Tagged k2 e) r =>
+Sem (Tagged k1 e : r) a -> Sem r a
+forall {k} {k} (k1 :: k) (k2 :: k) (e :: (* -> *) -> * -> *)
+(r :: EffectRow) a.
+Member (Tagged k2 e) r =>
+Sem (Tagged k1 e : r) a -> Sem r a
+retag @_ @k2) Union r (Sem (Tagged k1 e : r)) x
+g
+{-# INLINE retag #-}

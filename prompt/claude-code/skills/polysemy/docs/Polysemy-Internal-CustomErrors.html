@@ -1,0 +1,14 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- type WhenStuck expr b = IfStuck expr b NoErrorFcf
+- type FirstOrder (e :: Effect) fn = UnlessStuck e (FirstOrderErrorFcf e fn)
+Documentation
+type WhenStuck expr b = IfStuck expr b NoErrorFcf Source #
+Like IfStuck
+, but specialized to the case when you don't want to do
+anything if expr
+isn't stuck.
+type FirstOrder (e :: Effect) fn = UnlessStuck e (FirstOrderErrorFcf e fn) Source #
+This constraint gives helpful error messages if you attempt to use a first-order combinator with a higher-order type.

@@ -1,0 +1,420 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# OPTIONS_HADDOCK not-home #-}
+module Polysemy.Internal.Tactics
+( Tactics (..)
+, getInitialStateT
+, getInspectorT
+, Inspector (..)
+, runT
+, runTSimple
+, bindT
+, bindTSimple
+, pureT
+, liftT
+, runTactics
+, Tactical
+, WithTactics
+) where
+import Polysemy.Internal
+import Polysemy.Internal.Union
+type Tactical e m r x = ∀ f. Functor f
+=> Sem (WithTactics e f m r) (f x)
+type WithTactics e f m r = Tactics f m (e ': r) ': r
+data Tactics f n r m a where
+GetInitialState :: Tactics f n r m (f ())
+HoistInterpretation :: (a -> n b) -> Tactics f n r m (f a -> Sem r (f b))
+HoistInterpretationH :: (a -> n b) -> f a -> Tactics f n r m (f b)
+GetInspector :: Tactics f n r m (Inspector f)
+getInitialStateT :: forall f m r e. Sem (WithTactics e f m r) (f ())
+getInitialStateT :: forall (f :: * -> *) (m :: * -> *) (r :: [Effect]) (e :: Effect).
+Sem (WithTactics e f m r) (f ())
+getInitialStateT = forall (e :: Effect) (r :: [Effect]) a.
+Member e r =>
+e (Sem r) a -> Sem r a
+send @(Tactics _ m (e ': r)) Tactics f m (e : r) (Sem (WithTactics e f m r)) (f ())
+forall {k} (f :: * -> *) (n :: * -> *) (r :: [Effect]) (m :: k).
+Tactics f n r m (f ())
+GetInitialState
+getInspectorT :: forall e f m r. Sem (WithTactics e f m r) (Inspector f)
+getInspectorT :: forall (e :: Effect) (f :: * -> *) (m :: * -> *) (r :: [Effect]).
+Sem (WithTactics e f m r) (Inspector f)
+getInspectorT = forall (e :: Effect) (r :: [Effect]) a.
+Member e r =>
+e (Sem r) a -> Sem r a
+send @(Tactics _ m (e ': r)) Tactics f m (e : r) (Sem (WithTactics e f m r)) (Inspector f)
+forall {k} (f :: * -> *) (n :: * -> *) (r :: [Effect]) (m :: k).
+Tactics f n r m (Inspector f)
+GetInspector
+newtype Inspector f = Inspector
+{ forall (f :: * -> *). Inspector f -> forall x. f x -> Maybe x
+inspect :: forall x. f x -> Maybe x
+}
+pureT :: Functor f => a -> Sem (WithTactics e f m r) (f a)
+pureT :: forall (f :: * -> *) a (e :: Effect) (m :: * -> *) (r :: [Effect]).
+Functor f =>
+a -> Sem (WithTactics e f m r) (f a)
+pureT a
+a = do
+f ()
+istate <- Sem (WithTactics e f m r) (f ())
+forall (f :: * -> *) (m :: * -> *) (r :: [Effect]) (e :: Effect).
+Sem (WithTactics e f m r) (f ())
+getInitialStateT
+f a -> Sem (WithTactics e f m r) (f a)
+forall a. a -> Sem (WithTactics e f m r) a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (f a -> Sem (WithTactics e f m r) (f a))
+-> f a -> Sem (WithTactics e f m r) (f a)
+forall a b. (a -> b) -> a -> b
+$ a
+a a -> f () -> f a
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+istate
+runT
+:: m a
+-> Sem (WithTactics e f m r)
+(Sem (e ': r) (f a))
+runT :: forall (m :: * -> *) a (e :: Effect) (f :: * -> *) (r :: [Effect]).
+m a -> Sem (WithTactics e f m r) (Sem (e : r) (f a))
+runT m a
+na = do
+f ()
+istate <- Sem (WithTactics e f m r) (f ())
+forall (f :: * -> *) (m :: * -> *) (r :: [Effect]) (e :: Effect).
+Sem (WithTactics e f m r) (f ())
+getInitialStateT
+f () -> Sem (e : r) (f a)
+na' <- (() -> m a)
+-> Sem (WithTactics e f m r) (f () -> Sem (e : r) (f a))
+forall a (m :: * -> *) b (e :: Effect) (f :: * -> *)
+(r :: [Effect]).
+(a -> m b) -> Sem (WithTactics e f m r) (f a -> Sem (e : r) (f b))
+bindT (m a -> () -> m a
+forall a b. a -> b -> a
+const m a
+na)
+Sem (e : r) (f a) -> Sem (WithTactics e f m r) (Sem (e : r) (f a))
+forall a. a -> Sem (WithTactics e f m r) a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (Sem (e : r) (f a)
+-> Sem (WithTactics e f m r) (Sem (e : r) (f a)))
+-> Sem (e : r) (f a)
+-> Sem (WithTactics e f m r) (Sem (e : r) (f a))
+forall a b. (a -> b) -> a -> b
+$ f () -> Sem (e : r) (f a)
+na' f ()
+istate
+{-# INLINE runT #-}
+runTSimple :: m a
+-> Tactical e m r a
+runTSimple :: forall (m :: * -> *) a (e :: Effect) (r :: [Effect]).
+m a -> Tactical e m r a
+runTSimple m a
+na = do
+f ()
+istate <- Sem (WithTactics e f m r) (f ())
+forall (f :: * -> *) (m :: * -> *) (r :: [Effect]) (e :: Effect).
+Sem (WithTactics e f m r) (f ())
+getInitialStateT
+(() -> m a) -> f () -> Sem (WithTactics e f m r) (f a)
+forall (m :: * -> *) (f :: * -> *) (r :: [Effect]) (e :: Effect) a
+b.
+(a -> m b) -> f a -> Sem (WithTactics e f m r) (f b)
+bindTSimple (m a -> () -> m a
+forall a b. a -> b -> a
+const m a
+na) f ()
+istate
+{-# INLINE runTSimple #-}
+bindT
+:: (a -> m b)
+-> Sem (WithTactics e f m r)
+(f a -> Sem (e ': r) (f b))
+bindT :: forall a (m :: * -> *) b (e :: Effect) (f :: * -> *)
+(r :: [Effect]).
+(a -> m b) -> Sem (WithTactics e f m r) (f a -> Sem (e : r) (f b))
+bindT a -> m b
+f = Tactics
+f m (e : r) (Sem (WithTactics e f m r)) (f a -> Sem (e : r) (f b))
+-> Sem (WithTactics e f m r) (f a -> Sem (e : r) (f b))
+forall (e :: Effect) (r :: [Effect]) a.
+Member e r =>
+e (Sem r) a -> Sem r a
+send (Tactics
+f m (e : r) (Sem (WithTactics e f m r)) (f a -> Sem (e : r) (f b))
+-> Sem (WithTactics e f m r) (f a -> Sem (e : r) (f b)))
+-> Tactics
+f m (e : r) (Sem (WithTactics e f m r)) (f a -> Sem (e : r) (f b))
+-> Sem (WithTactics e f m r) (f a -> Sem (e : r) (f b))
+forall a b. (a -> b) -> a -> b
+$ (a -> m b)
+-> Tactics
+f m (e : r) (Sem (WithTactics e f m r)) (f a -> Sem (e : r) (f b))
+forall {k} a (n :: * -> *) b (f :: * -> *) (r :: [Effect])
+(m :: k).
+(a -> n b) -> Tactics f n r m (f a -> Sem r (f b))
+HoistInterpretation a -> m b
+f
+{-# INLINE bindT #-}
+bindTSimple
+:: forall m f r e a b
+. (a -> m b)
+-> f a
+-> Sem (WithTactics e f m r) (f b)
+bindTSimple :: forall (m :: * -> *) (f :: * -> *) (r :: [Effect]) (e :: Effect) a
+b.
+(a -> m b) -> f a -> Sem (WithTactics e f m r) (f b)
+bindTSimple a -> m b
+f f a
+s = forall (e :: Effect) (r :: [Effect]) a.
+Member e r =>
+e (Sem r) a -> Sem r a
+send @(Tactics _ _ (e ': r)) (Tactics f m (e : r) (Sem (WithTactics e f m r)) (f b)
+-> Sem (WithTactics e f m r) (f b))
+-> Tactics f m (e : r) (Sem (WithTactics e f m r)) (f b)
+-> Sem (WithTactics e f m r) (f b)
+forall a b. (a -> b) -> a -> b
+$ (a -> m b)
+-> f a -> Tactics f m (e : r) (Sem (WithTactics e f m r)) (f b)
+forall {k} a (n :: * -> *) b (f :: * -> *) (r :: [Effect])
+(m :: k).
+(a -> n b) -> f a -> Tactics f n r m (f b)
+HoistInterpretationH a -> m b
+f f a
+s
+{-# INLINE bindTSimple #-}
+liftT
+:: forall m f r e a
+. Functor f
+=> Sem r a
+-> Sem (WithTactics e f m r) (f a)
+liftT :: forall (m :: * -> *) (f :: * -> *) (r :: [Effect]) (e :: Effect) a.
+Functor f =>
+Sem r a -> Sem (WithTactics e f m r) (f a)
+liftT Sem r a
+m = do
+a
+a <- Sem r a -> Sem (WithTactics e f m r) a
+forall (e :: Effect) (r :: [Effect]) a. Sem r a -> Sem (e : r) a
+raise Sem r a
+m
+a -> Sem (WithTactics e f m r) (f a)
+forall (f :: * -> *) a (e :: Effect) (m :: * -> *) (r :: [Effect]).
+Functor f =>
+a -> Sem (WithTactics e f m r) (f a)
+pureT a
+a
+{-# INLINE liftT #-}
+runTactics
+:: Functor f
+=> f ()
+-> (∀ x. f (m x) -> Sem r2 (f x))
+-> (∀ x. f x -> Maybe x)
+-> (∀ x. f (m x) -> Sem r (f x))
+-> Sem (Tactics f m r2 ': r) a
+-> Sem r a
+runTactics :: forall (f :: * -> *) (m :: * -> *) (r2 :: [Effect]) (r :: [Effect])
+a.
+Functor f =>
+f ()
+-> (forall x. f (m x) -> Sem r2 (f x))
+-> (forall x. f x -> Maybe x)
+-> (forall x. f (m x) -> Sem r (f x))
+-> Sem (Tactics f m r2 : r) a
+-> Sem r a
+runTactics f ()
+s forall x. f (m x) -> Sem r2 (f x)
+d forall x. f x -> Maybe x
+v forall x. f (m x) -> Sem r (f x)
+d' (Sem forall (m :: * -> *).
+Monad m =>
+(forall x.
+Union (Tactics f m r2 : r) (Sem (Tactics f m r2 : r)) x -> m x)
+-> m a
+m) = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+forall (r :: [Effect]) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a)
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union r (Sem r) x -> m x
+k -> (forall x.
+Union (Tactics f m r2 : r) (Sem (Tactics f m r2 : r)) x -> m x)
+-> m a
+forall (m :: * -> *).
+Monad m =>
+(forall x.
+Union (Tactics f m r2 : r) (Sem (Tactics f m r2 : r)) x -> m x)
+-> m a
+m ((forall x.
+Union (Tactics f m r2 : r) (Sem (Tactics f m r2 : r)) x -> m x)
+-> m a)
+-> (forall x.
+Union (Tactics f m r2 : r) (Sem (Tactics f m r2 : r)) x -> m x)
+-> m a
+forall a b. (a -> b) -> a -> b
+$ \Union (Tactics f m r2 : r) (Sem (Tactics f m r2 : r)) x
+u ->
+case Union (Tactics f m r2 : r) (Sem (Tactics f m r2 : r)) x
+-> Either
+(Union r (Sem (Tactics f m r2 : r)) x)
+(Weaving (Tactics f m r2) (Sem (Tactics f m r2 : r)) x)
+forall (e :: Effect) (r :: [Effect]) (m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp Union (Tactics f m r2 : r) (Sem (Tactics f m r2 : r)) x
+u of
+Left Union r (Sem (Tactics f m r2 : r)) x
+x -> Union r (Sem r) x -> m x
+forall x. Union r (Sem r) x -> m x
+k (Union r (Sem r) x -> m x) -> Union r (Sem r) x -> m x
+forall a b. (a -> b) -> a -> b
+$ (forall x. Sem (Tactics f m r2 : r) x -> Sem r x)
+-> Union r (Sem (Tactics f m r2 : r)) x -> Union r (Sem r) x
+forall (m :: * -> *) (n :: * -> *) (r :: [Effect]) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist (f ()
+-> (forall x. f (m x) -> Sem r2 (f x))
+-> (forall x. f x -> Maybe x)
+-> (forall x. f (m x) -> Sem r (f x))
+-> Sem (Tactics f m r2 : r) x
+-> Sem r x
+forall (f :: * -> *) (m :: * -> *) (r2 :: [Effect]) (r :: [Effect])
+a.
+Functor f =>
+f ()
+-> (forall x. f (m x) -> Sem r2 (f x))
+-> (forall x. f x -> Maybe x)
+-> (forall x. f (m x) -> Sem r (f x))
+-> Sem (Tactics f m r2 : r) a
+-> Sem r a
+runTactics f ()
+s f (m x) -> Sem r2 (f x)
+forall x. f (m x) -> Sem r2 (f x)
+d f x -> Maybe x
+forall x. f x -> Maybe x
+v f (m x) -> Sem r (f x)
+forall x. f (m x) -> Sem r (f x)
+d') Union r (Sem (Tactics f m r2 : r)) x
+x
+Right (Weaving Tactics f m r2 (Sem rInitial) a
+GetInitialState f ()
+s' forall x. f (Sem rInitial x) -> Sem (Tactics f m r2 : r) (f x)
+_ f a -> x
+y forall x. f x -> Maybe x
+_) ->
+x -> m x
+forall a. a -> m a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (x -> m x) -> x -> m x
+forall a b. (a -> b) -> a -> b
+$ f a -> x
+y (f a -> x) -> f a -> x
+forall a b. (a -> b) -> a -> b
+$ a
+f ()
+s a -> f () -> f a
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s'
+Right (Weaving (HoistInterpretation a -> m b
+na) f ()
+s' forall x. f (Sem rInitial x) -> Sem (Tactics f m r2 : r) (f x)
+_ f a -> x
+y forall x. f x -> Maybe x
+_) -> do
+x -> m x
+forall a. a -> m a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (x -> m x) -> x -> m x
+forall a b. (a -> b) -> a -> b
+$ f a -> x
+y (f a -> x) -> f a -> x
+forall a b. (a -> b) -> a -> b
+$ (f (m b) -> Sem r2 (f b)
+forall x. f (m x) -> Sem r2 (f x)
+d (f (m b) -> Sem r2 (f b))
+-> (f a -> f (m b)) -> f a -> Sem r2 (f b)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (a -> m b) -> f a -> f (m b)
+forall a b. (a -> b) -> f a -> f b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap a -> m b
+na) a -> f () -> f a
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s'
+Right (Weaving (HoistInterpretationH a -> m b
+na f a
+fa) f ()
+s' forall x. f (Sem rInitial x) -> Sem (Tactics f m r2 : r) (f x)
+_ f a -> x
+y forall x. f x -> Maybe x
+_) -> do
+(f a -> x
+y (f a -> x) -> (a -> f a) -> a -> x
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (a -> f () -> f a
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s')) (a -> x) -> m a -> m x
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> Sem r a
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a
+forall (r :: [Effect]) a.
+Sem r a
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a
+runSem (f (m b) -> Sem r (f b)
+forall x. f (m x) -> Sem r (f x)
+d' ((a -> m b) -> f a -> f (m b)
+forall a b. (a -> b) -> f a -> f b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap a -> m b
+na f a
+fa)) Union r (Sem r) x -> m x
+forall x. Union r (Sem r) x -> m x
+k
+Right (Weaving Tactics f m r2 (Sem rInitial) a
+GetInspector f ()
+s' forall x. f (Sem rInitial x) -> Sem (Tactics f m r2 : r) (f x)
+_ f a -> x
+y forall x. f x -> Maybe x
+_) -> do
+x -> m x
+forall a. a -> m a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (x -> m x) -> x -> m x
+forall a b. (a -> b) -> a -> b
+$ f a -> x
+y (f a -> x) -> f a -> x
+forall a b. (a -> b) -> a -> b
+$ (forall x. f x -> Maybe x) -> Inspector f
+forall (f :: * -> *). (forall x. f x -> Maybe x) -> Inspector f
+Inspector f x -> Maybe x
+forall x. f x -> Maybe x
+v a -> f () -> f a
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s'
+{-# INLINE runTactics #-}

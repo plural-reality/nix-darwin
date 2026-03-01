@@ -1,0 +1,15 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- data Writer o m a where
+- pass :: forall o r a. Member (Writer o) r => Sem r (o -> o, a) -> Sem r a
+- listen :: forall o r a. Member (Writer o) r => Sem r a -> Sem r (o, a)
+- tell :: forall o r. Member (Writer o) r => o -> Sem r ()
+- writerToEndoWriter :: (Monoid o, Member (Writer (Endo o)) r) => Sem (Writer o ': r) a -> Sem r a
+- runWriterSTMAction :: forall o r a. (Member (Final IO) r, Monoid o) => (o -> STM ()) -> Sem (Writer o ': r) a -> Sem r a
+Documentation
+pass :: forall o r a. Member (Writer o) r => Sem r (o -> o, a) -> Sem r a Source #
+Run the given action and apply the function it returns to the log.
+listen :: forall o r a. Member (Writer o) r => Sem r a -> Sem r (o, a) Source #
+Return the log produced by the higher-order action.

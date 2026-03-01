@@ -1,0 +1,20 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- data Input i m a where
+- input :: forall i r. Member (Input i) r => Sem r i
+- inputs :: forall i j r. Member (Input i) r => (i -> j) -> Sem r j
+- runInputConst :: i -> Sem (Input i ': r) a -> Sem r a
+- runInputList :: [i] -> Sem (Input (Maybe i) ': r) a -> Sem r a
+- runInputSem :: forall i r a. Sem r i -> Sem (Input i ': r) a -> Sem r a
+Effect
+data Input i m a where Source #
+An effect which can provide input to an application. Useful for dealing with streaming input.
+Actions
+inputs :: forall i j r. Member (Input i) r => (i -> j) -> Sem r j Source #
+Apply a function to an input, cf. asks
+Interpretations
+runInputConst :: i -> Sem (Input i ': r) a -> Sem r a Source #
+Run an Input
+effect by always giving back the same value.

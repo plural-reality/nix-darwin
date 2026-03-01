@@ -1,0 +1,140 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- data State s m a where
+- get :: forall s r. Member (State s) r => Sem r s
+- gets :: forall s a r. Member (State s) r => (s -> a) -> Sem r a
+- put :: forall s r. Member (State s) r => s -> Sem r ()
+- modify :: Member (State s) r => (s -> s) -> Sem r ()
+- modify' :: Member (State s) r => (s -> s) -> Sem r ()
+- runState :: s -> Sem (State s ': r) a -> Sem r (s, a)
+- evalState :: s -> Sem (State s ': r) a -> Sem r a
+- execState :: s -> Sem (State s ': r) a -> Sem r s
+- runLazyState :: s -> Sem (State s ': r) a -> Sem r (s, a)
+- evalLazyState :: s -> Sem (State s ': r) a -> Sem r a
+- execLazyState :: s -> Sem (State s ': r) a -> Sem r s
+- runStateIORef :: forall s r a. Member (Embed IO) r => IORef s -> Sem (State s ': r) a -> Sem r a
+- stateToIO :: forall s r a. Member (Embed IO) r => s -> Sem (State s ': r) a -> Sem r (s, a)
+- runStateSTRef :: forall s st r a. Member (Embed (ST st)) r => STRef st s -> Sem (State s ': r) a -> Sem r a
+- stateToST :: forall s st r a. Member (Embed (ST st)) r => s -> Sem (State s ': r) a -> Sem r (s, a)
+- hoistStateIntoStateT :: Sem (State s ': r) a -> StateT s (Sem r) a
+Effect
+data State s m a where Source #
+An effect for providing statefulness. Note that unlike mtl's
+StateT
+, there is no restriction that the State
+effect corresponds necessarily to local state. It could could just as well
+be interrpeted in terms of HTTP requests or database access.
+Interpreters which require statefulness can reinterpret
+themselves in terms of State
+, and subsequently call runState
+.
+Actions
+gets :: forall s a r. Member (State s) r => (s -> a) -> Sem r a Source #
+Apply a function to the state and return the result.
+modify' :: Member (State s) r => (s -> s) -> Sem r () Source #
+A variant of modify
+in which the computation is strict in the
+new state.
+Interpretations
+evalState :: s -> Sem (State s ': r) a -> Sem r a Source #
+Run a State
+effect with local state.
+Since: 1.0.0.0
+execState :: s -> Sem (State s ': r) a -> Sem r s Source #
+Run a State
+effect with local state.
+Since: 1.2.3.1
+runLazyState :: s -> Sem (State s ': r) a -> Sem r (s, a) Source #
+Run a State
+effect with local state, lazily.
+evalLazyState :: s -> Sem (State s ': r) a -> Sem r a Source #
+Run a State
+effect with local state, lazily.
+Since: 1.0.0.0
+execLazyState :: s -> Sem (State s ': r) a -> Sem r s Source #
+Run a State
+effect with local state, lazily.
+Since: 1.2.3.1
+runStateIORef :: forall s r a. Member (Embed IO) r => IORef s -> Sem (State s ': r) a -> Sem r a Source #
+Run a State
+effect by transforming it into operations over an IORef
+.
+Note: This is not safe in a concurrent setting, as modify
+isn't atomic.
+If you need operations over the state to be atomic,
+use runAtomicStateIORef
+or
+runAtomicStateTVar
+instead.
+Since: 1.0.0.0
+stateToIO :: forall s r a. Member (Embed IO) r => s -> Sem (State s ': r) a -> Sem r (s, a) Source #
+Run an State
+effect in terms of operations
+in IO
+.
+Internally, this simply creates a new IORef
+, passes it to
+runStateIORef
+, and then returns the result and the final value
+of the IORef
+.
+Note: This is not safe in a concurrent setting, as modify
+isn't atomic.
+If you need operations over the state to be atomic,
+use atomicStateToIO
+instead.
+Beware: As this uses an IORef
+internally,
+all other effects will have local
+state semantics in regards to State
+effects
+interpreted this way.
+For example, throw
+and catch
+will
+never revert put
+s, even if runError
+is used
+after stateToIO
+.
+Since: 1.2.0.0
+runStateSTRef :: forall s st r a. Member (Embed (ST st)) r => STRef st s -> Sem (State s ': r) a -> Sem r a Source #
+stateToST :: forall s st r a. Member (Embed (ST st)) r => s -> Sem (State s ': r) a -> Sem r (s, a) Source #
+Run an State
+effect in terms of operations
+in ST
+.
+Internally, this simply creates a new STRef
+, passes it to
+runStateSTRef
+, and then returns the result and the final value
+of the STRef
+.
+Beware: As this uses an STRef
+internally,
+all other effects will have local
+state semantics in regards to State
+effects
+interpreted this way.
+For example, throw
+and catch
+will
+never revert put
+s, even if runError
+is used
+after stateToST
+.
+When not using the plugin, one must introduce the existential st
+type to
+stateToST
+, so that the resulting type after runM
+can be resolved into
+forall st. ST st (s, a)
+for use with runST
+. Doing so requires
+-XScopedTypeVariables
+.
+stResult :: forall s a. (s, a) stResult = runST ( (runM $ stateToST @_ @st undefined $ pure undefined) :: forall st. ST st (s, a) )
+Since: 1.3.0.0

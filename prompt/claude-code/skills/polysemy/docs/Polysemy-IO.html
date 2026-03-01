@@ -1,0 +1,25 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Interpretations
+embedToMonadIO :: forall m r a. (MonadIO m, Member (Embed m) r) => Sem (Embed IO ': r) a -> Sem r a Source #
+The MonadIO
+class is conceptually an interpretation of IO
+to some
+other monad. This function reifies that intuition, by transforming an IO
+effect into some other MonadIO
+.
+This function is especially useful when using the MonadIO
+instance for
+Sem
+instance.
+Make sure to type-apply the desired MonadIO
+instance when using
+embedToMonadIO
+.
+Example
+foo :: PandocIO () foo =runM
+.embedToMonadIO
+@PandocIO $ doliftIO
+$ putStrLn "hello from polysemy"
+Since: 1.0.0.0

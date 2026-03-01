@@ -1,0 +1,401 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- newtype Sem r a = Sem {}
+- class Member (t :: Effect) (r :: EffectRow)
+- type family Members es r :: Constraint where ...
+- send :: Member e r => e (Sem r) a -> Sem r a
+- sendUsing :: ElemOf e r -> e (Sem r) a -> Sem r a
+- embed :: Member (Embed m) r => m a -> Sem r a
+- run :: Sem '[] a -> a
+- runM :: Monad m => Sem '[Embed m] a -> m a
+- raise_ :: forall r r' a. Raise r r' => Sem r a -> Sem r' a
+- class Raise (r :: EffectRow) (r' :: EffectRow) where
+- raiseUnion :: Union r m a -> Union r' m a
+- raise :: forall e r a. Sem r a -> Sem (e ': r) a
+- raiseUnder :: forall e2 e1 r a. Sem (e1 ': r) a -> Sem (e1 ': (e2 ': r)) a
+- raiseUnder2 :: forall e2 e3 e1 r a. Sem (e1 ': r) a -> Sem (e1 ': (e2 ': (e3 ': r))) a
+- raiseUnder3 :: forall e2 e3 e4 e1 r a. Sem (e1 ': r) a -> Sem (e1 ': (e2 ': (e3 ': (e4 ': r)))) a
+- raise2Under :: forall e3 e1 e2 r a. Sem (e1 : (e2 : r)) a -> Sem (e1 : (e2 : (e3 : r))) a
+- raise3Under :: forall e4 e1 e2 e3 r a. Sem (e1 : (e2 : (e3 : r))) a -> Sem (e1 : (e2 : (e3 : (e4 : r)))) a
+- subsume_ :: forall r r' a. Subsume r r' => Sem r a -> Sem r' a
+- class Subsume (r :: EffectRow) (r' :: EffectRow) where
+- subsumeUnion :: Union r m a -> Union r' m a
+- subsume :: forall e r a. Member e r => Sem (e ': r) a -> Sem r a
+- subsumeUsing :: forall e r a. ElemOf e r -> Sem (e ': r) a -> Sem r a
+- insertAt :: forall index inserted head oldTail tail old full a. (ListOfLength index head, WhenStuck index InsertAtUnprovidedIndex, old ~ Append head oldTail, tail ~ Append inserted oldTail, full ~ Append head tail, InsertAtIndex index head tail oldTail full inserted) => Sem old a -> Sem full a
+- newtype Embed m (z :: Type -> Type) a where
+- usingSem :: Monad m => (forall x. Union r (Sem r) x -> m x) -> Sem r a -> m a
+- liftSem :: Union r (Sem r) a -> Sem r a
+- hoistSem :: (forall x. Union r (Sem r) x -> Union r' (Sem r') x) -> Sem r a -> Sem r' a
+- restack :: (forall e. ElemOf e r -> ElemOf e r') -> Sem r a -> Sem r' a
+- type family Append l r where ...
+- type InterpreterFor e r = forall a. Sem (e ': r) a -> Sem r a
+- type InterpretersFor es r = forall a. Sem (Append es r) a -> Sem r a
+Documentation
+The Sem
+monad handles computations of arbitrary extensible effects.
+A value of type Sem r
+describes a program with the capabilities of
+r
+. For best results, r
+should always be kept polymorphic, but you can
+add capabilities via the Member
+constraint.
+The value of the Sem
+monad is that it allows you to write programs
+against a set of effects without a predefined meaning, and provide that
+meaning later. For example, unlike with mtl, you can decide to interpret an
+Error
+effect traditionally as an Either
+, or instead
+as (a significantly faster) IO
+Exception
+. These
+interpretations (and others that you might add) may be used interchangeably
+without needing to write any newtypes or Monad
+instances. The only
+change needed to swap interpretations is to change a call from
+runError
+to errorToIOFinal
+.
+The effect stack r
+can contain arbitrary other monads inside of it. These
+monads are lifted into effects via the Embed
+effect. Monadic values can be
+lifted into a Sem
+via embed
+.
+Higher-order actions of another monad can be lifted into higher-order actions
+of Sem
+via the Final
+effect, which is more powerful
+than Embed
+, but also less flexible to interpret.
+A Sem
+can be interpreted as a pure value (via run
+) or as any
+traditional Monad
+(via runM
+or runFinal
+).
+Each effect E
+comes equipped with some interpreters of the form:
+runE ::Sem
+(E ': r) a ->Sem
+r a
+which is responsible for removing the effect E
+from the effect stack. It
+is the order in which you call the interpreters that determines the
+monomorphic representation of the r
+parameter.
+Order of interpreters can be important - it determines behaviour of effects that manipulate state or change control flow. For example, when interpreting this action:
+>>>
+:{
+example :: Members '[State String, Error String] r => Sem r String example = do put "start" let throwing, catching :: Members '[State String, Error String] r => Sem r String throwing = do modify (++"-throw") throw "error" get catching = do modify (++"-catch") get catch @String throwing (\ _ -> catching) :}
+when handling Error
+first, state is preserved after error
+occurs:
+>>>
+:{
+example & runError & fmap (either id id) & evalState "" & runM & (print =<<) :} "start-throw-catch"
+while handling State
+first discards state in such cases:
+>>>
+:{
+example & evalState "" & runError & fmap (either id id) & runM & (print =<<) :} "start-catch"
+A good rule of thumb is to handle effects which should have "global" behaviour over other effects later in the chain.
+After all of your effects are handled, you'll be left with either
+a
+, a Sem
+'[] a
+, or a Sem
+'[ Embed
+m ] a
+value, which can be consumed respectively by Sem
+'[ Final
+m ] arun
+, runM
+, and
+runFinal
+.
+Examples
+As an example of keeping r
+polymorphic, we can consider the type
+Member
+(State
+String) r =>Sem
+r ()
+to be a program with access to
+get
+::Sem
+r Stringput
+:: String ->Sem
+r ()
+methods.
+By also adding a
+Member
+(Error
+Bool) r
+constraint on r
+, we gain access to the
+throw
+:: Bool ->Sem
+r acatch
+::Sem
+r a -> (Bool ->Sem
+r a) ->Sem
+r a
+functions as well.
+In this sense, a
+constraint is
+analogous to mtl's Member
+(State
+s) r
+and should
+be thought of as such. However, unlike mtl, a MonadState
+s mSem
+monad may have
+an arbitrary number of the same effect.
+For example, we can write a Sem
+program which can output either
+Int
+s or Bool
+s:
+foo :: (Member
+(Output
+Int) r ,Member
+(Output
+Bool) r ) =>Sem
+r () foo = dooutput
+@Int 5output
+True
+Notice that we must use -XTypeApplications
+to specify that we'd like to
+use the (Output
+Int
+) effect.
+Since: 0.1.2.0
+Instances
+| Member (Fail :: (Type -> Type) -> Type -> Type) r => MonadFail (Sem r) Source # | Since: 1.1.0.0 |
+Defined in Polysemy.Internal | |
+| Member Fixpoint r => MonadFix (Sem r) Source # | |
+Defined in Polysemy.Internal | |
+| Member (Embed IO) r => MonadIO (Sem r) Source # | This instance will only lift |
+Defined in Polysemy.Internal | |
+| Member NonDet r => Alternative (Sem r) Source # | |
+| Applicative (Sem f) Source # | |
+| Functor (Sem f) Source # | |
+| Monad (Sem f) Source # | |
+| Member NonDet r => MonadPlus (Sem r) Source # | Since: 0.2.1.0 |
+| Monoid a => Monoid (Sem f a) Source # | Since: 1.6.0.0 |
+| Semigroup a => Semigroup (Sem f a) Source # | Since: 1.6.0.0 |
+class Member (t :: Effect) (r :: EffectRow) Source #
+This class indicates that an effect must be present in the caller's stack. It is the main mechanism by which a program defines its effect dependencies.
+membership'
+Instances
+| Member t z => Member t (_1 ': z) Source # | |
+Defined in Polysemy.Internal.Union membership' :: ElemOf t (_1 ': z) | |
+| Member t (t ': z) Source # | |
+Defined in Polysemy.Internal.Union membership' :: ElemOf t (t ': z) |
+type family Members es r :: Constraint where ... Source #
+Makes constraints of functions that use multiple effects shorter by
+translating single list of effects into multiple Member
+constraints:
+foo ::Members
+'[Output
+Int ,Output
+Bool ,State
+String ] r =>Sem
+r ()
+translates into:
+foo :: (Member
+(Output
+Int) r ,Member
+(Output
+Bool) r ,Member
+(State
+String) r ) =>Sem
+r ()
+Since: 0.1.2.0
+send :: Member e r => e (Sem r) a -> Sem r a Source #
+Execute an action of an effect.
+This is primarily used to create methods for actions of effects:
+data FooBar m a where Foo :: String -> m a -> FooBar m a Bar :: FooBar m Int foo :: Member FooBar r => String -> Sem r a -> Sem r a foo s m = send (Foo s m) bar :: Member FooBar r => Sem r Int bar = send Bar
+makeSem
+allows you to eliminate this boilerplate.
+@since TODO
+sendUsing :: ElemOf e r -> e (Sem r) a -> Sem r a Source #
+Embed an effect into a Sem
+, given an explicit proof
+that the effect exists in r
+.
+This is useful in conjunction with tryMembership
+,
+in order to conditionally make use of effects.
+embed :: Member (Embed m) r => m a -> Sem r a Source #
+Embed a monadic action m
+in Sem
+.
+Since: 1.0.0.0
+raise_ :: forall r r' a. Raise r r' => Sem r a -> Sem r' a Source #
+Introduce an arbitrary number of effects on top of the effect stack. This
+function is highly polymorphic, so it may be good idea to use its more
+concrete versions (like raise
+) or type annotations to avoid vague errors
+in ambiguous contexts.
+Since: 1.4.0.0
+class Raise (r :: EffectRow) (r' :: EffectRow) where Source #
+See raise
+.
+Since: 1.4.0.0
+raiseUnion :: Union r m a -> Union r' m a Source #
+Instances
+raiseUnder :: forall e2 e1 r a. Sem (e1 ': r) a -> Sem (e1 ': (e2 ': r)) a Source #
+Like raise
+, but introduces a new effect underneath the head of the
+list. See raiseUnder2
+or raiseUnder3
+for introducing more effects. If
+you need to introduce even more of them, check out subsume_
+.
+raiseUnder
+can be used in order to turn transformative interpreters
+into reinterpreters. This is especially useful if you're writing an
+interpreter which introduces an intermediary effect, and then want to use
+an existing interpreter on that effect.
+For example, given:
+fooToBar ::Member
+Bar r =>Sem
+(Foo ': r) a ->Sem
+r a runBar ::Sem
+(Bar ': r) a ->Sem
+r a
+You can write:
+runFoo ::Sem
+(Foo ': r) a ->Sem
+r a runFoo = runBar -- Consume Bar . fooToBar -- Interpret Foo in terms of the new Bar .raiseUnder
+-- Introduces Bar under Foo
+Since: 1.2.0.0
+raiseUnder2 :: forall e2 e3 e1 r a. Sem (e1 ': r) a -> Sem (e1 ': (e2 ': (e3 ': r))) a Source #
+Like raise
+, but introduces two new effects underneath the head of the
+list.
+Since: 1.2.0.0
+raiseUnder3 :: forall e2 e3 e4 e1 r a. Sem (e1 ': r) a -> Sem (e1 ': (e2 ': (e3 ': (e4 ': r)))) a Source #
+Like raise
+, but introduces three new effects underneath the head of the
+list.
+Since: 1.2.0.0
+raise2Under :: forall e3 e1 e2 r a. Sem (e1 : (e2 : r)) a -> Sem (e1 : (e2 : (e3 : r))) a Source #
+Like raise
+, but introduces an effect two levels underneath the head of
+the list.
+Since: 1.4.0.0
+raise3Under :: forall e4 e1 e2 e3 r a. Sem (e1 : (e2 : (e3 : r))) a -> Sem (e1 : (e2 : (e3 : (e4 : r)))) a Source #
+Like raise
+, but introduces an effect three levels underneath the head
+of the list.
+Since: 1.4.0.0
+subsume_ :: forall r r' a. Subsume r r' => Sem r a -> Sem r' a Source #
+Allows reordering and adding known effects on top of the effect stack, as
+long as the polymorphic "tail" of new stack is a raise
+-d version of the
+original one. This function is highly polymorphic, so it may be a good idea
+to use its more concrete version (subsume
+), fitting functions from the
+raise
+family or type annotations to avoid vague errors in ambiguous
+contexts.
+Since: 1.4.0.0
+class Subsume (r :: EffectRow) (r' :: EffectRow) where Source #
+See subsume_
+.
+Since: 1.4.0.0
+subsumeUnion :: Union r m a -> Union r' m a Source #
+subsume :: forall e r a. Member e r => Sem (e ': r) a -> Sem r a Source #
+Interprets an effect in terms of another identical effect.
+This is useful for defining interpreters that use reinterpretH
+without immediately consuming the newly introduced effect.
+Using such an interpreter recursively may result in duplicate effects,
+which may then be eliminated using subsume
+.
+For a version that can introduce an arbitrary number of new effects and
+reorder existing ones, see subsume_
+.
+Since: 1.2.0.0
+subsumeUsing :: forall e r a. ElemOf e r -> Sem (e ': r) a -> Sem r a Source #
+Interprets an effect in terms of another identical effect, given an
+explicit proof that the effect exists in r
+.
+This is useful in conjunction with tryMembership
+in order to conditionally make use of effects. For example:
+tryListen ::KnownRow
+r =>Sem
+r a -> Maybe (Sem
+r ([Int], a)) tryListen m = casetryMembership
+@(Writer
+[Int]) of Just pr -> Just $subsumeUsing
+pr (listen
+(raise
+m)) _ -> Nothing
+Since: 1.3.0.0
+insertAt :: forall index inserted head oldTail tail old full a. (ListOfLength index head, WhenStuck index InsertAtUnprovidedIndex, old ~ Append head oldTail, tail ~ Append inserted oldTail, full ~ Append head tail, InsertAtIndex index head tail oldTail full inserted) => Sem old a -> Sem full a Source #
+Introduce a set of effects into Sem
+at the index i
+, before the effect
+that previously occupied that position. This is intended to be used with a
+type application:
+let sem1 :: Sem [e1, e2, e3, e4, e5] a sem1 = insertAt @2 (sem0 :: Sem [e1, e2, e5] a)
+Since: 1.6.0.0
+newtype Embed m (z :: Type -> Type) a where Source #
+An effect which allows a regular Monad
+m
+into the Sem
+ecosystem. Monadic actions in m
+can be lifted into Sem
+via
+embed
+.
+For example, you can use this effect to lift IO
+actions directly into
+Sem
+:
+embed
+(putStrLn "hello") ::Member
+(Embed
+IO) r =>Sem
+r ()
+That being said, you lose out on a significant amount of the benefits of
+Sem
+by using embed
+directly in application code; doing
+so will tie your application code directly to the underlying monad, and
+prevent you from interpreting it differently. For best results, only use
+Embed
+in your effect interpreters.
+Consider using trace
+and traceToIO
+as
+a substitute for using putStrLn
+directly.
+Since: 1.0.0.0
+usingSem :: Monad m => (forall x. Union r (Sem r) x -> m x) -> Sem r a -> m a Source #
+Like runSem
+but flipped for better ergonomics sometimes.
+restack :: (forall e. ElemOf e r -> ElemOf e r') -> Sem r a -> Sem r' a Source #
+Extend the stack of a Sem
+with an explicit membership proof
+transformation.
+type InterpreterFor e r = forall a. Sem (e ': r) a -> Sem r a Source #
+Type synonym for interpreters that consume an effect without changing the return value. Offered for user convenience.
+r
+Is kept polymorphic so it's possible to place constraints upon it:
+teletypeToIO ::Member
+(Embed IO) r =>InterpreterFor
+Teletype r
+type InterpretersFor es r = forall a. Sem (Append es r) a -> Sem r a Source #
+Variant of InterpreterFor
+that takes a list of effects.
+@since 1.5.0.0

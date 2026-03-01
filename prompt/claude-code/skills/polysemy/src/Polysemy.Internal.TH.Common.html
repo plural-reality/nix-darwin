@@ -1,0 +1,979 @@
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_HADDOCK not-home, prune #-}
+module Polysemy.Internal.TH.Common
+( ConLiftInfo (..)
+, getEffectMetadata
+, makeMemberConstraint
+, makeMemberConstraint'
+, makeSemType
+, makeInterpreterType
+, makeEffectType
+, makeUnambiguousSend
+, checkExtensions
+, foldArrowTs
+, splitArrowTs
+, pattern (:->)
+) where
+import Control.Arrow ((>>>))
+import Control.Monad
+import Data.Bifunctor
+import Data.Char (toLower)
+import Data.Generics hiding (Fixity)
+import Data.List
+import qualified Data.Map.Strict as M
+import Data.Tuple
+import Language.Haskell.TH
+import Language.Haskell.TH.Datatype
+import Language.Haskell.TH.PprLib
+import Polysemy.Internal (Sem, send)
+import Polysemy.Internal.Union (Member)
+#if __GLASGOW_HASKELL__ >= 804
+import Prelude hiding ((<>))
+#endif
+data ConLiftInfo = CLInfo
+{
+ConLiftInfo -> Name
+cliEffName :: Name
+,
+ConLiftInfo -> [Type]
+cliEffArgs :: [Type]
+,
+ConLiftInfo -> Type
+cliEffRes :: Type
+,
+ConLiftInfo -> Name
+cliConName :: Name
+,
+ConLiftInfo -> Name
+cliFunName :: Name
+,
+ConLiftInfo -> Maybe Fixity
+cliFunFixity :: Maybe Fixity
+,
+ConLiftInfo -> [(Name, Type)]
+cliFunArgs :: [(Name, Type)]
+,
+ConLiftInfo -> [Type]
+cliFunCxt :: Cxt
+,
+ConLiftInfo -> Name
+cliUnionName :: Name
+} deriving Int -> ConLiftInfo -> ShowS
+[ConLiftInfo] -> ShowS
+ConLiftInfo -> String
+(Int -> ConLiftInfo -> ShowS)
+-> (ConLiftInfo -> String)
+-> ([ConLiftInfo] -> ShowS)
+-> Show ConLiftInfo
+forall a.
+(Int -> a -> ShowS) -> (a -> String) -> ([a] -> ShowS) -> Show a
+$cshowsPrec :: Int -> ConLiftInfo -> ShowS
+showsPrec :: Int -> ConLiftInfo -> ShowS
+$cshow :: ConLiftInfo -> String
+show :: ConLiftInfo -> String
+$cshowList :: [ConLiftInfo] -> ShowS
+showList :: [ConLiftInfo] -> ShowS
+Show
+getEffectMetadata :: Name -> Q [ConLiftInfo]
+getEffectMetadata :: Name -> Q [ConLiftInfo]
+getEffectMetadata Name
+type_name = do
+DatatypeInfo
+dt_info <- Name -> Q DatatypeInfo
+reifyDatatype Name
+type_name
+[ConLiftInfo]
+cl_infos <- (Name -> Q ConLiftInfo) -> [Name] -> Q [ConLiftInfo]
+forall (t :: * -> *) (f :: * -> *) a b.
+(Traversable t, Applicative f) =>
+(a -> f b) -> t a -> f (t b)
+forall (f :: * -> *) a b.
+Applicative f =>
+(a -> f b) -> [a] -> f [b]
+traverse Name -> Q ConLiftInfo
+makeCLInfo ([Name] -> Q [ConLiftInfo]) -> [Name] -> Q [ConLiftInfo]
+forall a b. (a -> b) -> a -> b
+$ ConstructorInfo -> Name
+constructorName (ConstructorInfo -> Name) -> [ConstructorInfo] -> [Name]
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> DatatypeInfo -> [ConstructorInfo]
+datatypeCons DatatypeInfo
+dt_info
+[ConLiftInfo] -> Q [ConLiftInfo]
+forall a. a -> Q a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure [ConLiftInfo]
+cl_infos
+liftFunNameFromCon :: Name -> Name
+liftFunNameFromCon :: Name -> Name
+liftFunNameFromCon Name
+n = String -> Name
+mkName (String -> Name) -> String -> Name
+forall a b. (a -> b) -> a -> b
+$
+case Name -> String
+nameBase Name
+n of
+Char
+':' : String
+cs -> String
+cs
+Char
+c : String
+cs -> Char -> Char
+toLower Char
+c Char -> ShowS
+forall a. a -> [a] -> [a]
+: String
+cs
+String
+"" -> ShowS
+forall a. HasCallStack => String -> a
+error String
+"liftFunNameFromCon: empty constructor name"
+makeCLInfo :: Name -> Q ConLiftInfo
+makeCLInfo :: Name -> Q ConLiftInfo
+makeCLInfo Name
+cliConName = do
+(Type
+con_type, Name
+cliEffName) <- Name -> Q Info
+reify Name
+cliConName Q Info -> (Info -> Q (Type, Name)) -> Q (Type, Name)
+forall a b. Q a -> (a -> Q b) -> Q b
+forall (m :: * -> *) a b. Monad m => m a -> (a -> m b) -> m b
+>>= \case
+DataConI Name
+_ Type
+t Name
+p -> (Type, Name) -> Q (Type, Name)
+forall a. a -> Q a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (Type
+t, Name
+p)
+Info
+_ -> Name -> Q (Type, Name)
+forall a. Name -> Q a
+notDataCon Name
+cliConName
+let ([Type]
+con_args, [Type
+con_return_type]) = Int -> [Type] -> ([Type], [Type])
+forall a. Int -> [a] -> ([a], [a])
+splitAtEnd Int
+1
+([Type] -> ([Type], [Type])) -> [Type] -> ([Type], [Type])
+forall a b. (a -> b) -> a -> b
+$ Type -> [Type]
+splitArrowTs Type
+con_type
+([Type]
+ty_con_args, [Type
+monad_arg, Type
+res_arg]) <-
+case Int -> [Type] -> ([Type], [Type])
+forall a. Int -> [a] -> ([a], [a])
+splitAtEnd Int
+2 ([Type] -> ([Type], [Type])) -> [Type] -> ([Type], [Type])
+forall a b. (a -> b) -> a -> b
+$ [Type] -> [Type]
+forall a. HasCallStack => [a] -> [a]
+tail ([Type] -> [Type]) -> [Type] -> [Type]
+forall a b. (a -> b) -> a -> b
+$ Type -> [Type]
+splitAppTs (Type -> [Type]) -> Type -> [Type]
+forall a b. (a -> b) -> a -> b
+$ Type
+con_return_type of
+r :: ([Type], [Type])
+r@([Type]
+_, [Type
+_, Type
+_]) -> ([Type], [Type]) -> Q ([Type], [Type])
+forall a. a -> Q a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure ([Type], [Type])
+r
+([Type], [Type])
+_ -> Name -> Q ([Type], [Type])
+forall a. Name -> Q a
+missingEffArgs Name
+cliEffName
+Name
+monad_name <- Q Name -> (Name -> Q Name) -> Maybe Name -> Q Name
+forall b a. b -> (a -> b) -> Maybe a -> b
+maybe (Name -> Type -> Q Name
+forall a. Name -> Type -> Q a
+argNotVar Name
+cliEffName Type
+monad_arg)
+Name -> Q Name
+forall a. a -> Q a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure
+(Type -> Maybe Name
+tVarName Type
+monad_arg)
+Name
+cliUnionName <- String -> Q Name
+forall (m :: * -> *). Quote m => String -> m Name
+newName String
+"r"
+let normalize_types :: (TypeSubstitution t, Data t) => t -> t
+normalize_types :: forall t. (TypeSubstitution t, Data t) => t -> t
+normalize_types = Name -> Name -> t -> t
+forall t. TypeSubstitution t => Name -> Name -> t -> t
+replaceMArg Name
+monad_name Name
+cliUnionName
+(t -> t) -> (t -> t) -> t -> t
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. t -> t
+forall t. Data t => t -> t
+simplifyKinds
+cliEffArgs :: [Type]
+cliEffArgs = [Type] -> [Type]
+forall t. (TypeSubstitution t, Data t) => t -> t
+normalize_types [Type]
+ty_con_args
+cliEffRes :: Type
+cliEffRes = Type -> Type
+forall t. (TypeSubstitution t, Data t) => t -> t
+normalize_types Type
+res_arg
+cliFunName :: Name
+cliFunName = Name -> Name
+liftFunNameFromCon Name
+cliConName
+Maybe Fixity
+cliFunFixity <- Name -> Q (Maybe Fixity)
+reifyFixity Name
+cliConName
+[Name]
+fun_arg_names <- Int -> Q Name -> Q [Name]
+forall (m :: * -> *) a. Applicative m => Int -> m a -> m [a]
+replicateM ([Type] -> Int
+forall a. [a] -> Int
+forall (t :: * -> *) a. Foldable t => t a -> Int
+length [Type]
+con_args) (Q Name -> Q [Name]) -> Q Name -> Q [Name]
+forall a b. (a -> b) -> a -> b
+$ String -> Q Name
+forall (m :: * -> *). Quote m => String -> m Name
+newName String
+"x"
+let cliFunArgs :: [(Name, Type)]
+cliFunArgs = [Name] -> [Type] -> [(Name, Type)]
+forall a b. [a] -> [b] -> [(a, b)]
+zip [Name]
+fun_arg_names ([Type] -> [(Name, Type)]) -> [Type] -> [(Name, Type)]
+forall a b. (a -> b) -> a -> b
+$ [Type] -> [Type]
+forall t. (TypeSubstitution t, Data t) => t -> t
+normalize_types [Type]
+con_args
+cliFunCxt :: [Type]
+cliFunCxt = Type -> [Type]
+topLevelConstraints Type
+con_type
+ConLiftInfo -> Q ConLiftInfo
+forall a. a -> Q a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure CLInfo{[Type]
+[(Name, Type)]
+Maybe Fixity
+Type
+Name
+cliEffName :: Name
+cliEffArgs :: [Type]
+cliEffRes :: Type
+cliConName :: Name
+cliFunName :: Name
+cliFunFixity :: Maybe Fixity
+cliFunArgs :: [(Name, Type)]
+cliFunCxt :: [Type]
+cliUnionName :: Name
+cliConName :: Name
+cliEffName :: Name
+cliUnionName :: Name
+cliEffArgs :: [Type]
+cliEffRes :: Type
+cliFunName :: Name
+cliFunFixity :: Maybe Fixity
+cliFunArgs :: [(Name, Type)]
+cliFunCxt :: [Type]
+..}
+makeEffectType :: ConLiftInfo -> Type
+makeEffectType :: ConLiftInfo -> Type
+makeEffectType ConLiftInfo
+cli = (Type -> Type -> Type) -> Type -> [Type] -> Type
+forall b a. (b -> a -> b) -> b -> [a] -> b
+forall (t :: * -> *) b a.
+Foldable t =>
+(b -> a -> b) -> b -> t a -> b
+foldl' Type -> Type -> Type
+AppT (Name -> Type
+ConT (Name -> Type) -> Name -> Type
+forall a b. (a -> b) -> a -> b
+$ ConLiftInfo -> Name
+cliEffName ConLiftInfo
+cli) ([Type] -> Type) -> [Type] -> Type
+forall a b. (a -> b) -> a -> b
+$ ConLiftInfo -> [Type]
+cliEffArgs ConLiftInfo
+cli
+makeInterpreterType :: ConLiftInfo -> Name -> Type -> Type
+makeInterpreterType :: ConLiftInfo -> Name -> Type -> Type
+makeInterpreterType ConLiftInfo
+cli Name
+r Type
+result = Type
+sem_with_eff Type -> Type -> Type
+:-> Name -> Type -> Type
+makeSemType Name
+r Type
+result where
+sem_with_eff :: Type
+sem_with_eff = Name -> Type
+ConT ''Sem Type -> Type -> Type
+`AppT` Type
+r_with_eff Type -> Type -> Type
+`AppT` Type
+result
+r_with_eff :: Type
+r_with_eff = Type
+PromotedConsT Type -> Type -> Type
+`AppT` ConLiftInfo -> Type
+makeEffectType ConLiftInfo
+cli Type -> Type -> Type
+`AppT` Name -> Type
+VarT Name
+r
+makeMemberConstraint :: Name -> ConLiftInfo -> Pred
+makeMemberConstraint :: Name -> ConLiftInfo -> Type
+makeMemberConstraint Name
+r ConLiftInfo
+cli = Name -> Type -> Type
+makeMemberConstraint' Name
+r (Type -> Type) -> Type -> Type
+forall a b. (a -> b) -> a -> b
+$ ConLiftInfo -> Type
+makeEffectType ConLiftInfo
+cli
+makeMemberConstraint' :: Name -> Type -> Pred
+makeMemberConstraint' :: Name -> Type -> Type
+makeMemberConstraint' Name
+r Type
+eff = Name -> [Type] -> Type
+classPred ''Member [Type
+eff, Name -> Type
+VarT Name
+r]
+makeSemType :: Name -> Type -> Type
+makeSemType :: Name -> Type -> Type
+makeSemType Name
+r Type
+result = Name -> Type
+ConT ''Sem Type -> Type -> Type
+`AppT` Name -> Type
+VarT Name
+r Type -> Type -> Type
+`AppT` Type
+result
+makeUnambiguousSend :: Bool -> ConLiftInfo -> Exp
+makeUnambiguousSend :: Bool -> ConLiftInfo -> Exp
+makeUnambiguousSend Bool
+should_make_sigs ConLiftInfo
+cli =
+let fun_args_names :: [Name]
+fun_args_names = (Name, Type) -> Name
+forall a b. (a, b) -> a
+fst ((Name, Type) -> Name) -> [(Name, Type)] -> [Name]
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> ConLiftInfo -> [(Name, Type)]
+cliFunArgs ConLiftInfo
+cli
+action :: Exp
+action = (Exp -> Exp -> Exp) -> [Exp] -> Exp
+forall a. HasCallStack => (a -> a -> a) -> [a] -> a
+foldl1' Exp -> Exp -> Exp
+AppE
+([Exp] -> Exp) -> [Exp] -> Exp
+forall a b. (a -> b) -> a -> b
+$ Name -> Exp
+ConE (ConLiftInfo -> Name
+cliConName ConLiftInfo
+cli) Exp -> [Exp] -> [Exp]
+forall a. a -> [a] -> [a]
+: (Name -> Exp
+VarE (Name -> Exp) -> [Name] -> [Exp]
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> [Name]
+fun_args_names)
+eff :: Type
+eff = (Type -> Type -> Type) -> Type -> [Type] -> Type
+forall b a. (b -> a -> b) -> b -> [a] -> b
+forall (t :: * -> *) b a.
+Foldable t =>
+(b -> a -> b) -> b -> t a -> b
+foldl' Type -> Type -> Type
+AppT (Name -> Type
+ConT (Name -> Type) -> Name -> Type
+forall a b. (a -> b) -> a -> b
+$ ConLiftInfo -> Name
+cliEffName ConLiftInfo
+cli) ([Type] -> Type) -> [Type] -> Type
+forall a b. (a -> b) -> a -> b
+$ [Type]
+args
+args :: [Type]
+args = (if Bool
+should_make_sigs then [Type] -> [Type]
+forall a. a -> a
+id else (Type -> Type) -> [Type] -> [Type]
+forall a b. (a -> b) -> [a] -> [b]
+map Type -> Type
+capturableTVars)
+([Type] -> [Type]) -> [Type] -> [Type]
+forall a b. (a -> b) -> a -> b
+$ ConLiftInfo -> [Type]
+cliEffArgs ConLiftInfo
+cli [Type] -> [Type] -> [Type]
+forall a. [a] -> [a] -> [a]
+++ [Type
+sem, ConLiftInfo -> Type
+cliEffRes ConLiftInfo
+cli]
+sem :: Type
+sem = Name -> Type
+ConT ''Sem Type -> Type -> Type
+`AppT` Name -> Type
+VarT (ConLiftInfo -> Name
+cliUnionName ConLiftInfo
+cli)
+in Exp -> Exp -> Exp
+AppE (Name -> Exp
+VarE 'send) (Exp -> Exp) -> Exp -> Exp
+forall a b. (a -> b) -> a -> b
+$ Exp -> Type -> Exp
+SigE Exp
+action Type
+eff
+argNotVar :: Name -> Type -> Q a
+argNotVar :: forall a. Name -> Type -> Q a
+argNotVar Name
+eff_name Type
+arg = String -> Q a
+forall a. String -> Q a
+forall (m :: * -> *) a. MonadFail m => String -> m a
+fail (String -> Q a) -> String -> Q a
+forall a b. (a -> b) -> a -> b
+$ Doc -> String
+forall a. Show a => a -> String
+show
+(Doc -> String) -> Doc -> String
+forall a b. (a -> b) -> a -> b
+$ String -> Doc
+text String
+"Argument ‘" Doc -> Doc -> Doc
+<> Type -> Doc
+forall a. Ppr a => a -> Doc
+ppr Type
+arg Doc -> Doc -> Doc
+<> String -> Doc
+text String
+"’ in effect ‘" Doc -> Doc -> Doc
+<> Name -> Doc
+forall a. Ppr a => a -> Doc
+ppr Name
+eff_name
+Doc -> Doc -> Doc
+<> String -> Doc
+text String
+"’ is not a type variable"
+checkExtensions :: [Extension] -> Q ()
+checkExtensions :: [Extension] -> Q ()
+checkExtensions [Extension]
+exts = do
+[(Extension, Bool)]
+states <- [Extension] -> [Bool] -> [(Extension, Bool)]
+forall a b. [a] -> [b] -> [(a, b)]
+zip [Extension]
+exts ([Bool] -> [(Extension, Bool)])
+-> Q [Bool] -> Q [(Extension, Bool)]
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> (Extension -> Q Bool) -> [Extension] -> Q [Bool]
+forall (t :: * -> *) (f :: * -> *) a b.
+(Traversable t, Applicative f) =>
+(a -> f b) -> t a -> f (t b)
+forall (f :: * -> *) a b.
+Applicative f =>
+(a -> f b) -> [a] -> f [b]
+traverse Extension -> Q Bool
+isExtEnabled [Extension]
+exts
+Q ()
+-> ((Extension, Bool) -> Q ()) -> Maybe (Extension, Bool) -> Q ()
+forall b a. b -> (a -> b) -> Maybe a -> b
+maybe (() -> Q ()
+forall a. a -> Q a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure ())
+(\(Extension
+ext, Bool
+_) -> String -> Q ()
+forall a. String -> Q a
+forall (m :: * -> *) a. MonadFail m => String -> m a
+fail (String -> Q ()) -> String -> Q ()
+forall a b. (a -> b) -> a -> b
+$ Doc -> String
+forall a. Show a => a -> String
+show
+(Doc -> String) -> Doc -> String
+forall a b. (a -> b) -> a -> b
+$ Char -> Doc
+char Char
+'‘' Doc -> Doc -> Doc
+<> String -> Doc
+text (Extension -> String
+forall a. Show a => a -> String
+show Extension
+ext) Doc -> Doc -> Doc
+<> Char -> Doc
+char Char
+'’'
+Doc -> Doc -> Doc
+<+> String -> Doc
+text String
+"extension needs to be enabled for Polysemy's Template Haskell to work")
+(((Extension, Bool) -> Bool)
+-> [(Extension, Bool)] -> Maybe (Extension, Bool)
+forall (t :: * -> *) a. Foldable t => (a -> Bool) -> t a -> Maybe a
+find (Bool -> Bool
+not (Bool -> Bool)
+-> ((Extension, Bool) -> Bool) -> (Extension, Bool) -> Bool
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (Extension, Bool) -> Bool
+forall a b. (a, b) -> b
+snd) [(Extension, Bool)]
+states)
+missingEffArgs :: Name -> Q a
+missingEffArgs :: forall a. Name -> Q a
+missingEffArgs Name
+name = String -> Q a
+forall a. String -> Q a
+forall (m :: * -> *) a. MonadFail m => String -> m a
+fail (String -> Q a) -> String -> Q a
+forall a b. (a -> b) -> a -> b
+$ Doc -> String
+forall a. Show a => a -> String
+show
+(Doc -> String) -> Doc -> String
+forall a b. (a -> b) -> a -> b
+$ String -> Doc
+text String
+"Effect ‘" Doc -> Doc -> Doc
+<> Name -> Doc
+forall a. Ppr a => a -> Doc
+ppr Name
+name
+Doc -> Doc -> Doc
+<> String -> Doc
+text String
+"’ has not enough type arguments"
+Doc -> Doc -> Doc
+$+$ Int -> Doc -> Doc
+nest Int
+4
+( String -> Doc
+text String
+"At least monad and result argument are required, e.g.:"
+Doc -> Doc -> Doc
+$+$ Int -> Doc -> Doc
+nest Int
+4
+( String -> Doc
+text String
+""
+Doc -> Doc -> Doc
+$+$ Dec -> Doc
+forall a. Ppr a => a -> Doc
+ppr ([Type]
+-> Name
+-> [TyVarBndr ()]
+-> Maybe Type
+-> [Con]
+-> [DerivClause]
+-> Dec
+DataD [] Name
+base [TyVarBndr ()]
+args Maybe Type
+forall a. Maybe a
+Nothing [] []) Doc -> Doc -> Doc
+<+> String -> Doc
+text String
+"..."
+Doc -> Doc -> Doc
+$+$ String -> Doc
+text String
+""
+)
+)
+where
+base :: Name
+base = Name -> Name
+capturableBase Name
+name
+#if MIN_VERSION_template_haskell(2,21,0)
+args = flip PlainTV BndrInvis . mkName <$> ["m", "a"]
+#elif MIN_VERSION_template_haskell(2,17,0)
+args :: [TyVarBndr ()]
+args = (Name -> () -> TyVarBndr ()) -> () -> Name -> TyVarBndr ()
+forall a b c. (a -> b -> c) -> b -> a -> c
+flip Name -> () -> TyVarBndr ()
+forall flag. Name -> flag -> TyVarBndr flag
+PlainTV () (Name -> TyVarBndr ())
+-> (String -> Name) -> String -> TyVarBndr ()
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. String -> Name
+mkName (String -> TyVarBndr ()) -> [String] -> [TyVarBndr ()]
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> [String
+"m", String
+"a"]
+#else
+args = PlainTV . mkName <$> ["m", "a"]
+#endif
+notDataCon :: Name -> Q a
+notDataCon :: forall a. Name -> Q a
+notDataCon Name
+name = String -> Q a
+forall a. String -> Q a
+forall (m :: * -> *) a. MonadFail m => String -> m a
+fail (String -> Q a) -> String -> Q a
+forall a b. (a -> b) -> a -> b
+$ Doc -> String
+forall a. Show a => a -> String
+show
+(Doc -> String) -> Doc -> String
+forall a b. (a -> b) -> a -> b
+$ Char -> Doc
+char Char
+'‘' Doc -> Doc -> Doc
+<> Name -> Doc
+forall a. Ppr a => a -> Doc
+ppr Name
+name Doc -> Doc -> Doc
+<> String -> Doc
+text String
+"’ is not a data constructor"
+arrows :: Type -> Bool
+arrows :: Type -> Bool
+arrows = \case
+Type
+ArrowT -> Bool
+True
+#if MIN_VERSION_template_haskell(2,17,0)
+AppT Type
+MulArrowT Type
+_ -> Bool
+True
+#endif
+Type
+_ -> Bool
+False
+infixr 1 :->
+pattern (:->) :: Type -> Type -> Type
+pattern a $m:-> :: forall {r}. Type -> (Type -> Type -> r) -> ((# #) -> r) -> r
+$b:-> :: Type -> Type -> Type
+:-> b <- (arrows . removeTyAnns -> True) `AppT` a `AppT` b where
+Type
+a :-> Type
+b = Type
+ArrowT Type -> Type -> Type
+`AppT` Type
+a Type -> Type -> Type
+`AppT` Type
+b
+capturableBase :: Name -> Name
+capturableBase :: Name -> Name
+capturableBase = String -> Name
+mkName (String -> Name) -> (Name -> String) -> Name -> Name
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Name -> String
+nameBase
+capturableTVars :: Type -> Type
+capturableTVars :: Type -> Type
+capturableTVars = (forall t. Data t => t -> t) -> forall t. Data t => t -> t
+everywhere ((forall t. Data t => t -> t) -> forall t. Data t => t -> t)
+-> (forall t. Data t => t -> t) -> forall t. Data t => t -> t
+forall a b. (a -> b) -> a -> b
+$ (Type -> Type) -> a -> a
+forall a b. (Typeable a, Typeable b) => (b -> b) -> a -> a
+mkT ((Type -> Type) -> a -> a) -> (Type -> Type) -> a -> a
+forall a b. (a -> b) -> a -> b
+$ \case
+VarT Name
+n -> Name -> Type
+VarT (Name -> Type) -> Name -> Type
+forall a b. (a -> b) -> a -> b
+$ Name -> Name
+capturableBase Name
+n
+ForallT [TyVarBndr Specificity]
+bs [Type]
+cs Type
+t -> [TyVarBndr Specificity] -> [Type] -> Type -> Type
+ForallT (TyVarBndr Specificity -> TyVarBndr Specificity
+forall {flag}. TyVarBndr flag -> TyVarBndr flag
+goBndr (TyVarBndr Specificity -> TyVarBndr Specificity)
+-> [TyVarBndr Specificity] -> [TyVarBndr Specificity]
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> [TyVarBndr Specificity]
+bs) (Type -> Type
+capturableTVars (Type -> Type) -> [Type] -> [Type]
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> [Type]
+cs) Type
+t
+where
+#if MIN_VERSION_template_haskell(2,17,0)
+goBndr :: TyVarBndr flag -> TyVarBndr flag
+goBndr (PlainTV Name
+n flag
+flag) = Name -> flag -> TyVarBndr flag
+forall flag. Name -> flag -> TyVarBndr flag
+PlainTV (Name -> Name
+capturableBase Name
+n) flag
+flag
+goBndr (KindedTV Name
+n flag
+flag Type
+k) = Name -> flag -> Type -> TyVarBndr flag
+forall flag. Name -> flag -> Type -> TyVarBndr flag
+KindedTV (Name -> Name
+capturableBase Name
+n) flag
+flag (Type -> TyVarBndr flag) -> Type -> TyVarBndr flag
+forall a b. (a -> b) -> a -> b
+$ Type -> Type
+capturableTVars Type
+k
+#else
+goBndr (PlainTV n ) = PlainTV $ capturableBase n
+goBndr (KindedTV n k) = KindedTV (capturableBase n) $ capturableTVars k
+#endif
+Type
+t -> Type
+t
+foldArrowTs :: Type -> [Type] -> Type
+foldArrowTs :: Type -> [Type] -> Type
+foldArrowTs = (Type -> Type -> Type) -> Type -> [Type] -> Type
+forall a b. (a -> b -> b) -> b -> [a] -> b
+forall (t :: * -> *) a b.
+Foldable t =>
+(a -> b -> b) -> b -> t a -> b
+foldr Type -> Type -> Type
+(:->)
+replaceMArg :: TypeSubstitution t => Name -> Name -> t -> t
+replaceMArg :: forall t. TypeSubstitution t => Name -> Name -> t -> t
+replaceMArg Name
+m Name
+r = Map Name Type -> t -> t
+forall a. TypeSubstitution a => Map Name Type -> a -> a
+applySubstitution (Map Name Type -> t -> t) -> Map Name Type -> t -> t
+forall a b. (a -> b) -> a -> b
+$ Name -> Type -> Map Name Type
+forall k a. k -> a -> Map k a
+M.singleton Name
+m (Type -> Map Name Type) -> Type -> Map Name Type
+forall a b. (a -> b) -> a -> b
+$ Name -> Type
+ConT ''Sem Type -> Type -> Type
+`AppT` Name -> Type
+VarT Name
+r
+simplifyKinds :: Data t => t -> t
+simplifyKinds :: forall t. Data t => t -> t
+simplifyKinds = (forall t. Data t => t -> t) -> forall t. Data t => t -> t
+everywhere ((forall t. Data t => t -> t) -> forall t. Data t => t -> t)
+-> (forall t. Data t => t -> t) -> forall t. Data t => t -> t
+forall a b. (a -> b) -> a -> b
+$ (Type -> Type) -> a -> a
+forall a b. (Typeable a, Typeable b) => (b -> b) -> a -> a
+mkT ((Type -> Type) -> a -> a) -> (Type -> Type) -> a -> a
+forall a b. (a -> b) -> a -> b
+$ \case
+SigT Type
+t Type
+StarT -> Type
+t
+SigT Type
+t VarT{} -> Type
+t
+ForallT [TyVarBndr Specificity]
+bs [Type]
+cs Type
+t -> [TyVarBndr Specificity] -> [Type] -> Type -> Type
+ForallT (TyVarBndr Specificity -> TyVarBndr Specificity
+forall {flag}. TyVarBndr flag -> TyVarBndr flag
+goBndr (TyVarBndr Specificity -> TyVarBndr Specificity)
+-> [TyVarBndr Specificity] -> [TyVarBndr Specificity]
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> [TyVarBndr Specificity]
+bs) (Type -> Type
+forall t. Data t => t -> t
+simplifyKinds (Type -> Type) -> [Type] -> [Type]
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> [Type]
+cs) Type
+t
+where
+#if MIN_VERSION_template_haskell(2,17,0)
+goBndr :: TyVarBndr flag -> TyVarBndr flag
+goBndr (KindedTV Name
+n flag
+flag Type
+StarT) = Name -> flag -> TyVarBndr flag
+forall flag. Name -> flag -> TyVarBndr flag
+PlainTV Name
+n flag
+flag
+goBndr (KindedTV Name
+n flag
+flag VarT{}) = Name -> flag -> TyVarBndr flag
+forall flag. Name -> flag -> TyVarBndr flag
+PlainTV Name
+n flag
+flag
+#else
+goBndr (KindedTV n StarT) = PlainTV n
+goBndr (KindedTV n VarT{}) = PlainTV n
+#endif
+goBndr TyVarBndr flag
+b = TyVarBndr flag
+b
+Type
+t -> Type
+t
+splitAppTs :: Type -> [Type]
+splitAppTs :: Type -> [Type]
+splitAppTs = Type -> Type
+removeTyAnns (Type -> Type) -> (Type -> [Type]) -> Type -> [Type]
+forall {k} (cat :: k -> k -> *) (a :: k) (b :: k) (c :: k).
+Category cat =>
+cat a b -> cat b c -> cat a c
+>>> \case
+Type
+t `AppT` Type
+arg -> Type -> [Type]
+splitAppTs Type
+t [Type] -> [Type] -> [Type]
+forall a. [a] -> [a] -> [a]
+++ [Type
+arg]
+Type
+t -> [Type
+t]
+splitArrowTs :: Type -> [Type]
+splitArrowTs :: Type -> [Type]
+splitArrowTs = Type -> Type
+removeTyAnns (Type -> Type) -> (Type -> [Type]) -> Type -> [Type]
+forall {k} (cat :: k -> k -> *) (a :: k) (b :: k) (c :: k).
+Category cat =>
+cat a b -> cat b c -> cat a c
+>>> \case
+Type
+t :-> Type
+ts -> Type
+t Type -> [Type] -> [Type]
+forall a. a -> [a] -> [a]
+: Type -> [Type]
+splitArrowTs Type
+ts
+Type
+t -> [Type
+t]
+tVarName :: Type -> Maybe Name
+tVarName :: Type -> Maybe Name
+tVarName = Type -> Type
+removeTyAnns (Type -> Type) -> (Type -> Maybe Name) -> Type -> Maybe Name
+forall {k} (cat :: k -> k -> *) (a :: k) (b :: k) (c :: k).
+Category cat =>
+cat a b -> cat b c -> cat a c
+>>> \case
+VarT Name
+n -> Name -> Maybe Name
+forall a. a -> Maybe a
+Just Name
+n
+Type
+_ -> Maybe Name
+forall a. Maybe a
+Nothing
+topLevelConstraints :: Type -> Cxt
+topLevelConstraints :: Type -> [Type]
+topLevelConstraints = \case
+ForallT [TyVarBndr Specificity]
+_ [Type]
+cs Type
+_ -> [Type]
+cs
+Type
+_ -> []
+removeTyAnns :: Type -> Type
+removeTyAnns :: Type -> Type
+removeTyAnns = \case
+ForallT [TyVarBndr Specificity]
+_ [Type]
+_ Type
+t -> Type -> Type
+removeTyAnns Type
+t
+SigT Type
+t Type
+_ -> Type -> Type
+removeTyAnns Type
+t
+ParensT Type
+t -> Type -> Type
+removeTyAnns Type
+t
+Type
+t -> Type
+t
+splitAtEnd :: Int -> [a] -> ([a], [a])
+splitAtEnd :: forall a. Int -> [a] -> ([a], [a])
+splitAtEnd Int
+n = ([a], [a]) -> ([a], [a])
+forall a b. (a, b) -> (b, a)
+swap (([a], [a]) -> ([a], [a]))
+-> ([a] -> ([a], [a])) -> [a] -> ([a], [a])
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (([a] -> [a]) -> ([a] -> [a]) -> ([a], [a]) -> ([a], [a]))
+-> ([a] -> [a]) -> ([a], [a]) -> ([a], [a])
+forall (m :: * -> *) a. Monad m => m (m a) -> m a
+join ([a] -> [a]) -> ([a] -> [a]) -> ([a], [a]) -> ([a], [a])
+forall a b c d. (a -> b) -> (c -> d) -> (a, c) -> (b, d)
+forall (p :: * -> * -> *) a b c d.
+Bifunctor p =>
+(a -> b) -> (c -> d) -> p a c -> p b d
+bimap [a] -> [a]
+forall a. [a] -> [a]
+reverse (([a], [a]) -> ([a], [a]))
+-> ([a] -> ([a], [a])) -> [a] -> ([a], [a])
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Int -> [a] -> ([a], [a])
+forall a. Int -> [a] -> ([a], [a])
+splitAt Int
+n ([a] -> ([a], [a])) -> ([a] -> [a]) -> [a] -> ([a], [a])
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. [a] -> [a]
+forall a. [a] -> [a]
+reverse

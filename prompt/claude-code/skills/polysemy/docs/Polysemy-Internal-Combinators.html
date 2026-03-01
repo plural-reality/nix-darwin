@@ -1,0 +1,139 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- interpret :: FirstOrder e "interpret" => (forall rInitial x. e (Sem rInitial) x -> Sem r x) -> Sem (e ': r) a -> Sem r a
+- intercept :: (Member e r, FirstOrder e "intercept") => (forall x rInitial. e (Sem rInitial) x -> Sem r x) -> Sem r a -> Sem r a
+- reinterpret :: forall e1 e2 r a. FirstOrder e1 "reinterpret" => (forall rInitial x. e1 (Sem rInitial) x -> Sem (e2 ': r) x) -> Sem (e1 ': r) a -> Sem (e2 ': r) a
+- reinterpret2 :: forall e1 e2 e3 r a. FirstOrder e1 "reinterpret2" => (forall rInitial x. e1 (Sem rInitial) x -> Sem (e2 ': (e3 ': r)) x) -> Sem (e1 ': r) a -> Sem (e2 ': (e3 ': r)) a
+- reinterpret3 :: forall e1 e2 e3 e4 r a. FirstOrder e1 "reinterpret3" => (forall rInitial x. e1 (Sem rInitial) x -> Sem (e2 ': (e3 ': (e4 ': r))) x) -> Sem (e1 ': r) a -> Sem (e2 ': (e3 ': (e4 ': r))) a
+- rewrite :: forall e1 e2 r a. (forall rInitial x. e1 (Sem rInitial) x -> e2 (Sem rInitial) x) -> Sem (e1 ': r) a -> Sem (e2 ': r) a
+- transform :: forall e1 e2 r a. Member e2 r => (forall rInitial x. e1 (Sem rInitial) x -> e2 (Sem rInitial) x) -> Sem (e1 ': r) a -> Sem r a
+- interpretH :: (forall rInitial x. e (Sem rInitial) x -> Tactical e (Sem rInitial) r x) -> Sem (e ': r) a -> Sem r a
+- interceptH :: Member e r => (forall x rInitial. e (Sem rInitial) x -> Tactical e (Sem rInitial) r x) -> Sem r a -> Sem r a
+- reinterpretH :: forall e1 e2 r a. (forall rInitial x. e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 ': r) x) -> Sem (e1 ': r) a -> Sem (e2 ': r) a
+- reinterpret2H :: forall e1 e2 e3 r a. (forall rInitial x. e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 ': (e3 ': r)) x) -> Sem (e1 ': r) a -> Sem (e2 ': (e3 ': r)) a
+- reinterpret3H :: forall e1 e2 e3 e4 r a. (forall rInitial x. e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 ': (e3 ': (e4 ': r))) x) -> Sem (e1 ': r) a -> Sem (e2 ': (e3 ': (e4 ': r))) a
+- interpretWeaving :: forall e r. (forall x. Weaving e (Sem (e : r)) x -> Sem r x) -> InterpreterFor e r
+- interceptUsing :: FirstOrder e "interceptUsing" => ElemOf e r -> (forall x rInitial. e (Sem rInitial) x -> Sem r x) -> Sem r a -> Sem r a
+- interceptUsingH :: ElemOf e r -> (forall x rInitial. e (Sem rInitial) x -> Tactical e (Sem rInitial) r x) -> Sem r a -> Sem r a
+- stateful :: (forall x m. e m x -> s -> Sem r (s, x)) -> s -> Sem (e ': r) a -> Sem r (s, a)
+- lazilyStateful :: (forall x m. e m x -> s -> Sem r (s, x)) -> s -> Sem (e ': r) a -> Sem r (s, a)
+First order
+| :: FirstOrder e "interpret" | |
+| => (forall rInitial x. e (Sem rInitial) x -> Sem r x) | A natural transformation from the handled effect to other effects
+already in |
+| -> Sem (e ': r) a | |
+| -> Sem r a |
+The simplest way to produce an effect handler. Interprets an effect e
+by
+transforming it into other effects inside of r
+.
+| :: (Member e r, FirstOrder e "intercept") | |
+| => (forall x rInitial. e (Sem rInitial) x -> Sem r x) | A natural transformation from the handled effect to other effects
+already in |
+| -> Sem r a | |
+| -> Sem r a |
+Like interpret
+, but instead of handling the effect, allows responding to
+the effect while leaving it unhandled. This allows you, for example, to
+intercept other effects and insert logic around them.
+| :: forall e1 e2 r a. FirstOrder e1 "reinterpret" | |
+| => (forall rInitial x. e1 (Sem rInitial) x -> Sem (e2 ': r) x) | A natural transformation from the handled effect to the new effect. |
+| -> Sem (e1 ': r) a | |
+| -> Sem (e2 ': r) a |
+Like interpret
+, but instead of removing the effect e
+, reencodes it in
+some new effect f
+. This function will fuse when followed by
+runState
+, meaning it's free to reinterpret
+in terms of
+the State
+effect and immediately run it.
+| :: forall e1 e2 e3 r a. FirstOrder e1 "reinterpret2" | |
+| => (forall rInitial x. e1 (Sem rInitial) x -> Sem (e2 ': (e3 ': r)) x) | A natural transformation from the handled effect to the new effects. |
+| -> Sem (e1 ': r) a | |
+| -> Sem (e2 ': (e3 ': r)) a |
+Like reinterpret
+, but introduces two intermediary effects.
+| :: forall e1 e2 e3 e4 r a. FirstOrder e1 "reinterpret3" | |
+| => (forall rInitial x. e1 (Sem rInitial) x -> Sem (e2 ': (e3 ': (e4 ': r))) x) | A natural transformation from the handled effect to the new effects. |
+| -> Sem (e1 ': r) a | |
+| -> Sem (e2 ': (e3 ': (e4 ': r))) a |
+Like reinterpret
+, but introduces three intermediary effects.
+rewrite :: forall e1 e2 r a. (forall rInitial x. e1 (Sem rInitial) x -> e2 (Sem rInitial) x) -> Sem (e1 ': r) a -> Sem (e2 ': r) a Source #
+Rewrite an effect e1
+directly into e2
+, and put it on the top of the
+effect stack.
+Since: 1.2.3.0
+transform :: forall e1 e2 r a. Member e2 r => (forall rInitial x. e1 (Sem rInitial) x -> e2 (Sem rInitial) x) -> Sem (e1 ': r) a -> Sem r a Source #
+Transform an effect e1
+into an effect e2
+that is already somewhere
+inside of the stack.
+Since: 1.2.3.0
+Higher order
+| :: Member e r | |
+| => (forall x rInitial. e (Sem rInitial) x -> Tactical e (Sem rInitial) r x) | A natural transformation from the handled effect to other effects
+already in |
+| -> Sem r a | Unlike |
+| -> Sem r a |
+| :: forall e1 e2 r a. (forall rInitial x. e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 ': r) x) | A natural transformation from the handled effect to the new effect. |
+| -> Sem (e1 ': r) a | |
+| -> Sem (e2 ': r) a |
+Like reinterpret
+, but for higher-order effects.
+See the notes on Tactical
+for how to use this function.
+| :: forall e1 e2 e3 r a. (forall rInitial x. e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 ': (e3 ': r)) x) | A natural transformation from the handled effect to the new effects. |
+| -> Sem (e1 ': r) a | |
+| -> Sem (e2 ': (e3 ': r)) a |
+Like reinterpret2
+, but for higher-order effects.
+See the notes on Tactical
+for how to use this function.
+| :: forall e1 e2 e3 e4 r a. (forall rInitial x. e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 ': (e3 ': (e4 ': r))) x) | A natural transformation from the handled effect to the new effects. |
+| -> Sem (e1 ': r) a | |
+| -> Sem (e2 ': (e3 ': (e4 ': r))) a |
+Like reinterpret3
+, but for higher-order effects.
+See the notes on Tactical
+for how to use this function.
+interpretWeaving :: forall e r. (forall x. Weaving e (Sem (e : r)) x -> Sem r x) -> InterpreterFor e r Source #
+Interpret an effect e
+through a natural transformation from Weaving e
+to Sem r
+Conditional
+| :: FirstOrder e "interceptUsing" | |
+| => ElemOf e r | A proof that the handled effect exists in |
+| -> (forall x rInitial. e (Sem rInitial) x -> Sem r x) | A natural transformation from the handled effect to other effects
+already in |
+| -> Sem r a | |
+| -> Sem r a |
+A variant of intercept
+that accepts an explicit proof that the effect
+is in the effect stack rather then requiring a Member
+constraint.
+This is useful in conjunction with tryMembership
+in order to conditionally perform intercept
+.
+Since: 1.3.0.0
+| :: ElemOf e r | A proof that the handled effect exists in |
+| -> (forall x rInitial. e (Sem rInitial) x -> Tactical e (Sem rInitial) r x) | A natural transformation from the handled effect to other effects
+already in |
+| -> Sem r a | Unlike |
+| -> Sem r a |
+A variant of interceptH
+that accepts an explicit proof that the effect
+is in the effect stack rather then requiring a Member
+constraint.
+This is useful in conjunction with tryMembership
+in order to conditionally perform interceptH
+.
+See the notes on Tactical
+for how to use this function.
+Since: 1.3.0.0

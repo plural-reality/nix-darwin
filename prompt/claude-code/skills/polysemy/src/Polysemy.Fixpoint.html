@@ -1,0 +1,82 @@
+{-# LANGUAGE AllowAmbiguousTypes, TemplateHaskell #-}
+module Polysemy.Fixpoint
+(
+Fixpoint (..)
+, module Polysemy.Fixpoint
+) where
+import Control.Monad.Fix
+import Data.Maybe
+import Polysemy
+import Polysemy.Final
+import Polysemy.Internal.Fixpoint
+fixpointToFinal :: forall m r a
+. (Member (Final m) r, MonadFix m)
+=> Sem (Fixpoint ': r) a
+-> Sem r a
+fixpointToFinal :: forall (m :: * -> *) (r :: EffectRow) a.
+(Member (Final m) r, MonadFix m) =>
+Sem (Fixpoint : r) a -> Sem r a
+fixpointToFinal = forall (m :: * -> *) (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Member (Final m) r =>
+(forall x (rInitial :: EffectRow).
+e (Sem rInitial) x -> Strategic m (Sem rInitial) x)
+-> Sem (e : r) a -> Sem r a
+interpretFinal @m ((forall x (rInitial :: EffectRow).
+Fixpoint (Sem rInitial) x -> Strategic m (Sem rInitial) x)
+-> Sem (Fixpoint : r) a -> Sem r a)
+-> (forall x (rInitial :: EffectRow).
+Fixpoint (Sem rInitial) x -> Strategic m (Sem rInitial) x)
+-> Sem (Fixpoint : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$
+\(Fixpoint x -> Sem rInitial x
+f) -> do
+f x -> m (f x)
+f' <- (x -> Sem rInitial x)
+-> Sem (WithStrategy m f (Sem rInitial)) (f x -> m (f x))
+forall a (n :: * -> *) b (m :: * -> *) (f :: * -> *).
+(a -> n b) -> Sem (WithStrategy m f n) (f a -> m (f b))
+bindS x -> Sem rInitial x
+f
+f ()
+s <- Sem (WithStrategy m f (Sem rInitial)) (f ())
+forall (m :: * -> *) (f :: * -> *) (n :: * -> *).
+Sem (WithStrategy m f n) (f ())
+getInitialStateS
+Inspector f
+ins <- Sem (WithStrategy m f (Sem rInitial)) (Inspector f)
+forall (m :: * -> *) (f :: * -> *) (n :: * -> *).
+Sem (WithStrategy m f n) (Inspector f)
+getInspectorS
+m (f x) -> Sem (WithStrategy m f (Sem rInitial)) (m (f x))
+forall a. a -> Sem (WithStrategy m f (Sem rInitial)) a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (m (f x) -> Sem (WithStrategy m f (Sem rInitial)) (m (f x)))
+-> m (f x) -> Sem (WithStrategy m f (Sem rInitial)) (m (f x))
+forall a b. (a -> b) -> a -> b
+$ (f x -> m (f x)) -> m (f x)
+forall a. (a -> m a) -> m a
+forall (m :: * -> *) a. MonadFix m => (a -> m a) -> m a
+mfix ((f x -> m (f x)) -> m (f x)) -> (f x -> m (f x)) -> m (f x)
+forall a b. (a -> b) -> a -> b
+$ \f x
+fa -> f x -> m (f x)
+f' (f x -> m (f x)) -> f x -> m (f x)
+forall a b. (a -> b) -> a -> b
+$
+x -> Maybe x -> x
+forall a. a -> Maybe a -> a
+fromMaybe (String -> x
+forall a. String -> a
+bomb String
+"fixpointToFinal") (Inspector f -> forall x. f x -> Maybe x
+forall (f :: * -> *). Inspector f -> forall x. f x -> Maybe x
+inspect Inspector f
+ins f x
+fa) x -> f () -> f x
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s
+{-# INLINE fixpointToFinal #-}

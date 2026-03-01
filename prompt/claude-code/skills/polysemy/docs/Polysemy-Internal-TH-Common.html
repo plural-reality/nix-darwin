@@ -1,0 +1,70 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- data ConLiftInfo = CLInfo {
+- cliEffName :: Name
+- cliEffArgs :: [Type]
+- cliEffRes :: Type
+- cliConName :: Name
+- cliFunName :: Name
+- cliFunFixity :: Maybe Fixity
+- cliFunArgs :: [(Name, Type)]
+- cliFunCxt :: Cxt
+- cliUnionName :: Name
+- getEffectMetadata :: Name -> Q [ConLiftInfo]
+- makeMemberConstraint :: Name -> ConLiftInfo -> Pred
+- makeMemberConstraint' :: Name -> Type -> Pred
+- makeSemType :: Name -> Type -> Type
+- makeInterpreterType :: ConLiftInfo -> Name -> Type -> Type
+- makeEffectType :: ConLiftInfo -> Type
+- makeUnambiguousSend :: Bool -> ConLiftInfo -> Exp
+- checkExtensions :: [Extension] -> Q ()
+- foldArrowTs :: Type -> [Type] -> Type
+- pattern (:->) :: Type -> Type -> Type
+Documentation
+data ConLiftInfo Source #
+Info about constructor being lifted; use makeCLInfo
+to create one.
+| CLInfo | |
+|
+Instances
+| Show ConLiftInfo Source # | |
+Defined in Polysemy.Internal.TH.Common showsPrec :: Int -> ConLiftInfo -> ShowS # show :: ConLiftInfo -> String # showList :: [ConLiftInfo] -> ShowS # |
+getEffectMetadata :: Name -> Q [ConLiftInfo] Source #
+Given an name of datatype or some of it's constructors/fields, return datatype's name together with info about it's constructors.
+makeMemberConstraint :: Name -> ConLiftInfo -> Pred Source #
+Turn a ConLiftInfo
+for Foo
+into a Member Foo r
+constraint.
+makeMemberConstraint' :: Name -> Type -> Pred Source #
+will produce a makeMemberConstraint'
+r typeMember type r
+constraint.
+makeSemType :: Name -> Type -> Type Source #
+will produce a makeSemType
+r a
+type.Sem
+r a
+makeInterpreterType :: ConLiftInfo -> Name -> Type -> Type Source #
+will produce a makeInterpreterType
+con r a
+type, where Sem
+(Effect ':
+r) a -> Sem
+r aEffect
+is the effect
+corresponding to the ConLiftInfo
+for con
+.
+makeEffectType :: ConLiftInfo -> Type Source #
+Given a ConLiftInfo
+, get the corresponding effect type.
+makeUnambiguousSend :: Bool -> ConLiftInfo -> Exp Source #
+Given a ConLiftInfo
+, this will produce an action for it. It's arguments
+will come from any variables in scope that correspond to the cliEffArgs
+of the ConLiftInfo
+.
+checkExtensions :: [Extension] -> Q () Source #

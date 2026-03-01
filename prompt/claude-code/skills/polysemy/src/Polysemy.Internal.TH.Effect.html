@@ -1,0 +1,218 @@
+{-# LANGUAGE CPP, TemplateHaskell #-}
+{-# OPTIONS_HADDOCK not-home #-}
+module Polysemy.Internal.TH.Effect
+( makeSem
+, makeSem_
+) where
+import Control.Monad
+import Language.Haskell.TH
+#if __GLASGOW_HASKELL__ >= 902
+import Language.Haskell.TH.Syntax (addModFinalizer)
+#endif
+import Language.Haskell.TH.Datatype
+import Polysemy.Internal.TH.Common
+makeSem :: Name -> Q [Dec]
+makeSem :: Name -> Q [Dec]
+makeSem = Bool -> Name -> Q [Dec]
+genFreer Bool
+True
+makeSem_ :: Name -> Q [Dec]
+makeSem_ :: Name -> Q [Dec]
+makeSem_ = Bool -> Name -> Q [Dec]
+genFreer Bool
+False
+genFreer :: Bool -> Name -> Q [Dec]
+genFreer :: Bool -> Name -> Q [Dec]
+genFreer Bool
+should_mk_sigs Name
+type_name = do
+[Extension] -> Q ()
+checkExtensions [Extension
+ScopedTypeVariables, Extension
+FlexibleContexts, Extension
+DataKinds]
+[ConLiftInfo]
+cl_infos <- Name -> Q [ConLiftInfo]
+getEffectMetadata Name
+type_name
+[[Dec]]
+decs <- (ConLiftInfo -> Q [Dec]) -> [ConLiftInfo] -> Q [[Dec]]
+forall (t :: * -> *) (f :: * -> *) a b.
+(Traversable t, Applicative f) =>
+(a -> f b) -> t a -> f (t b)
+forall (f :: * -> *) a b.
+Applicative f =>
+(a -> f b) -> [a] -> f [b]
+traverse (Bool -> ConLiftInfo -> Q [Dec]
+genDec Bool
+should_mk_sigs) [ConLiftInfo]
+cl_infos
+let sigs :: [[Dec]]
+sigs = if Bool
+should_mk_sigs then ConLiftInfo -> [Dec]
+genSig (ConLiftInfo -> [Dec]) -> [ConLiftInfo] -> [[Dec]]
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> [ConLiftInfo]
+cl_infos else []
+[Dec] -> Q [Dec]
+forall a. a -> Q a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure ([Dec] -> Q [Dec]) -> [Dec] -> Q [Dec]
+forall a b. (a -> b) -> a -> b
+$ [[Dec]] -> [Dec]
+forall (m :: * -> *) a. Monad m => m (m a) -> m a
+join ([[Dec]] -> [Dec]) -> [[Dec]] -> [Dec]
+forall a b. (a -> b) -> a -> b
+$ [[Dec]]
+sigs [[Dec]] -> [[Dec]] -> [[Dec]]
+forall a. [a] -> [a] -> [a]
+++ [[Dec]]
+decs
+genSig :: ConLiftInfo -> [Dec]
+genSig :: ConLiftInfo -> [Dec]
+genSig ConLiftInfo
+cli =
+[Dec]
+infixDecl
+[Dec] -> [Dec] -> [Dec]
+forall a. [a] -> [a] -> [a]
+++ [ Name -> Type -> Dec
+SigD (ConLiftInfo -> Name
+cliFunName ConLiftInfo
+cli) (Type -> Dec) -> Type -> Dec
+forall a b. (a -> b) -> a -> b
+$ Type -> Type
+quantifyType
+(Type -> Type) -> Type -> Type
+forall a b. (a -> b) -> a -> b
+$ [TyVarBndr Specificity] -> Cxt -> Type -> Type
+ForallT [] (Type
+member_cxt Type -> Cxt -> Cxt
+forall a. a -> [a] -> [a]
+: ConLiftInfo -> Cxt
+cliFunCxt ConLiftInfo
+cli)
+(Type -> Type) -> Type -> Type
+forall a b. (a -> b) -> a -> b
+$ Type -> Cxt -> Type
+foldArrowTs Type
+sem
+(Cxt -> Type) -> Cxt -> Type
+forall a b. (a -> b) -> a -> b
+$ ((Name, Type) -> Type) -> [(Name, Type)] -> Cxt
+forall a b. (a -> b) -> [a] -> [b]
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap (Name, Type) -> Type
+forall a b. (a, b) -> b
+snd
+([(Name, Type)] -> Cxt) -> [(Name, Type)] -> Cxt
+forall a b. (a -> b) -> a -> b
+$ ConLiftInfo -> [(Name, Type)]
+cliFunArgs ConLiftInfo
+cli
+]
+where
+infixDecl :: [Dec]
+infixDecl = case ConLiftInfo -> Maybe Fixity
+cliFunFixity ConLiftInfo
+cli of
+#if __GLASGOW_HASKELL__ >= 910
+Just fixity -> [InfixD fixity NoNamespaceSpecifier (cliFunName cli)]
+#else
+Just Fixity
+fixity -> [Fixity -> Name -> Dec
+InfixD Fixity
+fixity (ConLiftInfo -> Name
+cliFunName ConLiftInfo
+cli)]
+#endif
+Maybe Fixity
+Nothing -> []
+member_cxt :: Type
+member_cxt = Name -> ConLiftInfo -> Type
+makeMemberConstraint (ConLiftInfo -> Name
+cliUnionName ConLiftInfo
+cli) ConLiftInfo
+cli
+sem :: Type
+sem = Name -> Type -> Type
+makeSemType (ConLiftInfo -> Name
+cliUnionName ConLiftInfo
+cli) (ConLiftInfo -> Type
+cliEffRes ConLiftInfo
+cli)
+genDec :: Bool -> ConLiftInfo -> Q [Dec]
+genDec :: Bool -> ConLiftInfo -> Q [Dec]
+genDec Bool
+should_mk_sigs ConLiftInfo
+cli = do
+let fun_args_names :: [Name]
+fun_args_names = (Name, Type) -> Name
+forall a b. (a, b) -> a
+fst ((Name, Type) -> Name) -> [(Name, Type)] -> [Name]
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> ConLiftInfo -> [(Name, Type)]
+cliFunArgs ConLiftInfo
+cli
+#if __GLASGOW_HASKELL__ >= 902
+Maybe String
+doc <- DocLoc -> Q (Maybe String)
+getDoc (DocLoc -> Q (Maybe String)) -> DocLoc -> Q (Maybe String)
+forall a b. (a -> b) -> a -> b
+$ Name -> DocLoc
+DeclDoc (Name -> DocLoc) -> Name -> DocLoc
+forall a b. (a -> b) -> a -> b
+$ ConLiftInfo -> Name
+cliConName ConLiftInfo
+cli
+Q () -> (String -> Q ()) -> Maybe String -> Q ()
+forall b a. b -> (a -> b) -> Maybe a -> b
+maybe (() -> Q ()
+forall a. a -> Q a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure ()) (Q () -> Q ()
+addModFinalizer (Q () -> Q ()) -> (String -> Q ()) -> String -> Q ()
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. DocLoc -> String -> Q ()
+putDoc (Name -> DocLoc
+DeclDoc (Name -> DocLoc) -> Name -> DocLoc
+forall a b. (a -> b) -> a -> b
+$ ConLiftInfo -> Name
+cliFunName ConLiftInfo
+cli)) Maybe String
+doc
+#endif
+[Dec] -> Q [Dec]
+forall a. a -> Q a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure
+[ Pragma -> Dec
+PragmaD (Pragma -> Dec) -> Pragma -> Dec
+forall a b. (a -> b) -> a -> b
+$ Name -> Inline -> RuleMatch -> Phases -> Pragma
+InlineP (ConLiftInfo -> Name
+cliFunName ConLiftInfo
+cli) Inline
+Inlinable RuleMatch
+ConLike Phases
+AllPhases
+, Name -> [Clause] -> Dec
+FunD (ConLiftInfo -> Name
+cliFunName ConLiftInfo
+cli)
+[ [Pat] -> Body -> [Dec] -> Clause
+Clause (Name -> Pat
+VarP (Name -> Pat) -> [Name] -> [Pat]
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> [Name]
+fun_args_names)
+(Exp -> Body
+NormalB (Exp -> Body) -> Exp -> Body
+forall a b. (a -> b) -> a -> b
+$ Bool -> ConLiftInfo -> Exp
+makeUnambiguousSend Bool
+should_mk_sigs ConLiftInfo
+cli)
+[]
+]
+]

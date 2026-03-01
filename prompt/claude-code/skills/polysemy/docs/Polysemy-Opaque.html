@@ -1,0 +1,46 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Effect
+newtype Opaque (e :: Effect) m a Source #
+An effect newtype meant to be used to wrap polymorphic effect variables to
+prevent them from jamming up resolution of Member
+.
+For example, consider:
+badPut ::Sem
+(e ':State
+() ': r) () badPut =put
+() -- error
+This fails to compile. This is because e
+could be
+' -- in which case the State
+()put
+should target it instead of the concretely provided
+; as the compiler can't know for sure which effect
+should be targeted, the program is rejected.
+There are various ways to resolve this, including using State
+()raise
+or
+subsumeUsing
+. Opaque
+provides another way:
+okPut ::Sem
+(e ':State
+() ': r) () okPut =fromOpaque
+(put
+()) -- OK
+Opaque
+is most useful as a tool for library writers, in the case where some
+function of the library requires the user to work with an effect stack
+containing some polymorphic effect variables. By wrapping the polymorphic
+effect variables using Opaque
+, users of the function can use effects as
+normal, without having to use raise
+or subsumeUsing
+in order to have Member
+resolve. The various interpreters of
+Scoped
+are examples of such usage of Opaque
+.
+Since: 1.9.0.0
+| Opaque (e m a) |

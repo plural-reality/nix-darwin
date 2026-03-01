@@ -1,0 +1,1306 @@
+{-# language AllowAmbiguousTypes, BangPatterns #-}
+module Polysemy.Scoped (
+Scoped,
+Scoped_,
+scoped,
+scoped_,
+rescope,
+runScopedNew,
+interpretScopedH,
+interpretScopedH',
+interpretScoped,
+interpretScopedAs,
+interpretScopedWithH,
+interpretScopedWith,
+interpretScopedWith_,
+runScoped,
+runScopedAs,
+) where
+import Data.Function ((&))
+import Data.Sequence (Seq(..))
+import qualified Data.Sequence as S
+import Polysemy.Opaque
+import Polysemy.Internal
+import Polysemy.Internal.Sing
+import Polysemy.Internal.Union
+import Polysemy.Internal.Combinators
+import Polysemy.Internal.Scoped
+import Polysemy.Internal.Tactics
+interpretScopedH ::
+∀ resource param effect r .
+(∀ q x . param ->
+(resource -> Sem (Opaque q ': r) x) ->
+Sem (Opaque q ': r) x) ->
+(∀ q r0 x . resource ->
+effect (Sem r0) x ->
+Tactical effect (Sem r0) (Opaque q ': r) x) ->
+InterpreterFor (Scoped param effect) r
+interpretScopedH :: forall resource param (effect :: Effect) (r :: [Effect]).
+(forall (q :: Effect) x.
+param
+-> (resource -> Sem (Opaque q : r) x) -> Sem (Opaque q : r) x)
+-> (forall (q :: Effect) (r0 :: [Effect]) x.
+resource
+-> effect (Sem r0) x -> Tactical effect (Sem r0) (Opaque q : r) x)
+-> InterpreterFor (Scoped param effect) r
+interpretScopedH forall (q :: Effect) x.
+param -> (resource -> Sem (Opaque q : r) x) -> Sem (Opaque q : r) x
+withResource forall (q :: Effect) (r0 :: [Effect]) x.
+resource
+-> effect (Sem r0) x -> Tactical effect (Sem r0) (Opaque q : r) x
+scopedHandler = (forall (q :: Effect).
+param -> InterpreterFor effect (Opaque q : r))
+-> InterpreterFor (Scoped param effect) r
+forall param (effect :: Effect) (r :: [Effect]).
+(forall (q :: Effect).
+param -> InterpreterFor effect (Opaque q : r))
+-> InterpreterFor (Scoped param effect) r
+runScopedNew \param
+param Sem (effect : Opaque q : r) a
+sem ->
+param -> (resource -> Sem (Opaque q : r) a) -> Sem (Opaque q : r) a
+forall (q :: Effect) x.
+param -> (resource -> Sem (Opaque q : r) x) -> Sem (Opaque q : r) x
+withResource param
+param \resource
+r -> (forall (rInitial :: [Effect]) x.
+effect (Sem rInitial) x
+-> Tactical effect (Sem rInitial) (Opaque q : r) x)
+-> Sem (effect : Opaque q : r) a -> Sem (Opaque q : r) a
+forall (e :: Effect) (r :: [Effect]) a.
+(forall (rInitial :: [Effect]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem (e : r) a -> Sem r a
+interpretH (resource
+-> effect (Sem rInitial) x
+-> Tactical effect (Sem rInitial) (Opaque q : r) x
+forall (q :: Effect) (r0 :: [Effect]) x.
+resource
+-> effect (Sem r0) x -> Tactical effect (Sem r0) (Opaque q : r) x
+scopedHandler resource
+r) Sem (effect : Opaque q : r) a
+sem
+{-# inline interpretScopedH #-}
+interpretScopedH' ::
+∀ resource param effect r .
+(∀ e r0 x . param -> (resource -> Tactical e (Sem r0) r x) ->
+Tactical e (Sem r0) r x) ->
+(∀ r0 x .
+resource -> effect (Sem r0) x ->
+Tactical (Scoped param effect) (Sem r0) r x) ->
+InterpreterFor (Scoped param effect) r
+interpretScopedH' :: forall resource param (effect :: Effect) (r :: [Effect]).
+(forall (e :: Effect) (r0 :: [Effect]) x.
+param
+-> (resource -> Tactical e (Sem r0) r x)
+-> Tactical e (Sem r0) r x)
+-> (forall (r0 :: [Effect]) x.
+resource
+-> effect (Sem r0) x
+-> Tactical (Scoped param effect) (Sem r0) r x)
+-> InterpreterFor (Scoped param effect) r
+interpretScopedH' forall (e :: Effect) (r0 :: [Effect]) x.
+param
+-> (resource -> Tactical e (Sem r0) r x) -> Tactical e (Sem r0) r x
+withResource forall (r0 :: [Effect]) x.
+resource
+-> effect (Sem r0) x -> Tactical (Scoped param effect) (Sem r0) r x
+scopedHandler =
+Word -> Seq resource -> InterpreterFor (Scoped param effect) r
+go Word
+0 Seq resource
+forall a. Seq a
+Empty
+where
+go :: Word -> Seq resource -> InterpreterFor (Scoped param effect) r
+go :: Word -> Seq resource -> InterpreterFor (Scoped param effect) r
+go Word
+depth Seq resource
+resources =
+(forall (rInitial :: [Effect]) x.
+Scoped param effect (Sem rInitial) x
+-> Tactical (Scoped param effect) (Sem rInitial) r x)
+-> Sem (Scoped param effect : r) a -> Sem r a
+forall (e :: Effect) (r :: [Effect]) a.
+(forall (rInitial :: [Effect]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem (e : r) a -> Sem r a
+interpretH \case
+Run Word
+w effect (Sem rInitial) x
+act ->
+resource
+-> effect (Sem rInitial) x
+-> Tactical (Scoped param effect) (Sem rInitial) r x
+forall (r0 :: [Effect]) x.
+resource
+-> effect (Sem r0) x -> Tactical (Scoped param effect) (Sem r0) r x
+scopedHandler (Seq resource -> Int -> resource
+forall a. Seq a -> Int -> a
+S.index Seq resource
+resources (Word -> Int
+forall a b. (Integral a, Num b) => a -> b
+fromIntegral Word
+w)) effect (Sem rInitial) x
+act
+InScope param
+param Word -> Sem rInitial x
+main | !Word
+depth' <- Word
+depth Word -> Word -> Word
+forall a. Num a => a -> a -> a
++ Word
+1 ->
+param
+-> (resource -> Tactical (Scoped param effect) (Sem rInitial) r x)
+-> Tactical (Scoped param effect) (Sem rInitial) r x
+forall (e :: Effect) (r0 :: [Effect]) x.
+param
+-> (resource -> Tactical e (Sem r0) r x) -> Tactical e (Sem r0) r x
+withResource param
+param \ resource
+resource ->
+Sem r (f x)
+-> Sem (WithTactics (Scoped param effect) f (Sem rInitial) r) (f x)
+forall (e :: Effect) (r :: [Effect]) a. Sem r a -> Sem (e : r) a
+raise (Sem r (f x)
+-> Sem
+(WithTactics (Scoped param effect) f (Sem rInitial) r) (f x))
+-> (Sem (Scoped param effect : r) (f x) -> Sem r (f x))
+-> Sem (Scoped param effect : r) (f x)
+-> Sem (WithTactics (Scoped param effect) f (Sem rInitial) r) (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Word -> Seq resource -> InterpreterFor (Scoped param effect) r
+go Word
+depth' (Seq resource
+resources Seq resource -> resource -> Seq resource
+forall a. Seq a -> a -> Seq a
+:|> resource
+resource) (Sem (Scoped param effect : r) (f x)
+-> Sem
+(WithTactics (Scoped param effect) f (Sem rInitial) r) (f x))
+-> Sem
+(WithTactics (Scoped param effect) f (Sem rInitial) r)
+(Sem (Scoped param effect : r) (f x))
+-> Sem (WithTactics (Scoped param effect) f (Sem rInitial) r) (f x)
+forall (m :: * -> *) a b. Monad m => (a -> m b) -> m a -> m b
+=<< Sem rInitial x
+-> Sem
+(WithTactics (Scoped param effect) f (Sem rInitial) r)
+(Sem (Scoped param effect : r) (f x))
+forall (m :: * -> *) a (e :: Effect) (f :: * -> *) (r :: [Effect]).
+m a -> Sem (WithTactics e f m r) (Sem (e : r) (f a))
+runT (Word -> Sem rInitial x
+main Word
+depth)
+{-# inline interpretScopedH' #-}
+interpretScoped ::
+∀ resource param effect r .
+(∀ q x . param ->
+(resource -> Sem (Opaque q ': r) x) ->
+Sem (Opaque q ': r) x) ->
+(∀ m x . resource -> effect m x -> Sem r x) ->
+InterpreterFor (Scoped param effect) r
+interpretScoped :: forall resource param (effect :: Effect) (r :: [Effect]).
+(forall (q :: Effect) x.
+param
+-> (resource -> Sem (Opaque q : r) x) -> Sem (Opaque q : r) x)
+-> (forall (m :: * -> *) x. resource -> effect m x -> Sem r x)
+-> InterpreterFor (Scoped param effect) r
+interpretScoped forall (q :: Effect) x.
+param -> (resource -> Sem (Opaque q : r) x) -> Sem (Opaque q : r) x
+withResource forall (m :: * -> *) x. resource -> effect m x -> Sem r x
+scopedHandler =
+(forall (q :: Effect) x.
+param
+-> (resource -> Sem (Opaque q : r) x) -> Sem (Opaque q : r) x)
+-> (forall (q :: Effect) (r0 :: [Effect]) x.
+resource
+-> effect (Sem r0) x -> Tactical effect (Sem r0) (Opaque q : r) x)
+-> InterpreterFor (Scoped param effect) r
+forall resource param (effect :: Effect) (r :: [Effect]).
+(forall (q :: Effect) x.
+param
+-> (resource -> Sem (Opaque q : r) x) -> Sem (Opaque q : r) x)
+-> (forall (q :: Effect) (r0 :: [Effect]) x.
+resource
+-> effect (Sem r0) x -> Tactical effect (Sem r0) (Opaque q : r) x)
+-> InterpreterFor (Scoped param effect) r
+interpretScopedH param -> (resource -> Sem (Opaque q : r) x) -> Sem (Opaque q : r) x
+forall (q :: Effect) x.
+param -> (resource -> Sem (Opaque q : r) x) -> Sem (Opaque q : r) x
+withResource \ resource
+r effect (Sem r0) x
+e -> Sem (Opaque q : r) x
+-> Sem (WithTactics effect f (Sem r0) (Opaque q : r)) (f x)
+forall (m :: * -> *) (f :: * -> *) (r :: [Effect]) (e :: Effect) a.
+Functor f =>
+Sem r a -> Sem (WithTactics e f m r) (f a)
+liftT (Sem r x -> Sem (Opaque q : r) x
+forall (e :: Effect) (r :: [Effect]) a. Sem r a -> Sem (e : r) a
+raise (resource -> effect (Sem r0) x -> Sem r x
+forall (m :: * -> *) x. resource -> effect m x -> Sem r x
+scopedHandler resource
+r effect (Sem r0) x
+e))
+{-# inline interpretScoped #-}
+interpretScopedAs ::
+∀ resource param effect r .
+(param -> Sem r resource) ->
+(∀ m x . resource -> effect m x -> Sem r x) ->
+InterpreterFor (Scoped param effect) r
+interpretScopedAs :: forall resource param (effect :: Effect) (r :: [Effect]).
+(param -> Sem r resource)
+-> (forall (m :: * -> *) x. resource -> effect m x -> Sem r x)
+-> InterpreterFor (Scoped param effect) r
+interpretScopedAs param -> Sem r resource
+resource =
+(forall (q :: Effect) x.
+param
+-> (resource -> Sem (Opaque q : r) x) -> Sem (Opaque q : r) x)
+-> (forall (m :: * -> *) x. resource -> effect m x -> Sem r x)
+-> InterpreterFor (Scoped param effect) r
+forall resource param (effect :: Effect) (r :: [Effect]).
+(forall (q :: Effect) x.
+param
+-> (resource -> Sem (Opaque q : r) x) -> Sem (Opaque q : r) x)
+-> (forall (m :: * -> *) x. resource -> effect m x -> Sem r x)
+-> InterpreterFor (Scoped param effect) r
+interpretScoped \ param
+p resource -> Sem (Opaque q : r) x
+use -> resource -> Sem (Opaque q : r) x
+use (resource -> Sem (Opaque q : r) x)
+-> Sem (Opaque q : r) resource -> Sem (Opaque q : r) x
+forall (m :: * -> *) a b. Monad m => (a -> m b) -> m a -> m b
+=<< Sem r resource -> Sem (Opaque q : r) resource
+forall (e :: Effect) (r :: [Effect]) a. Sem r a -> Sem (e : r) a
+raise (param -> Sem r resource
+resource param
+p)
+{-# inline interpretScopedAs #-}
+interpretScopedWithH ::
+∀ extra resource param effect r .
+KnownList extra =>
+(∀ q x .
+param ->
+(resource -> Sem (Append extra (Opaque q ': r)) x) ->
+Sem (Opaque q ': r) x) ->
+(∀ q r0 x .
+resource ->
+effect (Sem r0) x ->
+Tactical effect (Sem r0) (Append extra (Opaque q ': r)) x) ->
+InterpreterFor (Scoped param effect) r
+interpretScopedWithH :: forall (extra :: [Effect]) resource param (effect :: Effect)
+(r :: [Effect]).
+KnownList extra =>
+(forall (q :: Effect) x.
+param
+-> (resource -> Sem (Append extra (Opaque q : r)) x)
+-> Sem (Opaque q : r) x)
+-> (forall (q :: Effect) (r0 :: [Effect]) x.
+resource
+-> effect (Sem r0) x
+-> Tactical effect (Sem r0) (Append extra (Opaque q : r)) x)
+-> InterpreterFor (Scoped param effect) r
+interpretScopedWithH forall (q :: Effect) x.
+param
+-> (resource -> Sem (Append extra (Opaque q : r)) x)
+-> Sem (Opaque q : r) x
+withResource forall (q :: Effect) (r0 :: [Effect]) x.
+resource
+-> effect (Sem r0) x
+-> Tactical effect (Sem r0) (Append extra (Opaque q : r)) x
+scopedHandler = (forall (q :: Effect).
+param -> InterpreterFor effect (Opaque q : r))
+-> InterpreterFor (Scoped param effect) r
+forall param (effect :: Effect) (r :: [Effect]).
+(forall (q :: Effect).
+param -> InterpreterFor effect (Opaque q : r))
+-> InterpreterFor (Scoped param effect) r
+runScopedNew
+\param
+param (Sem (effect : Opaque q : r) a
+sem :: Sem (effect ': Opaque q ': r) x) ->
+param
+-> (resource -> Sem (Append extra (Opaque q : r)) a)
+-> Sem (Opaque q : r) a
+forall (q :: Effect) x.
+param
+-> (resource -> Sem (Append extra (Opaque q : r)) x)
+-> Sem (Opaque q : r) x
+withResource param
+param \resource
+resource ->
+Sem (effect : Opaque q : r) a
+sem
+Sem (effect : Opaque q : r) a
+-> (Sem (effect : Opaque q : r) a
+-> Sem (effect : Append extra (Opaque q : r)) a)
+-> Sem (effect : Append extra (Opaque q : r)) a
+forall a b. a -> (a -> b) -> b
+& (forall (e :: Effect).
+ElemOf e (effect : Opaque q : r)
+-> ElemOf e (effect : Append extra (Opaque q : r)))
+-> Sem (effect : Opaque q : r) a
+-> Sem (effect : Append extra (Opaque q : r)) a
+forall (r :: [Effect]) (r' :: [Effect]) a.
+(forall (e :: Effect). ElemOf e r -> ElemOf e r')
+-> Sem r a -> Sem r' a
+restack
+(SList '[effect]
+-> SList extra
+-> ElemOf e (Append '[effect] (Opaque q : r))
+-> ElemOf e (Append '[effect] (Append extra (Opaque q : r)))
+forall {a} (right :: [a]) (e :: a) (left :: [a]) (mid :: [a]).
+SList left
+-> SList mid
+-> ElemOf e (Append left right)
+-> ElemOf e (Append left (Append mid right))
+injectMembership (forall (l :: [Effect]). KnownList l => SList l
+forall {k} (l :: [k]). KnownList l => SList l
+singList @'[effect]) (forall (l :: [Effect]). KnownList l => SList l
+forall {k} (l :: [k]). KnownList l => SList l
+singList @extra))
+Sem (effect : Append extra (Opaque q : r)) a
+-> (Sem (effect : Append extra (Opaque q : r)) a
+-> Sem (Append extra (Opaque q : r)) a)
+-> Sem (Append extra (Opaque q : r)) a
+forall a b. a -> (a -> b) -> b
+& (forall (rInitial :: [Effect]) x.
+effect (Sem rInitial) x
+-> Tactical effect (Sem rInitial) (Append extra (Opaque q : r)) x)
+-> Sem (effect : Append extra (Opaque q : r)) a
+-> Sem (Append extra (Opaque q : r)) a
+forall (e :: Effect) (r :: [Effect]) a.
+(forall (rInitial :: [Effect]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem (e : r) a -> Sem r a
+interpretH (forall (q :: Effect) (r0 :: [Effect]) x.
+resource
+-> effect (Sem r0) x
+-> Tactical effect (Sem r0) (Append extra (Opaque q : r)) x
+scopedHandler @q resource
+resource)
+{-# inline interpretScopedWithH #-}
+interpretScopedWith ::
+∀ extra param resource effect r.
+KnownList extra =>
+(∀ q x .
+param ->
+(resource -> Sem (Append extra (Opaque q ': r)) x) ->
+Sem (Opaque q ': r) x) ->
+(∀ m x . resource -> effect m x -> Sem (Append extra r) x) ->
+InterpreterFor (Scoped param effect) r
+interpretScopedWith :: forall (extra :: [Effect]) param resource (effect :: Effect)
+(r :: [Effect]).
+KnownList extra =>
+(forall (q :: Effect) x.
+param
+-> (resource -> Sem (Append extra (Opaque q : r)) x)
+-> Sem (Opaque q : r) x)
+-> (forall (m :: * -> *) x.
+resource -> effect m x -> Sem (Append extra r) x)
+-> InterpreterFor (Scoped param effect) r
+interpretScopedWith forall (q :: Effect) x.
+param
+-> (resource -> Sem (Append extra (Opaque q : r)) x)
+-> Sem (Opaque q : r) x
+withResource forall (m :: * -> *) x.
+resource -> effect m x -> Sem (Append extra r) x
+scopedHandler = (forall (q :: Effect).
+param -> InterpreterFor effect (Opaque q : r))
+-> InterpreterFor (Scoped param effect) r
+forall param (effect :: Effect) (r :: [Effect]).
+(forall (q :: Effect).
+param -> InterpreterFor effect (Opaque q : r))
+-> InterpreterFor (Scoped param effect) r
+runScopedNew
+\param
+param (Sem (effect : Opaque q : r) a
+sem :: Sem (effect ': Opaque q ': r) x) ->
+param
+-> (resource -> Sem (Append extra (Opaque q : r)) a)
+-> Sem (Opaque q : r) a
+forall (q :: Effect) x.
+param
+-> (resource -> Sem (Append extra (Opaque q : r)) x)
+-> Sem (Opaque q : r) x
+withResource param
+param \resource
+resource ->
+Sem (effect : Opaque q : r) a
+sem
+Sem (effect : Opaque q : r) a
+-> (Sem (effect : Opaque q : r) a
+-> Sem (effect : Append extra (Opaque q : r)) a)
+-> Sem (effect : Append extra (Opaque q : r)) a
+forall a b. a -> (a -> b) -> b
+& (forall (e :: Effect).
+ElemOf e (effect : Opaque q : r)
+-> ElemOf e (effect : Append extra (Opaque q : r)))
+-> Sem (effect : Opaque q : r) a
+-> Sem (effect : Append extra (Opaque q : r)) a
+forall (r :: [Effect]) (r' :: [Effect]) a.
+(forall (e :: Effect). ElemOf e r -> ElemOf e r')
+-> Sem r a -> Sem r' a
+restack
+(SList '[effect]
+-> SList extra
+-> ElemOf e (Append '[effect] (Opaque q : r))
+-> ElemOf e (Append '[effect] (Append extra (Opaque q : r)))
+forall {a} (right :: [a]) (e :: a) (left :: [a]) (mid :: [a]).
+SList left
+-> SList mid
+-> ElemOf e (Append left right)
+-> ElemOf e (Append left (Append mid right))
+injectMembership (forall (l :: [Effect]). KnownList l => SList l
+forall {k} (l :: [k]). KnownList l => SList l
+singList @'[effect]) (forall (l :: [Effect]). KnownList l => SList l
+forall {k} (l :: [k]). KnownList l => SList l
+singList @extra))
+Sem (effect : Append extra (Opaque q : r)) a
+-> (Sem (effect : Append extra (Opaque q : r)) a
+-> Sem (Append extra (Opaque q : r)) a)
+-> Sem (Append extra (Opaque q : r)) a
+forall a b. a -> (a -> b) -> b
+& (forall (rInitial :: [Effect]) x.
+effect (Sem rInitial) x
+-> Tactical effect (Sem rInitial) (Append extra (Opaque q : r)) x)
+-> Sem (effect : Append extra (Opaque q : r)) a
+-> Sem (Append extra (Opaque q : r)) a
+forall (e :: Effect) (r :: [Effect]) a.
+(forall (rInitial :: [Effect]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem (e : r) a -> Sem r a
+interpretH \effect (Sem rInitial) x
+e -> Sem (Append extra (Opaque q : r)) x
+-> Sem
+(WithTactics effect f (Sem rInitial) (Append extra (Opaque q : r)))
+(f x)
+forall (m :: * -> *) (f :: * -> *) (r :: [Effect]) (e :: Effect) a.
+Functor f =>
+Sem r a -> Sem (WithTactics e f m r) (f a)
+liftT (Sem (Append extra (Opaque q : r)) x
+-> Sem
+(WithTactics effect f (Sem rInitial) (Append extra (Opaque q : r)))
+(f x))
+-> Sem (Append extra (Opaque q : r)) x
+-> Sem
+(WithTactics effect f (Sem rInitial) (Append extra (Opaque q : r)))
+(f x)
+forall a b. (a -> b) -> a -> b
+$
+(forall (e :: Effect).
+ElemOf e (Append extra r)
+-> ElemOf e (Append extra (Opaque q : r)))
+-> Sem (Append extra r) x -> Sem (Append extra (Opaque q : r)) x
+forall (r :: [Effect]) (r' :: [Effect]) a.
+(forall (e :: Effect). ElemOf e r -> ElemOf e r')
+-> Sem r a -> Sem r' a
+restack
+(forall (right :: [Effect]) (e :: Effect) (left :: [Effect])
+(mid :: [Effect]).
+SList left
+-> SList mid
+-> ElemOf e (Append left right)
+-> ElemOf e (Append left (Append mid right))
+forall {a} (right :: [a]) (e :: a) (left :: [a]) (mid :: [a]).
+SList left
+-> SList mid
+-> ElemOf e (Append left right)
+-> ElemOf e (Append left (Append mid right))
+injectMembership @r (forall (l :: [Effect]). KnownList l => SList l
+forall {k} (l :: [k]). KnownList l => SList l
+singList @extra) (forall (l :: [Effect]). KnownList l => SList l
+forall {k} (l :: [k]). KnownList l => SList l
+singList @'[Opaque q]))
+(resource -> effect (Sem rInitial) x -> Sem (Append extra r) x
+forall (m :: * -> *) x.
+resource -> effect m x -> Sem (Append extra r) x
+scopedHandler resource
+resource effect (Sem rInitial) x
+e)
+{-# inline interpretScopedWith #-}
+interpretScopedWith_ ::
+∀ extra param effect r .
+KnownList extra =>
+(∀ q x .
+param ->
+Sem (Append extra (Opaque q ': r)) x ->
+Sem (Opaque q ': r) x) ->
+(∀ m x . effect m x -> Sem (Append extra r) x) ->
+InterpreterFor (Scoped param effect) r
+interpretScopedWith_ :: forall (extra :: [Effect]) param (effect :: Effect)
+(r :: [Effect]).
+KnownList extra =>
+(forall (q :: Effect) x.
+param
+-> Sem (Append extra (Opaque q : r)) x -> Sem (Opaque q : r) x)
+-> (forall (m :: * -> *) x. effect m x -> Sem (Append extra r) x)
+-> InterpreterFor (Scoped param effect) r
+interpretScopedWith_ forall (q :: Effect) x.
+param
+-> Sem (Append extra (Opaque q : r)) x -> Sem (Opaque q : r) x
+withResource forall (m :: * -> *) x. effect m x -> Sem (Append extra r) x
+scopedHandler =
+forall (extra :: [Effect]) param resource (effect :: Effect)
+(r :: [Effect]).
+KnownList extra =>
+(forall (q :: Effect) x.
+param
+-> (resource -> Sem (Append extra (Opaque q : r)) x)
+-> Sem (Opaque q : r) x)
+-> (forall (m :: * -> *) x.
+resource -> effect m x -> Sem (Append extra r) x)
+-> InterpreterFor (Scoped param effect) r
+interpretScopedWith @extra
+(\ param
+p () -> Sem (Append extra (Opaque q : r)) x
+f -> param
+-> Sem (Append extra (Opaque q : r)) x -> Sem (Opaque q : r) x
+forall (q :: Effect) x.
+param
+-> Sem (Append extra (Opaque q : r)) x -> Sem (Opaque q : r) x
+withResource param
+p (() -> Sem (Append extra (Opaque q : r)) x
+f ()))
+(\ () -> effect m x -> Sem (Append extra r) x
+forall (m :: * -> *) x. effect m x -> Sem (Append extra r) x
+scopedHandler)
+{-# inline interpretScopedWith_ #-}
+runScoped ::
+∀ resource param effect r .
+(∀ q x . param -> (resource -> Sem (Opaque q ': r) x) -> Sem (Opaque q ': r) x) ->
+(∀ q . resource -> InterpreterFor effect (Opaque q ': r)) ->
+InterpreterFor (Scoped param effect) r
+runScoped :: forall resource param (effect :: Effect) (r :: [Effect]).
+(forall (q :: Effect) x.
+param
+-> (resource -> Sem (Opaque q : r) x) -> Sem (Opaque q : r) x)
+-> (forall (q :: Effect).
+resource -> InterpreterFor effect (Opaque q : r))
+-> InterpreterFor (Scoped param effect) r
+runScoped forall (q :: Effect) x.
+param -> (resource -> Sem (Opaque q : r) x) -> Sem (Opaque q : r) x
+withResource forall (q :: Effect).
+resource -> InterpreterFor effect (Opaque q : r)
+scopedInterpreter = (forall (q :: Effect).
+param -> InterpreterFor effect (Opaque q : r))
+-> InterpreterFor (Scoped param effect) r
+forall param (effect :: Effect) (r :: [Effect]).
+(forall (q :: Effect).
+param -> InterpreterFor effect (Opaque q : r))
+-> InterpreterFor (Scoped param effect) r
+runScopedNew \param
+param Sem (effect : Opaque q : r) a
+sem ->
+param -> (resource -> Sem (Opaque q : r) a) -> Sem (Opaque q : r) a
+forall (q :: Effect) x.
+param -> (resource -> Sem (Opaque q : r) x) -> Sem (Opaque q : r) x
+withResource param
+param (\resource
+r -> resource -> InterpreterFor effect (Opaque q : r)
+forall (q :: Effect).
+resource -> InterpreterFor effect (Opaque q : r)
+scopedInterpreter resource
+r Sem (effect : Opaque q : r) a
+sem)
+{-# inline runScoped #-}
+runScopedAs ::
+∀ resource param effect r .
+(param -> Sem r resource) ->
+(∀ q. resource -> InterpreterFor effect (Opaque q ': r)) ->
+InterpreterFor (Scoped param effect) r
+runScopedAs :: forall resource param (effect :: Effect) (r :: [Effect]).
+(param -> Sem r resource)
+-> (forall (q :: Effect).
+resource -> InterpreterFor effect (Opaque q : r))
+-> InterpreterFor (Scoped param effect) r
+runScopedAs param -> Sem r resource
+resource = (forall (q :: Effect) x.
+param
+-> (resource -> Sem (Opaque q : r) x) -> Sem (Opaque q : r) x)
+-> (forall (q :: Effect).
+resource -> InterpreterFor effect (Opaque q : r))
+-> InterpreterFor (Scoped param effect) r
+forall resource param (effect :: Effect) (r :: [Effect]).
+(forall (q :: Effect) x.
+param
+-> (resource -> Sem (Opaque q : r) x) -> Sem (Opaque q : r) x)
+-> (forall (q :: Effect).
+resource -> InterpreterFor effect (Opaque q : r))
+-> InterpreterFor (Scoped param effect) r
+runScoped \ param
+p resource -> Sem (Opaque q : r) x
+use -> resource -> Sem (Opaque q : r) x
+use (resource -> Sem (Opaque q : r) x)
+-> Sem (Opaque q : r) resource -> Sem (Opaque q : r) x
+forall (m :: * -> *) a b. Monad m => (a -> m b) -> m a -> m b
+=<< Sem r resource -> Sem (Opaque q : r) resource
+forall (e :: Effect) (r :: [Effect]) a. Sem r a -> Sem (e : r) a
+raise (param -> Sem r resource
+resource param
+p)
+{-# inline runScopedAs #-}
+runScopedNew ::
+∀ param effect r .
+(∀ q. param -> InterpreterFor effect (Opaque q ': r)) ->
+InterpreterFor (Scoped param effect) r
+runScopedNew :: forall param (effect :: Effect) (r :: [Effect]).
+(forall (q :: Effect).
+param -> InterpreterFor effect (Opaque q : r))
+-> InterpreterFor (Scoped param effect) r
+runScopedNew forall (q :: Effect). param -> InterpreterFor effect (Opaque q : r)
+h =
+(forall x.
+Weaving (Scoped param effect) (Sem (Scoped param effect : r)) x
+-> Sem r x)
+-> InterpreterFor (Scoped param effect) r
+forall (e :: Effect) (r :: [Effect]).
+(forall x. Weaving e (Sem (e : r)) x -> Sem r x)
+-> InterpreterFor e r
+interpretWeaving ((forall x.
+Weaving (Scoped param effect) (Sem (Scoped param effect : r)) x
+-> Sem r x)
+-> InterpreterFor (Scoped param effect) r)
+-> (forall x.
+Weaving (Scoped param effect) (Sem (Scoped param effect : r)) x
+-> Sem r x)
+-> InterpreterFor (Scoped param effect) r
+forall a b. (a -> b) -> a -> b
+$ \(Weaving Scoped param effect (Sem rInitial) a
+effect f ()
+s forall x. f (Sem rInitial x) -> Sem (Scoped param effect : r) (f x)
+wv f a -> x
+ex forall x. f x -> Maybe x
+_) -> case Scoped param effect (Sem rInitial) a
+effect of
+Run Word
+w effect (Sem rInitial) a
+_ -> [Char] -> Sem r x
+forall a. [Char] -> a
+errorWithoutStackTrace ([Char] -> Sem r x) -> [Char] -> Sem r x
+forall a b. (a -> b) -> a -> b
+$ [Char]
+"top level run with depth " [Char] -> [Char] -> [Char]
+forall a. [a] -> [a] -> [a]
+++ Word -> [Char]
+forall a. Show a => a -> [Char]
+show Word
+w
+InScope param
+param Word -> Sem rInitial a
+main ->
+f (Sem rInitial a) -> Sem (Scoped param effect : r) (f a)
+forall x. f (Sem rInitial x) -> Sem (Scoped param effect : r) (f x)
+wv (Word -> Sem rInitial a
+main Word
+0 Sem rInitial a -> f () -> f (Sem rInitial a)
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s)
+Sem (Scoped param effect : r) (f a)
+-> (Sem (Scoped param effect : r) (f a)
+-> Sem
+(Scoped param effect : effect : Opaque (OuterRun effect) : r)
+(f a))
+-> Sem
+(Scoped param effect : effect : Opaque (OuterRun effect) : r) (f a)
+forall a b. a -> (a -> b) -> b
+& Sem (Scoped param effect : r) (f a)
+-> Sem
+(Scoped param effect : effect : Opaque (OuterRun effect) : r) (f a)
+forall (e2 :: Effect) (e3 :: Effect) (e1 :: Effect) (r :: [Effect])
+a.
+Sem (e1 : r) a -> Sem (e1 : e2 : e3 : r) a
+raiseUnder2
+Sem
+(Scoped param effect : effect : Opaque (OuterRun effect) : r) (f a)
+-> (Sem
+(Scoped param effect : effect : Opaque (OuterRun effect) : r) (f a)
+-> Sem (effect : Opaque (OuterRun effect) : r) (f a))
+-> Sem (effect : Opaque (OuterRun effect) : r) (f a)
+forall a b. a -> (a -> b) -> b
+& Word
+-> InterpreterFor
+(Scoped param effect) (effect : Opaque (OuterRun effect) : r)
+go Word
+0
+Sem (effect : Opaque (OuterRun effect) : r) (f a)
+-> (Sem (effect : Opaque (OuterRun effect) : r) (f a)
+-> Sem (Opaque (OuterRun effect) : r) (f a))
+-> Sem (Opaque (OuterRun effect) : r) (f a)
+forall a b. a -> (a -> b) -> b
+& param -> InterpreterFor effect (Opaque (OuterRun effect) : r)
+forall (q :: Effect). param -> InterpreterFor effect (Opaque q : r)
+h param
+param
+Sem (Opaque (OuterRun effect) : r) (f a)
+-> (Sem (Opaque (OuterRun effect) : r) (f a) -> Sem r (f a))
+-> Sem r (f a)
+forall a b. a -> (a -> b) -> b
+& (forall (rInitial :: [Effect]) x.
+Opaque (OuterRun effect) (Sem rInitial) x
+-> Tactical (Opaque (OuterRun effect)) (Sem rInitial) r x)
+-> Sem (Opaque (OuterRun effect) : r) (f a) -> Sem r (f a)
+forall (e :: Effect) (r :: [Effect]) a.
+(forall (rInitial :: [Effect]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem (e : r) a -> Sem r a
+interpretH (\(Opaque (OuterRun Word
+w effect (Sem rInitial) x
+_)) ->
+[Char]
+-> Sem
+(WithTactics (Opaque (OuterRun effect)) f (Sem rInitial) r) (f x)
+forall a. [Char] -> a
+errorWithoutStackTrace ([Char]
+-> Sem
+(WithTactics (Opaque (OuterRun effect)) f (Sem rInitial) r) (f x))
+-> [Char]
+-> Sem
+(WithTactics (Opaque (OuterRun effect)) f (Sem rInitial) r) (f x)
+forall a b. (a -> b) -> a -> b
+$ [Char]
+"unhandled OuterRun with depth " [Char] -> [Char] -> [Char]
+forall a. [a] -> [a] -> [a]
+++ Word -> [Char]
+forall a. Show a => a -> [Char]
+show Word
+w)
+Sem r (f a) -> (Sem r (f a) -> Sem r x) -> Sem r x
+forall a b. a -> (a -> b) -> b
+& (f a -> x) -> Sem r (f a) -> Sem r x
+forall a b. (a -> b) -> Sem r a -> Sem r b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap f a -> x
+ex
+where
+go' :: Word
+-> InterpreterFor
+(Opaque (OuterRun effect))
+(effect ': Opaque (OuterRun effect) ': r)
+go' :: Word
+-> InterpreterFor
+(Opaque (OuterRun effect)) (effect : Opaque (OuterRun effect) : r)
+go' Word
+depth =
+(forall x.
+Weaving
+(Opaque (OuterRun effect))
+(Sem
+(Opaque (OuterRun effect) : effect : Opaque (OuterRun effect) : r))
+x
+-> Sem (effect : Opaque (OuterRun effect) : r) x)
+-> InterpreterFor
+(Opaque (OuterRun effect)) (effect : Opaque (OuterRun effect) : r)
+forall (e :: Effect) (r :: [Effect]).
+(forall x. Weaving e (Sem (e : r)) x -> Sem r x)
+-> InterpreterFor e r
+interpretWeaving \ (Weaving sr :: Opaque (OuterRun effect) (Sem rInitial) a
+sr@(Opaque (OuterRun Word
+w effect (Sem rInitial) a
+act)) f ()
+s forall x.
+f (Sem rInitial x)
+-> Sem
+(Opaque (OuterRun effect) : effect : Opaque (OuterRun effect) : r)
+(f x)
+wv f a -> x
+ex forall x. f x -> Maybe x
+ins) ->
+if Word
+w Word -> Word -> Bool
+forall a. Eq a => a -> a -> Bool
+== Word
+depth then
+Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+-> Sem (effect : Opaque (OuterRun effect) : r) x
+forall (r :: [Effect]) a. Union r (Sem r) a -> Sem r a
+liftSem (Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+-> Sem (effect : Opaque (OuterRun effect) : r) x)
+-> Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+-> Sem (effect : Opaque (OuterRun effect) : r) x
+forall a b. (a -> b) -> a -> b
+$ Weaving effect (Sem (effect : Opaque (OuterRun effect) : r)) x
+-> Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+forall (e :: Effect) (r :: [Effect]) (m :: * -> *) a.
+Member e r =>
+Weaving e m a -> Union r m a
+injWeaving (Weaving effect (Sem (effect : Opaque (OuterRun effect) : r)) x
+-> Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x)
+-> Weaving effect (Sem (effect : Opaque (OuterRun effect) : r)) x
+-> Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+forall a b. (a -> b) -> a -> b
+$ effect (Sem rInitial) a
+-> f ()
+-> (forall x.
+f (Sem rInitial x)
+-> Sem (effect : Opaque (OuterRun effect) : r) (f x))
+-> (f a -> x)
+-> (forall x. f x -> Maybe x)
+-> Weaving effect (Sem (effect : Opaque (OuterRun effect) : r)) x
+forall (f :: * -> *) (e :: Effect) (rInitial :: [Effect]) a
+resultType (mAfter :: * -> *).
+Functor f =>
+e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> mAfter (f x))
+-> (f a -> resultType)
+-> (forall x. f x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving effect (Sem rInitial) a
+act f ()
+s (Word
+-> InterpreterFor
+(Opaque (OuterRun effect)) (effect : Opaque (OuterRun effect) : r)
+go' Word
+depth (Sem
+(Opaque (OuterRun effect) : effect : Opaque (OuterRun effect) : r)
+(f x)
+-> Sem (effect : Opaque (OuterRun effect) : r) (f x))
+-> (f (Sem rInitial x)
+-> Sem
+(Opaque (OuterRun effect) : effect : Opaque (OuterRun effect) : r)
+(f x))
+-> f (Sem rInitial x)
+-> Sem (effect : Opaque (OuterRun effect) : r) (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x)
+-> Sem
+(Opaque (OuterRun effect) : effect : Opaque (OuterRun effect) : r)
+(f x)
+forall x.
+f (Sem rInitial x)
+-> Sem
+(Opaque (OuterRun effect) : effect : Opaque (OuterRun effect) : r)
+(f x)
+wv) f a -> x
+ex f x -> Maybe x
+forall x. f x -> Maybe x
+ins
+else
+Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+-> Sem (effect : Opaque (OuterRun effect) : r) x
+forall (r :: [Effect]) a. Union r (Sem r) a -> Sem r a
+liftSem (Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+-> Sem (effect : Opaque (OuterRun effect) : r) x)
+-> Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+-> Sem (effect : Opaque (OuterRun effect) : r) x
+forall a b. (a -> b) -> a -> b
+$ Weaving
+(Opaque (OuterRun effect))
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+-> Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+forall (e :: Effect) (r :: [Effect]) (m :: * -> *) a.
+Member e r =>
+Weaving e m a -> Union r m a
+injWeaving (Weaving
+(Opaque (OuterRun effect))
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+-> Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x)
+-> Weaving
+(Opaque (OuterRun effect))
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+-> Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+forall a b. (a -> b) -> a -> b
+$ Opaque (OuterRun effect) (Sem rInitial) a
+-> f ()
+-> (forall x.
+f (Sem rInitial x)
+-> Sem (effect : Opaque (OuterRun effect) : r) (f x))
+-> (f a -> x)
+-> (forall x. f x -> Maybe x)
+-> Weaving
+(Opaque (OuterRun effect))
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+forall (f :: * -> *) (e :: Effect) (rInitial :: [Effect]) a
+resultType (mAfter :: * -> *).
+Functor f =>
+e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> mAfter (f x))
+-> (f a -> resultType)
+-> (forall x. f x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving Opaque (OuterRun effect) (Sem rInitial) a
+sr f ()
+s (Word
+-> InterpreterFor
+(Opaque (OuterRun effect)) (effect : Opaque (OuterRun effect) : r)
+go' Word
+depth (Sem
+(Opaque (OuterRun effect) : effect : Opaque (OuterRun effect) : r)
+(f x)
+-> Sem (effect : Opaque (OuterRun effect) : r) (f x))
+-> (f (Sem rInitial x)
+-> Sem
+(Opaque (OuterRun effect) : effect : Opaque (OuterRun effect) : r)
+(f x))
+-> f (Sem rInitial x)
+-> Sem (effect : Opaque (OuterRun effect) : r) (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x)
+-> Sem
+(Opaque (OuterRun effect) : effect : Opaque (OuterRun effect) : r)
+(f x)
+forall x.
+f (Sem rInitial x)
+-> Sem
+(Opaque (OuterRun effect) : effect : Opaque (OuterRun effect) : r)
+(f x)
+wv) f a -> x
+ex f x -> Maybe x
+forall x. f x -> Maybe x
+ins
+go :: Word
+-> InterpreterFor
+(Scoped param effect)
+(effect ': Opaque (OuterRun effect) ': r)
+go :: Word
+-> InterpreterFor
+(Scoped param effect) (effect : Opaque (OuterRun effect) : r)
+go Word
+depth =
+(forall x.
+Weaving
+(Scoped param effect)
+(Sem (Scoped param effect : effect : Opaque (OuterRun effect) : r))
+x
+-> Sem (effect : Opaque (OuterRun effect) : r) x)
+-> InterpreterFor
+(Scoped param effect) (effect : Opaque (OuterRun effect) : r)
+forall (e :: Effect) (r :: [Effect]).
+(forall x. Weaving e (Sem (e : r)) x -> Sem r x)
+-> InterpreterFor e r
+interpretWeaving \ (Weaving Scoped param effect (Sem rInitial) a
+effect f ()
+s forall x.
+f (Sem rInitial x)
+-> Sem
+(Scoped param effect : effect : Opaque (OuterRun effect) : r) (f x)
+wv f a -> x
+ex forall x. f x -> Maybe x
+ins) -> case Scoped param effect (Sem rInitial) a
+effect of
+Run Word
+w effect (Sem rInitial) a
+act
+| Word
+w Word -> Word -> Bool
+forall a. Eq a => a -> a -> Bool
+== Word
+depth -> Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+-> Sem (effect : Opaque (OuterRun effect) : r) x
+forall (r :: [Effect]) a. Union r (Sem r) a -> Sem r a
+liftSem (Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+-> Sem (effect : Opaque (OuterRun effect) : r) x)
+-> Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+-> Sem (effect : Opaque (OuterRun effect) : r) x
+forall a b. (a -> b) -> a -> b
+$ Weaving effect (Sem (effect : Opaque (OuterRun effect) : r)) x
+-> Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+forall (e :: Effect) (r :: [Effect]) (m :: * -> *) a.
+Member e r =>
+Weaving e m a -> Union r m a
+injWeaving (Weaving effect (Sem (effect : Opaque (OuterRun effect) : r)) x
+-> Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x)
+-> Weaving effect (Sem (effect : Opaque (OuterRun effect) : r)) x
+-> Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+forall a b. (a -> b) -> a -> b
+$
+effect (Sem rInitial) a
+-> f ()
+-> (forall x.
+f (Sem rInitial x)
+-> Sem (effect : Opaque (OuterRun effect) : r) (f x))
+-> (f a -> x)
+-> (forall x. f x -> Maybe x)
+-> Weaving effect (Sem (effect : Opaque (OuterRun effect) : r)) x
+forall (f :: * -> *) (e :: Effect) (rInitial :: [Effect]) a
+resultType (mAfter :: * -> *).
+Functor f =>
+e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> mAfter (f x))
+-> (f a -> resultType)
+-> (forall x. f x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving effect (Sem rInitial) a
+act f ()
+s (Word
+-> InterpreterFor
+(Scoped param effect) (effect : Opaque (OuterRun effect) : r)
+go Word
+depth (Sem
+(Scoped param effect : effect : Opaque (OuterRun effect) : r) (f x)
+-> Sem (effect : Opaque (OuterRun effect) : r) (f x))
+-> (f (Sem rInitial x)
+-> Sem
+(Scoped param effect : effect : Opaque (OuterRun effect) : r)
+(f x))
+-> f (Sem rInitial x)
+-> Sem (effect : Opaque (OuterRun effect) : r) (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x)
+-> Sem
+(Scoped param effect : effect : Opaque (OuterRun effect) : r) (f x)
+forall x.
+f (Sem rInitial x)
+-> Sem
+(Scoped param effect : effect : Opaque (OuterRun effect) : r) (f x)
+wv) f a -> x
+ex f x -> Maybe x
+forall x. f x -> Maybe x
+ins
+| Bool
+otherwise -> Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+-> Sem (effect : Opaque (OuterRun effect) : r) x
+forall (r :: [Effect]) a. Union r (Sem r) a -> Sem r a
+liftSem (Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+-> Sem (effect : Opaque (OuterRun effect) : r) x)
+-> Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+-> Sem (effect : Opaque (OuterRun effect) : r) x
+forall a b. (a -> b) -> a -> b
+$ Weaving
+(Opaque (OuterRun effect))
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+-> Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+forall (e :: Effect) (r :: [Effect]) (m :: * -> *) a.
+Member e r =>
+Weaving e m a -> Union r m a
+injWeaving (Weaving
+(Opaque (OuterRun effect))
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+-> Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x)
+-> Weaving
+(Opaque (OuterRun effect))
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+-> Union
+(effect : Opaque (OuterRun effect) : r)
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+forall a b. (a -> b) -> a -> b
+$
+Opaque (OuterRun effect) (Sem rInitial) a
+-> f ()
+-> (forall x.
+f (Sem rInitial x)
+-> Sem (effect : Opaque (OuterRun effect) : r) (f x))
+-> (f a -> x)
+-> (forall x. f x -> Maybe x)
+-> Weaving
+(Opaque (OuterRun effect))
+(Sem (effect : Opaque (OuterRun effect) : r))
+x
+forall (f :: * -> *) (e :: Effect) (rInitial :: [Effect]) a
+resultType (mAfter :: * -> *).
+Functor f =>
+e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> mAfter (f x))
+-> (f a -> resultType)
+-> (forall x. f x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving (OuterRun effect (Sem rInitial) a
+-> Opaque (OuterRun effect) (Sem rInitial) a
+forall (e :: Effect) (m :: * -> *) a. e m a -> Opaque e m a
+Opaque (Word -> effect (Sem rInitial) a -> OuterRun effect (Sem rInitial) a
+forall (effect :: Effect) (a :: * -> *) b.
+Word -> effect a b -> OuterRun effect a b
+OuterRun Word
+w effect (Sem rInitial) a
+act)) f ()
+s (Word
+-> InterpreterFor
+(Scoped param effect) (effect : Opaque (OuterRun effect) : r)
+go Word
+depth (Sem
+(Scoped param effect : effect : Opaque (OuterRun effect) : r) (f x)
+-> Sem (effect : Opaque (OuterRun effect) : r) (f x))
+-> (f (Sem rInitial x)
+-> Sem
+(Scoped param effect : effect : Opaque (OuterRun effect) : r)
+(f x))
+-> f (Sem rInitial x)
+-> Sem (effect : Opaque (OuterRun effect) : r) (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x)
+-> Sem
+(Scoped param effect : effect : Opaque (OuterRun effect) : r) (f x)
+forall x.
+f (Sem rInitial x)
+-> Sem
+(Scoped param effect : effect : Opaque (OuterRun effect) : r) (f x)
+wv) f a -> x
+ex f x -> Maybe x
+forall x. f x -> Maybe x
+ins
+InScope param
+param Word -> Sem rInitial a
+main -> do
+let !depth' :: Word
+depth' = Word
+depth Word -> Word -> Word
+forall a. Num a => a -> a -> a
++ Word
+1
+f (Sem rInitial a)
+-> Sem
+(Scoped param effect : effect : Opaque (OuterRun effect) : r) (f a)
+forall x.
+f (Sem rInitial x)
+-> Sem
+(Scoped param effect : effect : Opaque (OuterRun effect) : r) (f x)
+wv (Word -> Sem rInitial a
+main Word
+depth' Sem rInitial a -> f () -> f (Sem rInitial a)
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s)
+Sem
+(Scoped param effect : effect : Opaque (OuterRun effect) : r) (f a)
+-> (Sem
+(Scoped param effect : effect : Opaque (OuterRun effect) : r) (f a)
+-> Sem (effect : Opaque (OuterRun effect) : r) (f a))
+-> Sem (effect : Opaque (OuterRun effect) : r) (f a)
+forall a b. a -> (a -> b) -> b
+& Word
+-> InterpreterFor
+(Scoped param effect) (effect : Opaque (OuterRun effect) : r)
+go Word
+depth'
+Sem (effect : Opaque (OuterRun effect) : r) (f a)
+-> (Sem (effect : Opaque (OuterRun effect) : r) (f a)
+-> Sem (Opaque (OuterRun effect) : r) (f a))
+-> Sem (Opaque (OuterRun effect) : r) (f a)
+forall a b. a -> (a -> b) -> b
+& param -> InterpreterFor effect (Opaque (OuterRun effect) : r)
+forall (q :: Effect). param -> InterpreterFor effect (Opaque q : r)
+h param
+param
+Sem (Opaque (OuterRun effect) : r) (f a)
+-> (Sem (Opaque (OuterRun effect) : r) (f a)
+-> Sem
+(Opaque (OuterRun effect) : effect : Opaque (OuterRun effect) : r)
+(f a))
+-> Sem
+(Opaque (OuterRun effect) : effect : Opaque (OuterRun effect) : r)
+(f a)
+forall a b. a -> (a -> b) -> b
+& Sem (Opaque (OuterRun effect) : r) (f a)
+-> Sem
+(Opaque (OuterRun effect) : effect : Opaque (OuterRun effect) : r)
+(f a)
+forall (e2 :: Effect) (e3 :: Effect) (e1 :: Effect) (r :: [Effect])
+a.
+Sem (e1 : r) a -> Sem (e1 : e2 : e3 : r) a
+raiseUnder2
+Sem
+(Opaque (OuterRun effect) : effect : Opaque (OuterRun effect) : r)
+(f a)
+-> (Sem
+(Opaque (OuterRun effect) : effect : Opaque (OuterRun effect) : r)
+(f a)
+-> Sem (effect : Opaque (OuterRun effect) : r) (f a))
+-> Sem (effect : Opaque (OuterRun effect) : r) (f a)
+forall a b. a -> (a -> b) -> b
+& Word
+-> InterpreterFor
+(Opaque (OuterRun effect)) (effect : Opaque (OuterRun effect) : r)
+go' Word
+depth
+Sem (effect : Opaque (OuterRun effect) : r) (f a)
+-> (Sem (effect : Opaque (OuterRun effect) : r) (f a)
+-> Sem (effect : Opaque (OuterRun effect) : r) x)
+-> Sem (effect : Opaque (OuterRun effect) : r) x
+forall a b. a -> (a -> b) -> b
+& (f a -> x)
+-> Sem (effect : Opaque (OuterRun effect) : r) (f a)
+-> Sem (effect : Opaque (OuterRun effect) : r) x
+forall a b.
+(a -> b)
+-> Sem (effect : Opaque (OuterRun effect) : r) a
+-> Sem (effect : Opaque (OuterRun effect) : r) b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap f a -> x
+ex
+{-# INLINE runScopedNew #-}

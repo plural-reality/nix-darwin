@@ -1,0 +1,20 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- data Reader i m a where
+- ask :: forall i r. Member (Reader i) r => Sem r i
+- asks :: forall i j r. Member (Reader i) r => (i -> j) -> Sem r j
+- local :: forall i r a. Member (Reader i) r => (i -> i) -> Sem r a -> Sem r a
+- runReader :: i -> Sem (Reader i ': r) a -> Sem r a
+- inputToReader :: Member (Reader i) r => Sem (Input i ': r) a -> Sem r a
+Effect
+Actions
+asks :: forall i j r. Member (Reader i) r => (i -> j) -> Sem r j Source #
+Apply a function to the environment and return the result.
+local :: forall i r a. Member (Reader i) r => (i -> i) -> Sem r a -> Sem r a Source #
+Transform the environment.
+Interpretations
+runReader :: i -> Sem (Reader i ': r) a -> Sem r a Source #
+Run a Reader
+effect with a constant value.

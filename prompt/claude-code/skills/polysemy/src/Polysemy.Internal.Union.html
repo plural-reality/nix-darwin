@@ -1,0 +1,924 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE EmptyCase #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE RoleAnnotations #-}
+{-# LANGUAGE StrictData #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_HADDOCK not-home, prune #-}
+module Polysemy.Internal.Union
+( Union (..)
+, Weaving (..)
+, Member
+, weave
+, hoist
+, inj
+, injUsing
+, injWeaving
+, weaken
+, decomp
+, prj
+, prjUsing
+, extract
+, absurdU
+, decompCoerce
+, ElemOf (Here, There)
+, membership
+, sameMember
+, KnownRow
+, tryMembership
+, extendMembershipLeft
+, extendMembershipRight
+, injectMembership
+, weakenList
+, weakenMid) where
+import Control.Monad
+import Data.Functor.Compose
+import Data.Functor.Identity
+import Data.Kind
+import Data.Typeable
+import Polysemy.Internal.Kind
+import {-# SOURCE #-} Polysemy.Internal
+import Polysemy.Internal.Sing (SList (SEnd, SCons))
+import Unsafe.Coerce (unsafeCoerce)
+data Union (r :: EffectRow) (mWoven :: Type -> Type) a where
+Union
+::
+ElemOf e r
+-> Weaving e m a
+-> Union r m a
+instance Functor (Union r mWoven) where
+fmap :: forall a b. (a -> b) -> Union r mWoven a -> Union r mWoven b
+fmap a -> b
+f (Union ElemOf e r
+w Weaving e mWoven a
+t) = ElemOf e r -> Weaving e mWoven b -> Union r mWoven b
+forall (r :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+ElemOf r r -> Weaving r m a -> Union r m a
+Union ElemOf e r
+w (Weaving e mWoven b -> Union r mWoven b)
+-> Weaving e mWoven b -> Union r mWoven b
+forall a b. (a -> b) -> a -> b
+$ a -> b
+f (a -> b) -> Weaving e mWoven a -> Weaving e mWoven b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> Weaving e mWoven a
+t
+{-# INLINABLE fmap #-}
+data Weaving e mAfter resultType where
+Weaving
+:: forall f e rInitial a resultType mAfter. (Functor f)
+=> {
+()
+weaveEffect :: e (Sem rInitial) a
+, ()
+weaveState :: f ()
+, ()
+weaveDistrib :: forall x. f (Sem rInitial x) -> mAfter (f x)
+, ()
+weaveResult :: f a -> resultType
+, ()
+weaveInspect :: forall x. f x -> Maybe x
+} -> Weaving e mAfter resultType
+instance Functor (Weaving e m) where
+fmap :: forall a b. (a -> b) -> Weaving e m a -> Weaving e m b
+fmap a -> b
+f (Weaving e (Sem rInitial) a
+e f ()
+s forall x. f (Sem rInitial x) -> m (f x)
+d f a -> a
+f' forall x. f x -> Maybe x
+v) = e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> m (f x))
+-> (f a -> b)
+-> (forall x. f x -> Maybe x)
+-> Weaving e m b
+forall (r :: * -> *) (e :: (* -> *) -> * -> *) (e' :: EffectRow) a
+resultType (mAfter :: * -> *).
+Functor r =>
+e (Sem e') a
+-> r ()
+-> (forall x. r (Sem e' x) -> mAfter (r x))
+-> (r a -> resultType)
+-> (forall x. r x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving e (Sem rInitial) a
+e f ()
+s f (Sem rInitial x) -> m (f x)
+forall x. f (Sem rInitial x) -> m (f x)
+d (a -> b
+f (a -> b) -> (f a -> a) -> f a -> b
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f a -> a
+f') f x -> Maybe x
+forall x. f x -> Maybe x
+v
+{-# INLINABLE fmap #-}
+weave
+:: (Functor s, Functor n)
+=> s ()
+-> (∀ x. s (m x) -> n (s x))
+-> (∀ x. s x -> Maybe x)
+-> Union r m a
+-> Union r n (s a)
+weave :: forall (s :: * -> *) (n :: * -> *) (m :: * -> *) (r :: EffectRow)
+a.
+(Functor s, Functor n) =>
+s ()
+-> (forall x. s (m x) -> n (s x))
+-> (forall x. s x -> Maybe x)
+-> Union r m a
+-> Union r n (s a)
+weave s ()
+s' forall x. s (m x) -> n (s x)
+d forall x. s x -> Maybe x
+v' (Union ElemOf e r
+w (Weaving e (Sem rInitial) a
+e f ()
+s forall x. f (Sem rInitial x) -> m (f x)
+nt f a -> a
+f forall x. f x -> Maybe x
+v)) =
+ElemOf e r -> Weaving e n (s a) -> Union r n (s a)
+forall (r :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+ElemOf r r -> Weaving r m a -> Union r m a
+Union ElemOf e r
+w (Weaving e n (s a) -> Union r n (s a))
+-> Weaving e n (s a) -> Union r n (s a)
+forall a b. (a -> b) -> a -> b
+$ e (Sem rInitial) a
+-> Compose s f ()
+-> (forall x. Compose s f (Sem rInitial x) -> n (Compose s f x))
+-> (Compose s f a -> s a)
+-> (forall x. Compose s f x -> Maybe x)
+-> Weaving e n (s a)
+forall (r :: * -> *) (e :: (* -> *) -> * -> *) (e' :: EffectRow) a
+resultType (mAfter :: * -> *).
+Functor r =>
+e (Sem e') a
+-> r ()
+-> (forall x. r (Sem e' x) -> mAfter (r x))
+-> (r a -> resultType)
+-> (forall x. r x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving
+e (Sem rInitial) a
+e (s (f ()) -> Compose s f ()
+forall {k} {k1} (f :: k -> *) (g :: k1 -> k) (a :: k1).
+f (g a) -> Compose f g a
+Compose (s (f ()) -> Compose s f ()) -> s (f ()) -> Compose s f ()
+forall a b. (a -> b) -> a -> b
+$ f ()
+s f () -> s () -> s (f ())
+forall a b. a -> s b -> s a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ s ()
+s')
+((s (f x) -> Compose s f x) -> n (s (f x)) -> n (Compose s f x)
+forall a b. (a -> b) -> n a -> n b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap s (f x) -> Compose s f x
+forall {k} {k1} (f :: k -> *) (g :: k1 -> k) (a :: k1).
+f (g a) -> Compose f g a
+Compose (n (s (f x)) -> n (Compose s f x))
+-> (Compose s f (Sem rInitial x) -> n (s (f x)))
+-> Compose s f (Sem rInitial x)
+-> n (Compose s f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. s (m (f x)) -> n (s (f x))
+forall x. s (m x) -> n (s x)
+d (s (m (f x)) -> n (s (f x)))
+-> (Compose s f (Sem rInitial x) -> s (m (f x)))
+-> Compose s f (Sem rInitial x)
+-> n (s (f x))
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (f (Sem rInitial x) -> m (f x))
+-> s (f (Sem rInitial x)) -> s (m (f x))
+forall a b. (a -> b) -> s a -> s b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap f (Sem rInitial x) -> m (f x)
+forall x. f (Sem rInitial x) -> m (f x)
+nt (s (f (Sem rInitial x)) -> s (m (f x)))
+-> (Compose s f (Sem rInitial x) -> s (f (Sem rInitial x)))
+-> Compose s f (Sem rInitial x)
+-> s (m (f x))
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Compose s f (Sem rInitial x) -> s (f (Sem rInitial x))
+forall {k1} {k2} (f :: k1 -> *) (g :: k2 -> k1) (a :: k2).
+Compose f g a -> f (g a)
+getCompose)
+((f a -> a) -> s (f a) -> s a
+forall a b. (a -> b) -> s a -> s b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap f a -> a
+f (s (f a) -> s a)
+-> (Compose s f a -> s (f a)) -> Compose s f a -> s a
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Compose s f a -> s (f a)
+forall {k1} {k2} (f :: k1 -> *) (g :: k2 -> k1) (a :: k2).
+Compose f g a -> f (g a)
+getCompose)
+(f x -> Maybe x
+forall x. f x -> Maybe x
+v (f x -> Maybe x)
+-> (Compose s f x -> Maybe (f x)) -> Compose s f x -> Maybe x
+forall (m :: * -> *) b c a.
+Monad m =>
+(b -> m c) -> (a -> m b) -> a -> m c
+<=< s (f x) -> Maybe (f x)
+forall x. s x -> Maybe x
+v' (s (f x) -> Maybe (f x))
+-> (Compose s f x -> s (f x)) -> Compose s f x -> Maybe (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Compose s f x -> s (f x)
+forall {k1} {k2} (f :: k1 -> *) (g :: k2 -> k1) (a :: k2).
+Compose f g a -> f (g a)
+getCompose)
+{-# INLINABLE weave #-}
+hoist
+:: (∀ x. m x -> n x)
+-> Union r m a
+-> Union r n a
+hoist :: forall (m :: * -> *) (n :: * -> *) (r :: EffectRow) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist forall x. m x -> n x
+f' (Union ElemOf e r
+w (Weaving e (Sem rInitial) a
+e f ()
+s forall x. f (Sem rInitial x) -> m (f x)
+nt f a -> a
+f forall x. f x -> Maybe x
+v)) =
+ElemOf e r -> Weaving e n a -> Union r n a
+forall (r :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+ElemOf r r -> Weaving r m a -> Union r m a
+Union ElemOf e r
+w (Weaving e n a -> Union r n a) -> Weaving e n a -> Union r n a
+forall a b. (a -> b) -> a -> b
+$ e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> n (f x))
+-> (f a -> a)
+-> (forall x. f x -> Maybe x)
+-> Weaving e n a
+forall (r :: * -> *) (e :: (* -> *) -> * -> *) (e' :: EffectRow) a
+resultType (mAfter :: * -> *).
+Functor r =>
+e (Sem e') a
+-> r ()
+-> (forall x. r (Sem e' x) -> mAfter (r x))
+-> (r a -> resultType)
+-> (forall x. r x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving e (Sem rInitial) a
+e f ()
+s (m (f x) -> n (f x)
+forall x. m x -> n x
+f' (m (f x) -> n (f x))
+-> (f (Sem rInitial x) -> m (f x)) -> f (Sem rInitial x) -> n (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> m (f x)
+forall x. f (Sem rInitial x) -> m (f x)
+nt) f a -> a
+f f x -> Maybe x
+forall x. f x -> Maybe x
+v
+{-# INLINABLE hoist #-}
+type role ElemOf nominal nominal
+newtype ElemOf (e :: k) (r :: [k]) = UnsafeMkElemOf Int
+data MatchHere e r where
+MHYes :: MatchHere e (e ': r)
+MHNo :: MatchHere e r
+data MatchThere e r where
+MTYes :: ElemOf e r -> MatchThere e (e' ': r)
+MTNo :: MatchThere e r
+matchHere :: forall e r. ElemOf e r -> MatchHere e r
+matchHere :: forall {a} (e :: a) (r :: [a]). ElemOf e r -> MatchHere e r
+matchHere (UnsafeMkElemOf Int
+0) = MatchHere Any (Any : Any) -> MatchHere e r
+forall a b. a -> b
+unsafeCoerce (MatchHere Any (Any : Any) -> MatchHere e r)
+-> MatchHere Any (Any : Any) -> MatchHere e r
+forall a b. (a -> b) -> a -> b
+$ MatchHere Any (Any : Any)
+forall {a} (e :: a) (r :: [a]). MatchHere e (e : r)
+MHYes
+matchHere ElemOf e r
+_ = MatchHere e r
+forall {a} (e :: a) (r :: [a]). MatchHere e r
+MHNo
+matchThere :: forall e r. ElemOf e r -> MatchThere e r
+matchThere :: forall {k} (e :: k) (r :: [k]). ElemOf e r -> MatchThere e r
+matchThere (UnsafeMkElemOf Int
+0) = MatchThere e r
+forall {k} (e :: k) (r :: [k]). MatchThere e r
+MTNo
+matchThere (UnsafeMkElemOf Int
+e) = MatchThere Any (Any : Any) -> MatchThere e r
+forall a b. a -> b
+unsafeCoerce (MatchThere Any (Any : Any) -> MatchThere e r)
+-> MatchThere Any (Any : Any) -> MatchThere e r
+forall a b. (a -> b) -> a -> b
+$ ElemOf Any Any -> MatchThere Any (Any : Any)
+forall {k} (e :: k) (r :: [k]) (e' :: k).
+ElemOf e r -> MatchThere e (e' : r)
+MTYes (ElemOf Any Any -> MatchThere Any (Any : Any))
+-> ElemOf Any Any -> MatchThere Any (Any : Any)
+forall a b. (a -> b) -> a -> b
+$ Int -> ElemOf Any Any
+forall k (e :: k) (r :: [k]). Int -> ElemOf e r
+UnsafeMkElemOf (Int -> ElemOf Any Any) -> Int -> ElemOf Any Any
+forall a b. (a -> b) -> a -> b
+$ Int
+e Int -> Int -> Int
+forall a. Num a => a -> a -> a
+- Int
+1
+pattern Here :: () => (r ~ (e ': r')) => ElemOf e r
+pattern $mHere :: forall {r} {k} {r :: [k]} {e :: k}.
+ElemOf e r
+-> (forall {r' :: [k]}. (r ~ (e : r')) => r) -> ((# #) -> r) -> r
+$bHere :: forall {k} (r :: [k]) (e :: k) (r' :: [k]).
+(r ~ (e : r')) =>
+ElemOf e r
+Here <- (matchHere -> MHYes)
+where
+Here = Int -> ElemOf e r
+forall k (e :: k) (r :: [k]). Int -> ElemOf e r
+UnsafeMkElemOf Int
+0
+pattern There :: () => (r' ~ (e' ': r)) => ElemOf e r -> ElemOf e r'
+pattern $mThere :: forall {r} {k} {r' :: [k]} {e :: k}.
+ElemOf e r'
+-> (forall {e' :: k} {r :: [k]}.
+(r' ~ (e' : r)) =>
+ElemOf e r -> r)
+-> ((# #) -> r)
+-> r
+$bThere :: forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There e <- (matchThere -> MTYes e)
+where
+There (UnsafeMkElemOf Int
+e) = Int -> ElemOf e r'
+forall k (e :: k) (r :: [k]). Int -> ElemOf e r
+UnsafeMkElemOf (Int -> ElemOf e r') -> Int -> ElemOf e r'
+forall a b. (a -> b) -> a -> b
+$ Int
+e Int -> Int -> Int
+forall a. Num a => a -> a -> a
++ Int
+1
+{-# COMPLETE Here, There #-}
+sameMember :: forall e e' r
+. ElemOf e r
+-> ElemOf e' r
+-> Maybe (e :~: e')
+sameMember :: forall {k} (e :: k) (e' :: k) (r :: [k]).
+ElemOf e r -> ElemOf e' r -> Maybe (e :~: e')
+sameMember ElemOf e r
+Here ElemOf e' r
+Here =
+(e :~: e') -> Maybe (e :~: e')
+forall a. a -> Maybe a
+Just e :~: e
+e :~: e'
+forall {k} (a :: k). a :~: a
+Refl
+sameMember (There ElemOf e r
+pr) (There ElemOf e' r
+pr') =
+forall (e :: k) (e' :: k) (r :: [k]).
+ElemOf e r -> ElemOf e' r -> Maybe (e :~: e')
+forall {k} (e :: k) (e' :: k) (r :: [k]).
+ElemOf e r -> ElemOf e' r -> Maybe (e :~: e')
+sameMember @e @e' ElemOf e r
+pr ElemOf e' r
+ElemOf e' r
+pr'
+sameMember (There ElemOf e r
+_) ElemOf e' r
+_ =
+Maybe (e :~: e')
+forall a. Maybe a
+Nothing
+sameMember ElemOf e r
+_ ElemOf e' r
+_ =
+Maybe (e :~: e')
+forall a. Maybe a
+Nothing
+class Member (t :: Effect) (r :: EffectRow) where
+membership' :: ElemOf t r
+instance {-# OVERLAPPING #-} Member t (t ': z) where
+membership' :: ElemOf t (t : z)
+membership' = ElemOf t (t : z)
+forall {k} (r :: [k]) (e :: k) (r' :: [k]).
+(r ~ (e : r')) =>
+ElemOf e r
+Here
+instance Member t z => Member t (_1 ': z) where
+membership' :: ElemOf t (_1 : z)
+membership' = ElemOf t z -> ElemOf t (_1 : z)
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There (ElemOf t z -> ElemOf t (_1 : z))
+-> ElemOf t z -> ElemOf t (_1 : z)
+forall a b. (a -> b) -> a -> b
+$ forall (t :: (* -> *) -> * -> *) (r :: EffectRow).
+Member t r =>
+ElemOf t r
+membership' @t @z
+class KnownRow r where
+tryMembership' :: forall e. Typeable e => Maybe (ElemOf e r)
+instance KnownRow '[] where
+tryMembership' :: forall (e :: k). Typeable e => Maybe (ElemOf e '[])
+tryMembership' = Maybe (ElemOf e '[])
+forall a. Maybe a
+Nothing
+{-# INLINABLE tryMembership' #-}
+instance (Typeable e, KnownRow r) => KnownRow (e ': r) where
+tryMembership' :: forall e'. Typeable e' => Maybe (ElemOf e' (e ': r))
+tryMembership' :: forall (e :: k). Typeable e => Maybe (ElemOf e (e : r))
+tryMembership' = case forall (a :: k) (b :: k).
+(Typeable a, Typeable b) =>
+Maybe (a :~: b)
+forall {k} (a :: k) (b :: k).
+(Typeable a, Typeable b) =>
+Maybe (a :~: b)
+eqT @e @e' of
+Just e :~: e'
+Refl -> ElemOf e' (e : r) -> Maybe (ElemOf e' (e : r))
+forall a. a -> Maybe a
+Just ElemOf e' (e : r)
+forall {k} (r :: [k]) (e :: k) (r' :: [k]).
+(r ~ (e : r')) =>
+ElemOf e r
+Here
+Maybe (e :~: e')
+_ -> ElemOf e' r -> ElemOf e' (e : r)
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There (ElemOf e' r -> ElemOf e' (e : r))
+-> Maybe (ElemOf e' r) -> Maybe (ElemOf e' (e : r))
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> forall (r :: [k]) (e :: k).
+(KnownRow r, Typeable e) =>
+Maybe (ElemOf e r)
+forall {k} (r :: [k]) (e :: k).
+(KnownRow r, Typeable e) =>
+Maybe (ElemOf e r)
+tryMembership' @r @e'
+{-# INLINABLE tryMembership' #-}
+membership :: Member e r => ElemOf e r
+membership :: forall (t :: (* -> *) -> * -> *) (r :: EffectRow).
+Member t r =>
+ElemOf t r
+membership = ElemOf e r
+forall (t :: (* -> *) -> * -> *) (r :: EffectRow).
+Member t r =>
+ElemOf t r
+membership'
+{-# INLINABLE membership #-}
+tryMembership :: forall e r. (Typeable e, KnownRow r) => Maybe (ElemOf e r)
+tryMembership :: forall {k} (e :: k) (r :: [k]).
+(Typeable e, KnownRow r) =>
+Maybe (ElemOf e r)
+tryMembership = forall (r :: [k]) (e :: k).
+(KnownRow r, Typeable e) =>
+Maybe (ElemOf e r)
+forall {k} (r :: [k]) (e :: k).
+(KnownRow r, Typeable e) =>
+Maybe (ElemOf e r)
+tryMembership' @r @e
+{-# INLINABLE tryMembership #-}
+extendMembershipLeft :: forall l r e. SList l -> ElemOf e r -> ElemOf e (Append l r)
+extendMembershipLeft :: forall {a} (l :: [a]) (r :: [a]) (e :: a).
+SList l -> ElemOf e r -> ElemOf e (Append l r)
+extendMembershipLeft SList l
+SEnd ElemOf e r
+pr = ElemOf e r
+ElemOf e (Append l r)
+pr
+extendMembershipLeft (SCons SList xs
+l) ElemOf e r
+pr = ElemOf e (Append xs r) -> ElemOf e (x : Append xs r)
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There (SList xs -> ElemOf e r -> ElemOf e (Append xs r)
+forall {a} (l :: [a]) (r :: [a]) (e :: a).
+SList l -> ElemOf e r -> ElemOf e (Append l r)
+extendMembershipLeft SList xs
+l ElemOf e r
+pr)
+{-# INLINABLE extendMembershipLeft #-}
+extendMembershipRight :: forall l r e. ElemOf e l -> ElemOf e (Append l r)
+extendMembershipRight :: forall {a} (l :: [a]) (r :: [a]) (e :: a).
+ElemOf e l -> ElemOf e (Append l r)
+extendMembershipRight ElemOf e l
+Here = ElemOf e (e : Append r' r)
+ElemOf e (Append l r)
+forall {k} (r :: [k]) (e :: k) (r' :: [k]).
+(r ~ (e : r')) =>
+ElemOf e r
+Here
+extendMembershipRight (There ElemOf e r
+e) = ElemOf e (Append r r) -> ElemOf e (e' : Append r r)
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There (forall (l :: [a]) (r :: [a]) (e :: a).
+ElemOf e l -> ElemOf e (Append l r)
+forall {a} (l :: [a]) (r :: [a]) (e :: a).
+ElemOf e l -> ElemOf e (Append l r)
+extendMembershipRight @_ @r ElemOf e r
+e)
+{-# INLINABLE extendMembershipRight #-}
+injectMembership :: forall right e left mid
+. SList left
+-> SList mid
+-> ElemOf e (Append left right)
+-> ElemOf e (Append left (Append mid right))
+injectMembership :: forall {a} (right :: [a]) (e :: a) (left :: [a]) (mid :: [a]).
+SList left
+-> SList mid
+-> ElemOf e (Append left right)
+-> ElemOf e (Append left (Append mid right))
+injectMembership SList left
+SEnd SList mid
+sm ElemOf e (Append left right)
+pr = SList mid -> ElemOf e right -> ElemOf e (Append mid right)
+forall {a} (l :: [a]) (r :: [a]) (e :: a).
+SList l -> ElemOf e r -> ElemOf e (Append l r)
+extendMembershipLeft SList mid
+sm ElemOf e right
+ElemOf e (Append left right)
+pr
+injectMembership (SCons SList xs
+_) SList mid
+_ ElemOf e (x : Append xs right)
+ElemOf e (Append left right)
+Here = ElemOf e (e : Append xs (Append mid right))
+ElemOf e (Append left (Append mid right))
+forall {k} (r :: [k]) (e :: k) (r' :: [k]).
+(r ~ (e : r')) =>
+ElemOf e r
+Here
+injectMembership (SCons SList xs
+sl) SList mid
+sm (There ElemOf e r
+pr) = ElemOf e (Append xs (Append mid right))
+-> ElemOf e (x : Append xs (Append mid right))
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There (forall (right :: [a]) (e :: a) (left :: [a]) (mid :: [a]).
+SList left
+-> SList mid
+-> ElemOf e (Append left right)
+-> ElemOf e (Append left (Append mid right))
+forall {a} (right :: [a]) (e :: a) (left :: [a]) (mid :: [a]).
+SList left
+-> SList mid
+-> ElemOf e (Append left right)
+-> ElemOf e (Append left (Append mid right))
+injectMembership @right SList xs
+sl SList mid
+sm ElemOf e r
+ElemOf e (Append xs right)
+pr)
+{-# INLINABLE injectMembership #-}
+decomp :: Union (e ': r) m a -> Either (Union r m a) (Weaving e m a)
+decomp :: forall (e :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp (Union ElemOf e (e : r)
+p Weaving e m a
+a) =
+case ElemOf e (e : r)
+p of
+ElemOf e (e : r)
+Here -> Weaving e m a -> Either (Union r m a) (Weaving e m a)
+forall a b. b -> Either a b
+Right Weaving e m a
+Weaving e m a
+a
+There ElemOf e r
+pr -> Union r m a -> Either (Union r m a) (Weaving e m a)
+forall a b. a -> Either a b
+Left (Union r m a -> Either (Union r m a) (Weaving e m a))
+-> Union r m a -> Either (Union r m a) (Weaving e m a)
+forall a b. (a -> b) -> a -> b
+$ ElemOf e r -> Weaving e m a -> Union r m a
+forall (r :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+ElemOf r r -> Weaving r m a -> Union r m a
+Union ElemOf e r
+ElemOf e r
+pr Weaving e m a
+a
+{-# INLINABLE decomp #-}
+extract :: Union '[e] m a -> Weaving e m a
+(Union ElemOf e '[e]
+Here Weaving e m a
+a) = Weaving e m a
+Weaving e m a
+a
+extract (Union (There ElemOf e r
+_) Weaving e m a
+_) = [Char] -> Weaving e m a
+forall a. HasCallStack => [Char] -> a
+error [Char]
+"Unsafe use of UnsafeMkElemOf"
+{-# INLINABLE extract #-}
+absurdU :: Union '[] m a -> b
+#if __GLASGOW_HASKELL__ >= 902
+absurdU :: forall (m :: * -> *) a b. Union '[] m a -> b
+absurdU = Union '[] m a -> b
+\case
+#else
+absurdU _ = error "Unsafe use of UnsafeMkElemOf"
+#endif
+weaken :: forall e r m a. Union r m a -> Union (e ': r) m a
+weaken :: forall (e :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+Union r m a -> Union (e : r) m a
+weaken (Union ElemOf e r
+pr Weaving e m a
+a) = ElemOf e (e : r) -> Weaving e m a -> Union (e : r) m a
+forall (r :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+ElemOf r r -> Weaving r m a -> Union r m a
+Union (ElemOf e r -> ElemOf e (e : r)
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There ElemOf e r
+pr) Weaving e m a
+a
+{-# INLINABLE weaken #-}
+weakenList :: SList l -> Union r m a -> Union (Append l r) m a
+weakenList :: forall (l :: EffectRow) (r :: EffectRow) (m :: * -> *) a.
+SList l -> Union r m a -> Union (Append l r) m a
+weakenList SList l
+sl (Union ElemOf e r
+pr Weaving e m a
+e) = ElemOf e (Append l r) -> Weaving e m a -> Union (Append l r) m a
+forall (r :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+ElemOf r r -> Weaving r m a -> Union r m a
+Union (SList l -> ElemOf e r -> ElemOf e (Append l r)
+forall {a} (l :: [a]) (r :: [a]) (e :: a).
+SList l -> ElemOf e r -> ElemOf e (Append l r)
+extendMembershipLeft SList l
+sl ElemOf e r
+pr) Weaving e m a
+e
+{-# INLINABLE weakenList #-}
+weakenMid :: forall right m a left mid
+. SList left -> SList mid
+-> Union (Append left right) m a
+-> Union (Append left (Append mid right)) m a
+weakenMid :: forall (right :: EffectRow) (m :: * -> *) a (left :: EffectRow)
+(mid :: EffectRow).
+SList left
+-> SList mid
+-> Union (Append left right) m a
+-> Union (Append left (Append mid right)) m a
+weakenMid SList left
+sl SList mid
+sm (Union ElemOf e (Append left right)
+pr Weaving e m a
+e) = ElemOf e (Append left (Append mid right))
+-> Weaving e m a -> Union (Append left (Append mid right)) m a
+forall (r :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+ElemOf r r -> Weaving r m a -> Union r m a
+Union (forall (right :: EffectRow) (e :: (* -> *) -> * -> *)
+(left :: EffectRow) (mid :: EffectRow).
+SList left
+-> SList mid
+-> ElemOf e (Append left right)
+-> ElemOf e (Append left (Append mid right))
+forall {a} (right :: [a]) (e :: a) (left :: [a]) (mid :: [a]).
+SList left
+-> SList mid
+-> ElemOf e (Append left right)
+-> ElemOf e (Append left (Append mid right))
+injectMembership @right SList left
+sl SList mid
+sm ElemOf e (Append left right)
+pr) Weaving e m a
+e
+{-# INLINABLE weakenMid #-}
+inj :: forall e r rInitial a. (Member e r) => e (Sem rInitial) a -> Union r (Sem rInitial) a
+inj :: forall (e :: (* -> *) -> * -> *) (r :: EffectRow)
+(rInitial :: EffectRow) a.
+Member e r =>
+e (Sem rInitial) a -> Union r (Sem rInitial) a
+inj e (Sem rInitial) a
+e = Weaving e (Sem rInitial) a -> Union r (Sem rInitial) a
+forall (e :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+Member e r =>
+Weaving e m a -> Union r m a
+injWeaving (Weaving e (Sem rInitial) a -> Union r (Sem rInitial) a)
+-> Weaving e (Sem rInitial) a -> Union r (Sem rInitial) a
+forall a b. (a -> b) -> a -> b
+$ e (Sem rInitial) a
+-> Identity ()
+-> (forall x.
+Identity (Sem rInitial x) -> Sem rInitial (Identity x))
+-> (Identity a -> a)
+-> (forall x. Identity x -> Maybe x)
+-> Weaving e (Sem rInitial) a
+forall (r :: * -> *) (e :: (* -> *) -> * -> *) (e' :: EffectRow) a
+resultType (mAfter :: * -> *).
+Functor r =>
+e (Sem e') a
+-> r ()
+-> (forall x. r (Sem e' x) -> mAfter (r x))
+-> (r a -> resultType)
+-> (forall x. r x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving
+e (Sem rInitial) a
+e
+(() -> Identity ()
+forall a. a -> Identity a
+Identity ())
+((x -> Identity x) -> Sem rInitial x -> Sem rInitial (Identity x)
+forall a b. (a -> b) -> Sem rInitial a -> Sem rInitial b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap x -> Identity x
+forall a. a -> Identity a
+Identity (Sem rInitial x -> Sem rInitial (Identity x))
+-> (Identity (Sem rInitial x) -> Sem rInitial x)
+-> Identity (Sem rInitial x)
+-> Sem rInitial (Identity x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Identity (Sem rInitial x) -> Sem rInitial x
+forall a. Identity a -> a
+runIdentity)
+Identity a -> a
+forall a. Identity a -> a
+runIdentity
+(x -> Maybe x
+forall a. a -> Maybe a
+Just (x -> Maybe x) -> (Identity x -> x) -> Identity x -> Maybe x
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Identity x -> x
+forall a. Identity a -> a
+runIdentity)
+{-# INLINABLE inj #-}
+injUsing :: forall e r rInitial a.
+ElemOf e r -> e (Sem rInitial) a -> Union r (Sem rInitial) a
+injUsing :: forall (e :: (* -> *) -> * -> *) (r :: EffectRow)
+(rInitial :: EffectRow) a.
+ElemOf e r -> e (Sem rInitial) a -> Union r (Sem rInitial) a
+injUsing ElemOf e r
+pr e (Sem rInitial) a
+e = ElemOf e r
+-> Weaving e (Sem rInitial) a -> Union r (Sem rInitial) a
+forall (r :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+ElemOf r r -> Weaving r m a -> Union r m a
+Union ElemOf e r
+pr (Weaving e (Sem rInitial) a -> Union r (Sem rInitial) a)
+-> Weaving e (Sem rInitial) a -> Union r (Sem rInitial) a
+forall a b. (a -> b) -> a -> b
+$ e (Sem rInitial) a
+-> Identity ()
+-> (forall x.
+Identity (Sem rInitial x) -> Sem rInitial (Identity x))
+-> (Identity a -> a)
+-> (forall x. Identity x -> Maybe x)
+-> Weaving e (Sem rInitial) a
+forall (r :: * -> *) (e :: (* -> *) -> * -> *) (e' :: EffectRow) a
+resultType (mAfter :: * -> *).
+Functor r =>
+e (Sem e') a
+-> r ()
+-> (forall x. r (Sem e' x) -> mAfter (r x))
+-> (r a -> resultType)
+-> (forall x. r x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving
+e (Sem rInitial) a
+e
+(() -> Identity ()
+forall a. a -> Identity a
+Identity ())
+((x -> Identity x) -> Sem rInitial x -> Sem rInitial (Identity x)
+forall a b. (a -> b) -> Sem rInitial a -> Sem rInitial b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap x -> Identity x
+forall a. a -> Identity a
+Identity (Sem rInitial x -> Sem rInitial (Identity x))
+-> (Identity (Sem rInitial x) -> Sem rInitial x)
+-> Identity (Sem rInitial x)
+-> Sem rInitial (Identity x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Identity (Sem rInitial x) -> Sem rInitial x
+forall a. Identity a -> a
+runIdentity)
+Identity a -> a
+forall a. Identity a -> a
+runIdentity
+(x -> Maybe x
+forall a. a -> Maybe a
+Just (x -> Maybe x) -> (Identity x -> x) -> Identity x -> Maybe x
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Identity x -> x
+forall a. Identity a -> a
+runIdentity)
+{-# INLINABLE injUsing #-}
+injWeaving :: forall e r m a. Member e r => Weaving e m a -> Union r m a
+injWeaving :: forall (e :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+Member e r =>
+Weaving e m a -> Union r m a
+injWeaving = ElemOf e r -> Weaving e m a -> Union r m a
+forall (r :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+ElemOf r r -> Weaving r m a -> Union r m a
+Union ElemOf e r
+forall (t :: (* -> *) -> * -> *) (r :: EffectRow).
+Member t r =>
+ElemOf t r
+membership
+{-# INLINABLE injWeaving #-}
+prj :: forall e r m a
+. ( Member e r
+)
+=> Union r m a
+-> Maybe (Weaving e m a)
+prj :: forall (e :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+Member e r =>
+Union r m a -> Maybe (Weaving e m a)
+prj = ElemOf e r -> Union r m a -> Maybe (Weaving e m a)
+forall (e :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+ElemOf e r -> Union r m a -> Maybe (Weaving e m a)
+prjUsing ElemOf e r
+forall (t :: (* -> *) -> * -> *) (r :: EffectRow).
+Member t r =>
+ElemOf t r
+membership
+{-# INLINABLE prj #-}
+prjUsing
+:: forall e r m a
+. ElemOf e r
+-> Union r m a
+-> Maybe (Weaving e m a)
+prjUsing :: forall (e :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+ElemOf e r -> Union r m a -> Maybe (Weaving e m a)
+prjUsing ElemOf e r
+pr (Union ElemOf e r
+sn Weaving e m a
+a) = (\e :~: e
+Refl -> Weaving e m a
+Weaving e m a
+a) ((e :~: e) -> Weaving e m a)
+-> Maybe (e :~: e) -> Maybe (Weaving e m a)
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> ElemOf e r -> ElemOf e r -> Maybe (e :~: e)
+forall {k} (e :: k) (e' :: k) (r :: [k]).
+ElemOf e r -> ElemOf e' r -> Maybe (e :~: e')
+sameMember ElemOf e r
+pr ElemOf e r
+sn
+{-# INLINABLE prjUsing #-}
+decompCoerce
+:: Union (e ': r) m a
+-> Either (Union (f ': r) m a) (Weaving e m a)
+decompCoerce :: forall (e :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a
+(f :: (* -> *) -> * -> *).
+Union (e : r) m a -> Either (Union (f : r) m a) (Weaving e m a)
+decompCoerce (Union ElemOf e (e : r)
+p Weaving e m a
+a) =
+case ElemOf e (e : r)
+p of
+ElemOf e (e : r)
+Here -> Weaving e m a -> Either (Union (f : r) m a) (Weaving e m a)
+forall a b. b -> Either a b
+Right Weaving e m a
+Weaving e m a
+a
+There ElemOf e r
+pr -> Union (f : r) m a -> Either (Union (f : r) m a) (Weaving e m a)
+forall a b. a -> Either a b
+Left (ElemOf e (f : r) -> Weaving e m a -> Union (f : r) m a
+forall (r :: (* -> *) -> * -> *) (r :: EffectRow) (m :: * -> *) a.
+ElemOf r r -> Weaving r m a -> Union r m a
+Union (ElemOf e r -> ElemOf e (f : r)
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There ElemOf e r
+pr) Weaving e m a
+a)
+{-# INLINABLE decompCoerce #-}

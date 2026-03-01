@@ -1,0 +1,6 @@
+This effect abstracts the concept of MonadFail
+,
+which is a built-in mechanism that converts pattern matching errors to
+calls to the current monad's instance of that class.
+The instance defined in Polysemy.Internal uses this effect to catch
+those errors.

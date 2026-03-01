@@ -1,0 +1,48 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- data Resource m a where
+- Bracket :: m a -> (a -> m c) -> (a -> m b) -> Resource m b
+- BracketOnError :: m a -> (a -> m c) -> (a -> m b) -> Resource m b
+- bracket :: forall r a c b. Member Resource r => Sem r a -> (a -> Sem r c) -> (a -> Sem r b) -> Sem r b
+- bracket_ :: Member Resource r => Sem r a -> Sem r b -> Sem r c -> Sem r c
+- bracketOnError :: forall r a c b. Member Resource r => Sem r a -> (a -> Sem r c) -> (a -> Sem r b) -> Sem r b
+- finally :: Member Resource r => Sem r a -> Sem r b -> Sem r a
+- onException :: Member Resource r => Sem r a -> Sem r b -> Sem r a
+- runResource :: forall r a. Sem (Resource ': r) a -> Sem r a
+- resourceToIOFinal :: Member (Final IO) r => Sem (Resource ': r) a -> Sem r a
+Effect
+data Resource m a where Source #
+An effect capable of providing bracket
+semantics. Interpreters for this
+will successfully run the deallocation action even in the presence of other
+short-circuiting effects.
+| Bracket :: m a -> (a -> m c) -> (a -> m b) -> Resource m b | Allocate a resource, use it, and clean it up afterwards. |
+| BracketOnError :: m a -> (a -> m c) -> (a -> m b) -> Resource m b | Allocate a resource, use it, and clean it up afterwards if an error occurred. |
+Actions
+bracket :: forall r a c b. Member Resource r => Sem r a -> (a -> Sem r c) -> (a -> Sem r b) -> Sem r b Source #
+Allocate a resource, use it, and clean it up afterwards.
+bracketOnError :: forall r a c b. Member Resource r => Sem r a -> (a -> Sem r c) -> (a -> Sem r b) -> Sem r b Source #
+Allocate a resource, use it, and clean it up afterwards if an error occurred.
+| :: Member Resource r | |
+| => Sem r a | computation to run first |
+| -> Sem r b | computation to run afterward (even if an exception was raised) |
+| -> Sem r a |
+Like bracket
+, but for the simple case of one computation to run
+afterward.
+Since: 0.4.0.0
+| :: Member Resource r | |
+| => Sem r a | computation to run first |
+| -> Sem r b | computation to run afterward if an exception was raised |
+| -> Sem r a |
+Like bracketOnError
+, but for the simple case of one computation to run
+afterward.
+Since: 0.4.0.0
+Interpretations
+runResource :: forall r a. Sem (Resource ': r) a -> Sem r a Source #
+Run a Resource
+effect purely.
+Since: 1.0.0.0

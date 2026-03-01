@@ -1,0 +1,23 @@
+{-# OPTIONS_HADDOCK not-home #-}
+module Polysemy.Internal.Fixpoint where
+newtype Fixpoint m a where
+Fixpoint :: (a -> m a) -> Fixpoint m a
+bomb :: String -> a
+bomb :: forall a. String -> a
+bomb String
+str = String -> a
+forall a. HasCallStack => String -> a
+error (String -> a) -> String -> a
+forall a b. (a -> b) -> a -> b
+$
+String
+str String -> String -> String
+forall a. [a] -> [a] -> [a]
+++ String
+": Internal computation failed.\
+\ This is likely because you have tried to recursively use\
+\ the result of a failed computation in an action\
+\ whose effect may be observed even though the computation failed.\
+\ It's also possible that you're using an interpreter\
+\ that uses 'weave' improperly.\
+\ See documentation for more information."

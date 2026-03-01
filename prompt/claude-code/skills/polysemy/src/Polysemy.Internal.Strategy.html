@@ -1,0 +1,194 @@
+{-# OPTIONS_HADDOCK not-home #-}
+module Polysemy.Internal.Strategy where
+import Polysemy.Internal
+import Polysemy.Internal.Combinators
+import Polysemy.Internal.Tactics (Inspector(..))
+data Strategy m f n z a where
+GetInitialState :: Strategy m f n z (f ())
+HoistInterpretation :: (a -> n b) -> Strategy m f n z (f a -> m (f b))
+GetInspector :: Strategy m f n z (Inspector f)
+type Strategic m n a = forall f. Functor f => Sem (WithStrategy m f n) (m (f a))
+type WithStrategy m f n = '[Strategy m f n]
+runStrategy :: Functor f
+=> Sem '[Strategy m f n] a
+-> f ()
+-> (forall x. f (n x) -> m (f x))
+-> (forall x. f x -> Maybe x)
+-> a
+runStrategy :: forall (f :: * -> *) (m :: * -> *) (n :: * -> *) a.
+Functor f =>
+Sem '[Strategy m f n] a
+-> f ()
+-> (forall x. f (n x) -> m (f x))
+-> (forall x. f x -> Maybe x)
+-> a
+runStrategy Sem '[Strategy m f n] a
+sem = \f ()
+s forall x. f (n x) -> m (f x)
+wv forall x. f x -> Maybe x
+ins -> Sem '[] a -> a
+forall a. Sem '[] a -> a
+run (Sem '[] a -> a) -> Sem '[] a -> a
+forall a b. (a -> b) -> a -> b
+$ (forall (rInitial :: EffectRow) x.
+Strategy m f n (Sem rInitial) x -> Sem '[] x)
+-> Sem '[Strategy m f n] a -> Sem '[] a
+forall (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: EffectRow) x. e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret
+(\case
+Strategy m f n (Sem rInitial) x
+GetInitialState -> x -> Sem '[] x
+forall a. a -> Sem '[] a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure x
+f ()
+s
+HoistInterpretation a -> n b
+f -> x -> Sem '[] x
+forall a. a -> Sem '[] a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (x -> Sem '[] x) -> x -> Sem '[] x
+forall a b. (a -> b) -> a -> b
+$ \f a
+fa -> f (n b) -> m (f b)
+forall x. f (n x) -> m (f x)
+wv (a -> n b
+f (a -> n b) -> f a -> f (n b)
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> f a
+fa)
+Strategy m f n (Sem rInitial) x
+GetInspector -> x -> Sem '[] x
+forall a. a -> Sem '[] a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure ((forall x. f x -> Maybe x) -> Inspector f
+forall (f :: * -> *). (forall x. f x -> Maybe x) -> Inspector f
+Inspector f x -> Maybe x
+forall x. f x -> Maybe x
+ins)
+) Sem '[Strategy m f n] a
+sem
+{-# INLINE runStrategy #-}
+getInspectorS :: forall m f n. Sem (WithStrategy m f n) (Inspector f)
+getInspectorS :: forall (m :: * -> *) (f :: * -> *) (n :: * -> *).
+Sem (WithStrategy m f n) (Inspector f)
+getInspectorS = Strategy m f n (Sem (WithStrategy m f n)) (Inspector f)
+-> Sem (WithStrategy m f n) (Inspector f)
+forall (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Member e r =>
+e (Sem r) a -> Sem r a
+send (forall {k} (m :: * -> *) (f :: * -> *) (n :: * -> *) (z :: k).
+Strategy m f n z (Inspector f)
+forall (m :: * -> *) (f :: * -> *) (n :: * -> *) (z :: * -> *).
+Strategy m f n z (Inspector f)
+GetInspector @m @f @n)
+{-# INLINE getInspectorS #-}
+getInitialStateS :: forall m f n. Sem (WithStrategy m f n) (f ())
+getInitialStateS :: forall (m :: * -> *) (f :: * -> *) (n :: * -> *).
+Sem (WithStrategy m f n) (f ())
+getInitialStateS = Strategy m f n (Sem (WithStrategy m f n)) (f ())
+-> Sem (WithStrategy m f n) (f ())
+forall (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Member e r =>
+e (Sem r) a -> Sem r a
+send (forall {k} (m :: * -> *) (f :: * -> *) (n :: * -> *) (z :: k).
+Strategy m f n z (f ())
+forall (m :: * -> *) (f :: * -> *) (n :: * -> *) (z :: * -> *).
+Strategy m f n z (f ())
+GetInitialState @m @f @n)
+{-# INLINE getInitialStateS #-}
+pureS :: Applicative m => a -> Strategic m n a
+pureS :: forall (m :: * -> *) a (n :: * -> *).
+Applicative m =>
+a -> Strategic m n a
+pureS a
+a = f a -> m (f a)
+forall a. a -> m a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (f a -> m (f a)) -> (f () -> f a) -> f () -> m (f a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (a
+a a -> f () -> f a
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$) (f () -> m (f a))
+-> Sem (WithStrategy m f n) (f ())
+-> Sem (WithStrategy m f n) (m (f a))
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> Sem (WithStrategy m f n) (f ())
+forall (m :: * -> *) (f :: * -> *) (n :: * -> *).
+Sem (WithStrategy m f n) (f ())
+getInitialStateS
+{-# INLINE pureS #-}
+liftS :: Functor m => m a -> Strategic m n a
+liftS :: forall (m :: * -> *) a (n :: * -> *).
+Functor m =>
+m a -> Strategic m n a
+liftS m a
+m = do
+f ()
+s <- Sem (WithStrategy m f n) (f ())
+forall (m :: * -> *) (f :: * -> *) (n :: * -> *).
+Sem (WithStrategy m f n) (f ())
+getInitialStateS
+m (f a) -> Sem (WithStrategy m f n) (m (f a))
+forall a. a -> Sem (WithStrategy m f n) a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (m (f a) -> Sem (WithStrategy m f n) (m (f a)))
+-> m (f a) -> Sem (WithStrategy m f n) (m (f a))
+forall a b. (a -> b) -> a -> b
+$ (a -> f () -> f a
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s) (a -> f a) -> m a -> m (f a)
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> m a
+m
+{-# INLINE liftS #-}
+runS :: n a -> Sem (WithStrategy m f n) (m (f a))
+runS :: forall (n :: * -> *) a (m :: * -> *) (f :: * -> *).
+n a -> Sem (WithStrategy m f n) (m (f a))
+runS n a
+na = (() -> n a) -> Sem (WithStrategy m f n) (f () -> m (f a))
+forall a (n :: * -> *) b (m :: * -> *) (f :: * -> *).
+(a -> n b) -> Sem (WithStrategy m f n) (f a -> m (f b))
+bindS (n a -> () -> n a
+forall a b. a -> b -> a
+const n a
+na) Sem (WithStrategy m f n) (f () -> m (f a))
+-> Sem (WithStrategy m f n) (f ())
+-> Sem (WithStrategy m f n) (m (f a))
+forall a b.
+Sem (WithStrategy m f n) (a -> b)
+-> Sem (WithStrategy m f n) a -> Sem (WithStrategy m f n) b
+forall (f :: * -> *) a b. Applicative f => f (a -> b) -> f a -> f b
+<*> Sem (WithStrategy m f n) (f ())
+forall (m :: * -> *) (f :: * -> *) (n :: * -> *).
+Sem (WithStrategy m f n) (f ())
+getInitialStateS
+{-# INLINE runS #-}
+bindS :: (a -> n b) -> Sem (WithStrategy m f n) (f a -> m (f b))
+bindS :: forall a (n :: * -> *) b (m :: * -> *) (f :: * -> *).
+(a -> n b) -> Sem (WithStrategy m f n) (f a -> m (f b))
+bindS = Strategy m f n (Sem (WithStrategy m f n)) (f a -> m (f b))
+-> Sem (WithStrategy m f n) (f a -> m (f b))
+forall (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Member e r =>
+e (Sem r) a -> Sem r a
+send (Strategy m f n (Sem (WithStrategy m f n)) (f a -> m (f b))
+-> Sem (WithStrategy m f n) (f a -> m (f b)))
+-> ((a -> n b)
+-> Strategy m f n (Sem (WithStrategy m f n)) (f a -> m (f b)))
+-> (a -> n b)
+-> Sem (WithStrategy m f n) (f a -> m (f b))
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (a -> n b)
+-> Strategy m f n (Sem (WithStrategy m f n)) (f a -> m (f b))
+forall {k} a (n :: * -> *) b (m :: * -> *) (f :: * -> *) (z :: k).
+(a -> n b) -> Strategy m f n z (f a -> m (f b))
+HoistInterpretation
+{-# INLINE bindS #-}

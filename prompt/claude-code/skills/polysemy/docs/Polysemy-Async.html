@@ -1,0 +1,22 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- data Async m a where
+- async :: forall r a. Member Async r => Sem r a -> Sem r (Async (Maybe a))
+- await :: forall r a. Member Async r => Async a -> Sem r a
+- cancel :: forall r a. Member Async r => Async a -> Sem r ()
+- sequenceConcurrently :: forall t r a. (Traversable t, Member Async r) => t (Sem r a) -> Sem r (t (Maybe a))
+- asyncToIOFinal :: Member (Final IO) r => Sem (Async ': r) a -> Sem r a
+Effect
+Actions
+async :: forall r a. Member Async r => Sem r a -> Sem r (Async (Maybe a)) Source #
+Run the given action asynchronously and return a thread handle.
+await :: forall r a. Member Async r => Async a -> Sem r a Source #
+Wait for the thread referenced by the given handle to terminate.
+cancel :: forall r a. Member Async r => Async a -> Sem r () Source #
+Cancel the thread referenced by the given handle.
+Helpers
+sequenceConcurrently :: forall t r a. (Traversable t, Member Async r) => t (Sem r a) -> Sem r (t (Maybe a)) Source #
+Perform a sequence of effectful actions concurrently.
+Since: 1.2.2.0

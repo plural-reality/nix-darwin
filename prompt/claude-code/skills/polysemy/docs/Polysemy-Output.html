@@ -1,0 +1,121 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- data Output o m a where
+- output :: forall o r. Member (Output o) r => o -> Sem r ()
+- runOutputList :: forall o r a. Sem (Output o ': r) a -> Sem r ([o], a)
+- runLazyOutputList :: forall o r a. Sem (Output o ': r) a -> Sem r ([o], a)
+- runOutputMonoid :: forall o m r a. Monoid m => (o -> m) -> Sem (Output o ': r) a -> Sem r (m, a)
+- runLazyOutputMonoid :: forall o m r a. Monoid m => (o -> m) -> Sem (Output o ': r) a -> Sem r (m, a)
+- runOutputMonoidAssocR :: forall o m r a. Monoid m => (o -> m) -> Sem (Output o ': r) a -> Sem r (m, a)
+- runLazyOutputMonoidAssocR :: forall o m r a. Monoid m => (o -> m) -> Sem (Output o ': r) a -> Sem r (m, a)
+- runOutputMonoidIORef :: forall o m r a. (Monoid m, Member (Embed IO) r) => IORef m -> (o -> m) -> Sem (Output o ': r) a -> Sem r a
+- runOutputMonoidTVar :: forall o m r a. (Monoid m, Member (Embed IO) r) => TVar m -> (o -> m) -> Sem (Output o ': r) a -> Sem r a
+- outputToIOMonoid :: forall o m r a. (Monoid m, Member (Embed IO) r) => (o -> m) -> Sem (Output o ': r) a -> Sem r (m, a)
+- outputToIOMonoidAssocR :: forall o m r a. (Monoid m, Member (Embed IO) r) => (o -> m) -> Sem (Output o ': r) a -> Sem r (m, a)
+- ignoreOutput :: Sem (Output o ': r) a -> Sem r a
+- runOutputBatched :: forall o r a. Member (Output [o]) r => Int -> Sem (Output o ': r) a -> Sem r a
+- runOutputSem :: (o -> Sem r ()) -> Sem (Output o ': r) a -> Sem r a
+Effect
+data Output o m a where Source #
+An effect capable of sending messages. Useful for streaming output and for logging.
+Actions
+Interpretations
+runOutputList :: forall o r a. Sem (Output o ': r) a -> Sem r ([o], a) Source #
+Run an Output
+effect by transforming it into a list of its values.
+Since: 1.0.0.0
+runOutputMonoid :: forall o m r a. Monoid m => (o -> m) -> Sem (Output o ': r) a -> Sem r (m, a) Source #
+Run an Output
+effect by transforming it into a monoid.
+Since: 1.0.0.0
+runLazyOutputMonoid :: forall o m r a. Monoid m => (o -> m) -> Sem (Output o ': r) a -> Sem r (m, a) Source #
+runOutputMonoidAssocR :: forall o m r a. Monoid m => (o -> m) -> Sem (Output o ': r) a -> Sem r (m, a) Source #
+Like runOutputMonoid
+, but right-associates uses of <>
+.
+This asymptotically improves performance if the time complexity of <>
+for
+the Monoid
+depends only on the size of the first argument.
+You should always use this instead of runOutputMonoid
+if the monoid
+is a list, such as String
+.
+Since: 1.1.0.0
+runLazyOutputMonoidAssocR :: forall o m r a. Monoid m => (o -> m) -> Sem (Output o ': r) a -> Sem r (m, a) Source #
+Like runLazyOutputMonoid
+, but right-associates uses of <>
+.
+This asymptotically improves performance if the time complexity of <>
+for
+the Monoid
+depends only on the size of the first argument.
+You should always use this instead of runLazyOutputMonoid
+if the monoid
+is a list, such as String
+.
+Warning: This inherits the nasty space leak issue of
+WriterT
+! Don't use this if you don't have to.
+Since: 1.3.0.0
+runOutputMonoidIORef :: forall o m r a. (Monoid m, Member (Embed IO) r) => IORef m -> (o -> m) -> Sem (Output o ': r) a -> Sem r a Source #
+runOutputMonoidTVar :: forall o m r a. (Monoid m, Member (Embed IO) r) => TVar m -> (o -> m) -> Sem (Output o ': r) a -> Sem r a Source #
+outputToIOMonoid :: forall o m r a. (Monoid m, Member (Embed IO) r) => (o -> m) -> Sem (Output o ': r) a -> Sem r (m, a) Source #
+Run an Output
+effect in terms of atomic operations
+in IO
+.
+Internally, this simply creates a new IORef
+, passes it to
+runOutputMonoidIORef
+, and then returns the result and the final value
+of the IORef
+.
+Beware: As this uses an IORef
+internally,
+all other effects will have local
+state semantics in regards to Output
+effects
+interpreted this way.
+For example, throw
+and catch
+will
+never revert output
+s, even if runError
+is used
+after outputToIOMonoid
+.
+Since: 1.2.0.0
+outputToIOMonoidAssocR :: forall o m r a. (Monoid m, Member (Embed IO) r) => (o -> m) -> Sem (Output o ': r) a -> Sem r (m, a) Source #
+Like outputToIOMonoid
+, but right-associates uses of <>
+.
+This asymptotically improves performance if the time complexity of <>
+for
+the Monoid
+depends only on the size of the first argument.
+You should always use this instead of outputToIOMonoid
+if the monoid
+is a list, such as String
+.
+Beware: As this uses an IORef
+internally,
+all other effects will have local
+state semantics in regards to Output
+effects
+interpreted this way.
+For example, throw
+and catch
+will
+never revert output
+s, even if runError
+is used
+after outputToIOMonoidAssocR
+.
+Since: 1.2.0.0
+ignoreOutput :: Sem (Output o ': r) a -> Sem r a Source #
+Run an Output
+effect by ignoring it.
+Since: 1.0.0.0

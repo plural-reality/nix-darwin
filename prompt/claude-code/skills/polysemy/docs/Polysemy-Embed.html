@@ -1,0 +1,42 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Effect
+newtype Embed m (z :: Type -> Type) a where Source #
+An effect which allows a regular Monad
+m
+into the Sem
+ecosystem. Monadic actions in m
+can be lifted into Sem
+via
+embed
+.
+For example, you can use this effect to lift IO
+actions directly into
+Sem
+:
+embed
+(putStrLn "hello") ::Member
+(Embed
+IO) r =>Sem
+r ()
+That being said, you lose out on a significant amount of the benefits of
+Sem
+by using embed
+directly in application code; doing
+so will tie your application code directly to the underlying monad, and
+prevent you from interpreting it differently. For best results, only use
+Embed
+in your effect interpreters.
+Consider using trace
+and traceToIO
+as
+a substitute for using putStrLn
+directly.
+Since: 1.0.0.0
+Actions
+embed :: Member (Embed m) r => m a -> Sem r a Source #
+Embed a monadic action m
+in Sem
+.
+Since: 1.0.0.0

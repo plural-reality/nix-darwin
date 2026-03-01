@@ -1,0 +1,12 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Effect
+An effect corresponding to the Alternative
+typeclass.
+Interpretations
+runNonDet :: Alternative f => Sem (NonDet ': r) a -> Sem r (f a) Source #
+Run a NonDet
+effect in terms of some underlying Alternative
+f
+.

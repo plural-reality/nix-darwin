@@ -1,0 +1,7 @@
+.DS_Store
+/result
+secrets.yaml.plain
+*.pyc
+__pycache__
+.direnv
+*.log

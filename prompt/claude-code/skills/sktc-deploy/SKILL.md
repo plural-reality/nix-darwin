@@ -1,0 +1,1 @@
+@[sktc-deploy.md]

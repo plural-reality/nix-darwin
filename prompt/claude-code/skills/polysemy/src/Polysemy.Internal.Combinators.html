@@ -1,0 +1,1964 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# OPTIONS_HADDOCK not-home #-}
+module Polysemy.Internal.Combinators
+(
+interpret
+, intercept
+, reinterpret
+, reinterpret2
+, reinterpret3
+, rewrite
+, transform
+, interpretH
+, interceptH
+, reinterpretH
+, reinterpret2H
+, reinterpret3H
+, interpretWeaving
+, interceptUsing
+, interceptUsingH
+, stateful
+, lazilyStateful
+) where
+import Control.Arrow ((>>>))
+import Control.Monad
+import qualified Control.Monad.Trans.State.Lazy as LS
+import qualified Control.Monad.Trans.State.Strict as S
+import qualified Data.Tuple as S (swap)
+import Polysemy.Internal
+import Polysemy.Internal.CustomErrors
+import Polysemy.Internal.Tactics
+import Polysemy.Internal.Union
+swap :: (a, b) -> (b, a)
+swap :: forall a b. (a, b) -> (b, a)
+swap ~(a
+a, b
+b) = (b
+b, a
+a)
+firstOrder
+:: ((forall rInitial x. e (Sem rInitial) x ->
+Tactical e (Sem rInitial) r x) -> t)
+-> (forall rInitial x. e (Sem rInitial) x -> Sem r x)
+-> t
+firstOrder :: forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) t.
+((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> t)
+-> (forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Sem r x)
+-> t
+firstOrder (forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> t
+higher forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Sem r x
+f = (forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> t
+higher ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> t)
+-> (forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> t
+forall a b. (a -> b) -> a -> b
+$ \(e (Sem rInitial) x
+e :: e (Sem rInitial) x) ->
+Sem r x -> Sem (WithTactics e f (Sem rInitial) r) (f x)
+forall (m :: * -> *) (f :: * -> *) (r :: [(* -> *) -> * -> *])
+(e :: (* -> *) -> * -> *) a.
+Functor f =>
+Sem r a -> Sem (WithTactics e f m r) (f a)
+liftT (Sem r x -> Sem (WithTactics e f (Sem rInitial) r) (f x))
+-> Sem r x -> Sem (WithTactics e f (Sem rInitial) r) (f x)
+forall a b. (a -> b) -> a -> b
+$ e (Sem rInitial) x -> Sem r x
+forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Sem r x
+f e (Sem rInitial) x
+e
+{-# INLINE firstOrder #-}
+interpret
+:: FirstOrder e "interpret"
+=> (∀ rInitial x. e (Sem rInitial) x -> Sem r x)
+-> Sem (e ': r) a
+-> Sem r a
+interpret :: forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret = ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem (e : r) a -> Sem r a)
+-> (forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a
+-> Sem r a
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) t.
+((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> t)
+-> (forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Sem r x)
+-> t
+firstOrder (forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem (e : r) a -> Sem r a
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem (e : r) a -> Sem r a
+interpretH
+{-# INLINE interpret #-}
+interpretH
+:: (∀ rInitial x . e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem (e ': r) a
+-> Sem r a
+interpretH :: forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem (e : r) a -> Sem r a
+interpretH forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x
+f (Sem forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e : r) (Sem (e : r)) x -> m x) -> m a
+m) = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+forall (r :: [(* -> *) -> * -> *]) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a)
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union r (Sem r) x -> m x
+k -> (forall x. Union (e : r) (Sem (e : r)) x -> m x) -> m a
+forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e : r) (Sem (e : r)) x -> m x) -> m a
+m ((forall x. Union (e : r) (Sem (e : r)) x -> m x) -> m a)
+-> (forall x. Union (e : r) (Sem (e : r)) x -> m x) -> m a
+forall a b. (a -> b) -> a -> b
+$ \Union (e : r) (Sem (e : r)) x
+u ->
+case Union (e : r) (Sem (e : r)) x
+-> Either (Union r (Sem (e : r)) x) (Weaving e (Sem (e : r)) x)
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *])
+(m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp Union (e : r) (Sem (e : r)) x
+u of
+Left Union r (Sem (e : r)) x
+x -> Union r (Sem r) x -> m x
+forall x. Union r (Sem r) x -> m x
+k (Union r (Sem r) x -> m x) -> Union r (Sem r) x -> m x
+forall a b. (a -> b) -> a -> b
+$ (forall x. Sem (e : r) x -> Sem r x)
+-> Union r (Sem (e : r)) x -> Union r (Sem r) x
+forall (m :: * -> *) (n :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem (e : r) x -> Sem r x
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem (e : r) a -> Sem r a
+interpretH e (Sem rInitial) x
+-> Sem (Tactics f (Sem rInitial) (e : r) : r) (f x)
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x
+forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x
+f) Union r (Sem (e : r)) x
+x
+Right (Weaving e (Sem rInitial) a
+e f ()
+s forall x. f (Sem rInitial x) -> Sem (e : r) (f x)
+d f a -> x
+y forall x. f x -> Maybe x
+v) -> do
+(f a -> x) -> m (f a) -> m x
+forall a b. (a -> b) -> m a -> m b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap f a -> x
+y (m (f a) -> m x) -> m (f a) -> m x
+forall a b. (a -> b) -> a -> b
+$ (forall x. Union r (Sem r) x -> m x) -> Sem r (f a) -> m (f a)
+forall (m :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> Sem r a -> m a
+usingSem Union r (Sem r) x -> m x
+forall x. Union r (Sem r) x -> m x
+k (Sem r (f a) -> m (f a)) -> Sem r (f a) -> m (f a)
+forall a b. (a -> b) -> a -> b
+$ f ()
+-> (forall x. f (Sem rInitial x) -> Sem (e : r) (f x))
+-> (forall x. f x -> Maybe x)
+-> (forall x. f (Sem rInitial x) -> Sem r (f x))
+-> Sem (Tactics f (Sem rInitial) (e : r) : r) (f a)
+-> Sem r (f a)
+forall (f :: * -> *) (m :: * -> *) (r2 :: [(* -> *) -> * -> *])
+(r :: [(* -> *) -> * -> *]) a.
+Functor f =>
+f ()
+-> (forall x. f (m x) -> Sem r2 (f x))
+-> (forall x. f x -> Maybe x)
+-> (forall x. f (m x) -> Sem r (f x))
+-> Sem (Tactics f m r2 : r) a
+-> Sem r a
+runTactics f ()
+s f (Sem rInitial x) -> Sem (e : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (e : r) (f x)
+d f x -> Maybe x
+forall x. f x -> Maybe x
+v ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem (e : r) (f x) -> Sem r (f x)
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem (e : r) a -> Sem r a
+interpretH e (Sem rInitial) x
+-> Sem (Tactics f (Sem rInitial) (e : r) : r) (f x)
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x
+forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x
+f (Sem (e : r) (f x) -> Sem r (f x))
+-> (f (Sem rInitial x) -> Sem (e : r) (f x))
+-> f (Sem rInitial x)
+-> Sem r (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> Sem (e : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (e : r) (f x)
+d) (Sem (Tactics f (Sem rInitial) (e : r) : r) (f a) -> Sem r (f a))
+-> Sem (Tactics f (Sem rInitial) (e : r) : r) (f a) -> Sem r (f a)
+forall a b. (a -> b) -> a -> b
+$ e (Sem rInitial) a -> Tactical e (Sem rInitial) r a
+forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x
+f e (Sem rInitial) a
+e
+{-# INLINE interpretH #-}
+interpretWeaving ::
+∀ e r .
+(∀ x . Weaving e (Sem (e : r)) x -> Sem r x) ->
+InterpreterFor e r
+interpretWeaving :: forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]).
+(forall x. Weaving e (Sem (e : r)) x -> Sem r x)
+-> InterpreterFor e r
+interpretWeaving forall x. Weaving e (Sem (e : r)) x -> Sem r x
+h (Sem forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e : r) (Sem (e : r)) x -> m x) -> m a
+m) =
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+forall (r :: [(* -> *) -> * -> *]) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem \ forall x. Union r (Sem r) x -> m x
+k -> (forall x. Union (e : r) (Sem (e : r)) x -> m x) -> m a
+forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e : r) (Sem (e : r)) x -> m x) -> m a
+m ((forall x. Union (e : r) (Sem (e : r)) x -> m x) -> m a)
+-> (forall x. Union (e : r) (Sem (e : r)) x -> m x) -> m a
+forall a b. (a -> b) -> a -> b
+$ Union (e : r) (Sem (e : r)) x
+-> Either (Union r (Sem (e : r)) x) (Weaving e (Sem (e : r)) x)
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *])
+(m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp (Union (e : r) (Sem (e : r)) x
+-> Either (Union r (Sem (e : r)) x) (Weaving e (Sem (e : r)) x))
+-> (Either (Union r (Sem (e : r)) x) (Weaving e (Sem (e : r)) x)
+-> m x)
+-> Union (e : r) (Sem (e : r)) x
+-> m x
+forall {k} (cat :: k -> k -> *) (a :: k) (b :: k) (c :: k).
+Category cat =>
+cat a b -> cat b c -> cat a c
+>>> \case
+Right Weaving e (Sem (e : r)) x
+wav -> Sem r x
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m x
+forall (r :: [(* -> *) -> * -> *]) a.
+Sem r a
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a
+runSem (Weaving e (Sem (e : r)) x -> Sem r x
+forall x. Weaving e (Sem (e : r)) x -> Sem r x
+h Weaving e (Sem (e : r)) x
+wav) Union r (Sem r) x -> m x
+forall x. Union r (Sem r) x -> m x
+k
+Left Union r (Sem (e : r)) x
+g -> Union r (Sem r) x -> m x
+forall x. Union r (Sem r) x -> m x
+k (Union r (Sem r) x -> m x) -> Union r (Sem r) x -> m x
+forall a b. (a -> b) -> a -> b
+$ (forall x. Sem (e : r) x -> Sem r x)
+-> Union r (Sem (e : r)) x -> Union r (Sem r) x
+forall (m :: * -> *) (n :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist ((forall x. Weaving e (Sem (e : r)) x -> Sem r x)
+-> forall x. Sem (e : r) x -> Sem r x
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]).
+(forall x. Weaving e (Sem (e : r)) x -> Sem r x)
+-> InterpreterFor e r
+interpretWeaving Weaving e (Sem (e : r)) x -> Sem r x
+forall x. Weaving e (Sem (e : r)) x -> Sem r x
+h) Union r (Sem (e : r)) x
+g
+{-# inline interpretWeaving #-}
+interpretInStateT
+:: (∀ x m. e m x -> S.StateT s (Sem r) x)
+-> s
+-> Sem (e ': r) a
+-> Sem r (s, a)
+interpretInStateT :: forall (e :: (* -> *) -> * -> *) s (r :: [(* -> *) -> * -> *]) a.
+(forall x (m :: * -> *). e m x -> StateT s (Sem r) x)
+-> s -> Sem (e : r) a -> Sem r (s, a)
+interpretInStateT forall x (m :: * -> *). e m x -> StateT s (Sem r) x
+f s
+s (Sem forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e : r) (Sem (e : r)) x -> m x) -> m a
+m) = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m (s, a))
+-> Sem r (s, a)
+forall (r :: [(* -> *) -> * -> *]) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m (s, a))
+-> Sem r (s, a))
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m (s, a))
+-> Sem r (s, a)
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union r (Sem r) x -> m x
+k ->
+((a, s) -> (s, a)
+forall a b. (a, b) -> (b, a)
+S.swap ((a, s) -> (s, a)) -> m (a, s) -> m (s, a)
+forall (m :: * -> *) a b. Monad m => (a -> b) -> m a -> m b
+<$!>) (m (a, s) -> m (s, a)) -> m (a, s) -> m (s, a)
+forall a b. (a -> b) -> a -> b
+$ (StateT s m a -> s -> m (a, s)) -> s -> StateT s m a -> m (a, s)
+forall a b c. (a -> b -> c) -> b -> a -> c
+flip StateT s m a -> s -> m (a, s)
+forall s (m :: * -> *) a. StateT s m a -> s -> m (a, s)
+S.runStateT s
+s (StateT s m a -> m (a, s)) -> StateT s m a -> m (a, s)
+forall a b. (a -> b) -> a -> b
+$ (forall x. Union (e : r) (Sem (e : r)) x -> StateT s m x)
+-> StateT s m a
+forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e : r) (Sem (e : r)) x -> m x) -> m a
+m ((forall x. Union (e : r) (Sem (e : r)) x -> StateT s m x)
+-> StateT s m a)
+-> (forall x. Union (e : r) (Sem (e : r)) x -> StateT s m x)
+-> StateT s m a
+forall a b. (a -> b) -> a -> b
+$ \Union (e : r) (Sem (e : r)) x
+u ->
+case Union (e : r) (Sem (e : r)) x
+-> Either (Union r (Sem (e : r)) x) (Weaving e (Sem (e : r)) x)
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *])
+(m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp Union (e : r) (Sem (e : r)) x
+u of
+Left Union r (Sem (e : r)) x
+x -> (s -> m (x, s)) -> StateT s m x
+forall s (m :: * -> *) a. (s -> m (a, s)) -> StateT s m a
+S.StateT ((s -> m (x, s)) -> StateT s m x)
+-> (s -> m (x, s)) -> StateT s m x
+forall a b. (a -> b) -> a -> b
+$ \s
+s' ->
+((s, x) -> (x, s)
+forall a b. (a, b) -> (b, a)
+S.swap ((s, x) -> (x, s)) -> m (s, x) -> m (x, s)
+forall (m :: * -> *) a b. Monad m => (a -> b) -> m a -> m b
+<$!>)
+(m (s, x) -> m (x, s))
+-> (Union r (Sem (e : r)) x -> m (s, x))
+-> Union r (Sem (e : r)) x
+-> m (x, s)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Union r (Sem r) (s, x) -> m (s, x)
+forall x. Union r (Sem r) x -> m x
+k
+(Union r (Sem r) (s, x) -> m (s, x))
+-> (Union r (Sem (e : r)) x -> Union r (Sem r) (s, x))
+-> Union r (Sem (e : r)) x
+-> m (s, x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (s, ())
+-> (forall x. (s, Sem (e : r) x) -> Sem r (s, x))
+-> (forall x. (s, x) -> Maybe x)
+-> Union r (Sem (e : r)) x
+-> Union r (Sem r) (s, x)
+forall (s :: * -> *) (n :: * -> *) (m :: * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+(Functor s, Functor n) =>
+s ()
+-> (forall x. s (m x) -> n (s x))
+-> (forall x. s x -> Maybe x)
+-> Union r m a
+-> Union r n (s a)
+weave (s
+s', ())
+((s -> Sem (e : r) x -> Sem r (s, x))
+-> (s, Sem (e : r) x) -> Sem r (s, x)
+forall a b c. (a -> b -> c) -> (a, b) -> c
+uncurry ((s -> Sem (e : r) x -> Sem r (s, x))
+-> (s, Sem (e : r) x) -> Sem r (s, x))
+-> (s -> Sem (e : r) x -> Sem r (s, x))
+-> (s, Sem (e : r) x)
+-> Sem r (s, x)
+forall a b. (a -> b) -> a -> b
+$ (forall x (m :: * -> *). e m x -> StateT s (Sem r) x)
+-> s -> Sem (e : r) x -> Sem r (s, x)
+forall (e :: (* -> *) -> * -> *) s (r :: [(* -> *) -> * -> *]) a.
+(forall x (m :: * -> *). e m x -> StateT s (Sem r) x)
+-> s -> Sem (e : r) a -> Sem r (s, a)
+interpretInStateT e m x -> StateT s (Sem r) x
+forall x (m :: * -> *). e m x -> StateT s (Sem r) x
+f)
+(x -> Maybe x
+forall a. a -> Maybe a
+Just (x -> Maybe x) -> ((s, x) -> x) -> (s, x) -> Maybe x
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (s, x) -> x
+forall a b. (a, b) -> b
+snd)
+(Union r (Sem (e : r)) x -> m (x, s))
+-> Union r (Sem (e : r)) x -> m (x, s)
+forall a b. (a -> b) -> a -> b
+$ Union r (Sem (e : r)) x
+x
+Right (Weaving e (Sem rInitial) a
+e f ()
+z forall x. f (Sem rInitial x) -> Sem (e : r) (f x)
+_ f a -> x
+y forall x. f x -> Maybe x
+_) ->
+f a -> x
+y (f a -> x) -> (a -> f a) -> a -> x
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (a -> f () -> f a
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+z) (a -> x) -> StateT s m a -> StateT s m x
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> (Sem r (a, s) -> m (a, s)) -> StateT s (Sem r) a -> StateT s m a
+forall (m :: * -> *) a s (n :: * -> *) b.
+(m (a, s) -> n (b, s)) -> StateT s m a -> StateT s n b
+S.mapStateT ((forall x. Union r (Sem r) x -> m x) -> Sem r (a, s) -> m (a, s)
+forall (m :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> Sem r a -> m a
+usingSem Union r (Sem r) x -> m x
+forall x. Union r (Sem r) x -> m x
+k) (e (Sem rInitial) a -> StateT s (Sem r) a
+forall x (m :: * -> *). e m x -> StateT s (Sem r) x
+f e (Sem rInitial) a
+e)
+{-# INLINE interpretInStateT #-}
+interpretInLazyStateT
+:: (∀ x m. e m x -> LS.StateT s (Sem r) x)
+-> s
+-> Sem (e ': r) a
+-> Sem r (s, a)
+interpretInLazyStateT :: forall (e :: (* -> *) -> * -> *) s (r :: [(* -> *) -> * -> *]) a.
+(forall x (m :: * -> *). e m x -> StateT s (Sem r) x)
+-> s -> Sem (e : r) a -> Sem r (s, a)
+interpretInLazyStateT forall x (m :: * -> *). e m x -> StateT s (Sem r) x
+f s
+s (Sem forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e : r) (Sem (e : r)) x -> m x) -> m a
+m) = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m (s, a))
+-> Sem r (s, a)
+forall (r :: [(* -> *) -> * -> *]) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m (s, a))
+-> Sem r (s, a))
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m (s, a))
+-> Sem r (s, a)
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union r (Sem r) x -> m x
+k ->
+((a, s) -> (s, a)) -> m (a, s) -> m (s, a)
+forall a b. (a -> b) -> m a -> m b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap (a, s) -> (s, a)
+forall a b. (a, b) -> (b, a)
+swap (m (a, s) -> m (s, a)) -> m (a, s) -> m (s, a)
+forall a b. (a -> b) -> a -> b
+$ (StateT s m a -> s -> m (a, s)) -> s -> StateT s m a -> m (a, s)
+forall a b c. (a -> b -> c) -> b -> a -> c
+flip StateT s m a -> s -> m (a, s)
+forall s (m :: * -> *) a. StateT s m a -> s -> m (a, s)
+LS.runStateT s
+s (StateT s m a -> m (a, s)) -> StateT s m a -> m (a, s)
+forall a b. (a -> b) -> a -> b
+$ (forall x. Union (e : r) (Sem (e : r)) x -> StateT s m x)
+-> StateT s m a
+forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e : r) (Sem (e : r)) x -> m x) -> m a
+m ((forall x. Union (e : r) (Sem (e : r)) x -> StateT s m x)
+-> StateT s m a)
+-> (forall x. Union (e : r) (Sem (e : r)) x -> StateT s m x)
+-> StateT s m a
+forall a b. (a -> b) -> a -> b
+$ \Union (e : r) (Sem (e : r)) x
+u ->
+case Union (e : r) (Sem (e : r)) x
+-> Either (Union r (Sem (e : r)) x) (Weaving e (Sem (e : r)) x)
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *])
+(m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp Union (e : r) (Sem (e : r)) x
+u of
+Left Union r (Sem (e : r)) x
+x -> (s -> m (x, s)) -> StateT s m x
+forall s (m :: * -> *) a. (s -> m (a, s)) -> StateT s m a
+LS.StateT ((s -> m (x, s)) -> StateT s m x)
+-> (s -> m (x, s)) -> StateT s m x
+forall a b. (a -> b) -> a -> b
+$ \s
+s' ->
+Union r (Sem r) (x, s) -> m (x, s)
+forall x. Union r (Sem r) x -> m x
+k (Union r (Sem r) (x, s) -> m (x, s))
+-> (Union r (Sem (e : r)) x -> Union r (Sem r) (x, s))
+-> Union r (Sem (e : r)) x
+-> m (x, s)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. ((s, x) -> (x, s))
+-> Union r (Sem r) (s, x) -> Union r (Sem r) (x, s)
+forall a b. (a -> b) -> Union r (Sem r) a -> Union r (Sem r) b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap (s, x) -> (x, s)
+forall a b. (a, b) -> (b, a)
+swap
+(Union r (Sem r) (s, x) -> Union r (Sem r) (x, s))
+-> (Union r (Sem (e : r)) x -> Union r (Sem r) (s, x))
+-> Union r (Sem (e : r)) x
+-> Union r (Sem r) (x, s)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (s, ())
+-> (forall x. (s, Sem (e : r) x) -> Sem r (s, x))
+-> (forall x. (s, x) -> Maybe x)
+-> Union r (Sem (e : r)) x
+-> Union r (Sem r) (s, x)
+forall (s :: * -> *) (n :: * -> *) (m :: * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+(Functor s, Functor n) =>
+s ()
+-> (forall x. s (m x) -> n (s x))
+-> (forall x. s x -> Maybe x)
+-> Union r m a
+-> Union r n (s a)
+weave (s
+s', ())
+((s -> Sem (e : r) x -> Sem r (s, x))
+-> (s, Sem (e : r) x) -> Sem r (s, x)
+forall a b c. (a -> b -> c) -> (a, b) -> c
+uncurry ((s -> Sem (e : r) x -> Sem r (s, x))
+-> (s, Sem (e : r) x) -> Sem r (s, x))
+-> (s -> Sem (e : r) x -> Sem r (s, x))
+-> (s, Sem (e : r) x)
+-> Sem r (s, x)
+forall a b. (a -> b) -> a -> b
+$ (forall x (m :: * -> *). e m x -> StateT s (Sem r) x)
+-> s -> Sem (e : r) x -> Sem r (s, x)
+forall (e :: (* -> *) -> * -> *) s (r :: [(* -> *) -> * -> *]) a.
+(forall x (m :: * -> *). e m x -> StateT s (Sem r) x)
+-> s -> Sem (e : r) a -> Sem r (s, a)
+interpretInLazyStateT e m x -> StateT s (Sem r) x
+forall x (m :: * -> *). e m x -> StateT s (Sem r) x
+f)
+(x -> Maybe x
+forall a. a -> Maybe a
+Just (x -> Maybe x) -> ((s, x) -> x) -> (s, x) -> Maybe x
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (s, x) -> x
+forall a b. (a, b) -> b
+snd)
+(Union r (Sem (e : r)) x -> m (x, s))
+-> Union r (Sem (e : r)) x -> m (x, s)
+forall a b. (a -> b) -> a -> b
+$ Union r (Sem (e : r)) x
+x
+Right (Weaving e (Sem rInitial) a
+e f ()
+z forall x. f (Sem rInitial x) -> Sem (e : r) (f x)
+_ f a -> x
+y forall x. f x -> Maybe x
+_) ->
+f a -> x
+y (f a -> x) -> (a -> f a) -> a -> x
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (a -> f () -> f a
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+z) (a -> x) -> StateT s m a -> StateT s m x
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> (Sem r (a, s) -> m (a, s)) -> StateT s (Sem r) a -> StateT s m a
+forall (m :: * -> *) a s (n :: * -> *) b.
+(m (a, s) -> n (b, s)) -> StateT s m a -> StateT s n b
+LS.mapStateT ((forall x. Union r (Sem r) x -> m x) -> Sem r (a, s) -> m (a, s)
+forall (m :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> Sem r a -> m a
+usingSem Union r (Sem r) x -> m x
+forall x. Union r (Sem r) x -> m x
+k) (e (Sem rInitial) a -> StateT s (Sem r) a
+forall x (m :: * -> *). e m x -> StateT s (Sem r) x
+f e (Sem rInitial) a
+e)
+{-# INLINE interpretInLazyStateT #-}
+stateful
+:: (∀ x m. e m x -> s -> Sem r (s, x))
+-> s
+-> Sem (e ': r) a
+-> Sem r (s, a)
+stateful :: forall (e :: (* -> *) -> * -> *) s (r :: [(* -> *) -> * -> *]) a.
+(forall x (m :: * -> *). e m x -> s -> Sem r (s, x))
+-> s -> Sem (e : r) a -> Sem r (s, a)
+stateful forall x (m :: * -> *). e m x -> s -> Sem r (s, x)
+f = (forall x (m :: * -> *). e m x -> StateT s (Sem r) x)
+-> s -> Sem (e : r) a -> Sem r (s, a)
+forall (e :: (* -> *) -> * -> *) s (r :: [(* -> *) -> * -> *]) a.
+(forall x (m :: * -> *). e m x -> StateT s (Sem r) x)
+-> s -> Sem (e : r) a -> Sem r (s, a)
+interpretInStateT ((forall x (m :: * -> *). e m x -> StateT s (Sem r) x)
+-> s -> Sem (e : r) a -> Sem r (s, a))
+-> (forall x (m :: * -> *). e m x -> StateT s (Sem r) x)
+-> s
+-> Sem (e : r) a
+-> Sem r (s, a)
+forall a b. (a -> b) -> a -> b
+$ \e m x
+e -> (s -> Sem r (x, s)) -> StateT s (Sem r) x
+forall s (m :: * -> *) a. (s -> m (a, s)) -> StateT s m a
+S.StateT ((s -> Sem r (x, s)) -> StateT s (Sem r) x)
+-> (s -> Sem r (x, s)) -> StateT s (Sem r) x
+forall a b. (a -> b) -> a -> b
+$ ((s, x) -> (x, s)
+forall a b. (a, b) -> (b, a)
+S.swap ((s, x) -> (x, s)) -> Sem r (s, x) -> Sem r (x, s)
+forall (m :: * -> *) a b. Monad m => (a -> b) -> m a -> m b
+<$!>) (Sem r (s, x) -> Sem r (x, s))
+-> (s -> Sem r (s, x)) -> s -> Sem r (x, s)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. e m x -> s -> Sem r (s, x)
+forall x (m :: * -> *). e m x -> s -> Sem r (s, x)
+f e m x
+e
+{-# INLINE[3] stateful #-}
+lazilyStateful
+:: (∀ x m. e m x -> s -> Sem r (s, x))
+-> s
+-> Sem (e ': r) a
+-> Sem r (s, a)
+lazilyStateful :: forall (e :: (* -> *) -> * -> *) s (r :: [(* -> *) -> * -> *]) a.
+(forall x (m :: * -> *). e m x -> s -> Sem r (s, x))
+-> s -> Sem (e : r) a -> Sem r (s, a)
+lazilyStateful forall x (m :: * -> *). e m x -> s -> Sem r (s, x)
+f = (forall x (m :: * -> *). e m x -> StateT s (Sem r) x)
+-> s -> Sem (e : r) a -> Sem r (s, a)
+forall (e :: (* -> *) -> * -> *) s (r :: [(* -> *) -> * -> *]) a.
+(forall x (m :: * -> *). e m x -> StateT s (Sem r) x)
+-> s -> Sem (e : r) a -> Sem r (s, a)
+interpretInLazyStateT ((forall x (m :: * -> *). e m x -> StateT s (Sem r) x)
+-> s -> Sem (e : r) a -> Sem r (s, a))
+-> (forall x (m :: * -> *). e m x -> StateT s (Sem r) x)
+-> s
+-> Sem (e : r) a
+-> Sem r (s, a)
+forall a b. (a -> b) -> a -> b
+$ \e m x
+e -> (s -> Sem r (x, s)) -> StateT s (Sem r) x
+forall s (m :: * -> *) a. (s -> m (a, s)) -> StateT s m a
+LS.StateT ((s -> Sem r (x, s)) -> StateT s (Sem r) x)
+-> (s -> Sem r (x, s)) -> StateT s (Sem r) x
+forall a b. (a -> b) -> a -> b
+$ ((s, x) -> (x, s)) -> Sem r (s, x) -> Sem r (x, s)
+forall a b. (a -> b) -> Sem r a -> Sem r b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap (s, x) -> (x, s)
+forall a b. (a, b) -> (b, a)
+swap (Sem r (s, x) -> Sem r (x, s))
+-> (s -> Sem r (s, x)) -> s -> Sem r (x, s)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. e m x -> s -> Sem r (s, x)
+forall x (m :: * -> *). e m x -> s -> Sem r (s, x)
+f e m x
+e
+{-# INLINE[3] lazilyStateful #-}
+reinterpretH
+:: forall e1 e2 r a
+. (∀ rInitial x. e1 (Sem rInitial) x ->
+Tactical e1 (Sem rInitial) (e2 ': r) x)
+-> Sem (e1 ': r) a
+-> Sem (e2 ': r) a
+reinterpretH :: forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : r) a
+reinterpretH forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : r) x
+f Sem (e1 : r) a
+sem = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e2 : r) (Sem (e2 : r)) x -> m x) -> m a)
+-> Sem (e2 : r) a
+forall (r :: [(* -> *) -> * -> *]) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e2 : r) (Sem (e2 : r)) x -> m x) -> m a)
+-> Sem (e2 : r) a)
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e2 : r) (Sem (e2 : r)) x -> m x) -> m a)
+-> Sem (e2 : r) a
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union (e2 : r) (Sem (e2 : r)) x -> m x
+k -> Sem (e1 : r) a
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a
+forall (r :: [(* -> *) -> * -> *]) a.
+Sem r a
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a
+runSem Sem (e1 : r) a
+sem ((forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a)
+-> (forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a
+forall a b. (a -> b) -> a -> b
+$ \Union (e1 : r) (Sem (e1 : r)) x
+u ->
+case Union (e1 : r) (Sem (e1 : r)) x
+-> Either
+(Union (e2 : r) (Sem (e1 : r)) x) (Weaving e1 (Sem (e1 : r)) x)
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *])
+(m :: * -> *) a (f :: (* -> *) -> * -> *).
+Union (e : r) m a -> Either (Union (f : r) m a) (Weaving e m a)
+decompCoerce Union (e1 : r) (Sem (e1 : r)) x
+u of
+Left Union (e2 : r) (Sem (e1 : r)) x
+x -> Union (e2 : r) (Sem (e2 : r)) x -> m x
+forall x. Union (e2 : r) (Sem (e2 : r)) x -> m x
+k (Union (e2 : r) (Sem (e2 : r)) x -> m x)
+-> Union (e2 : r) (Sem (e2 : r)) x -> m x
+forall a b. (a -> b) -> a -> b
+$ (forall x. Sem (e1 : r) x -> Sem (e2 : r) x)
+-> Union (e2 : r) (Sem (e1 : r)) x
+-> Union (e2 : r) (Sem (e2 : r)) x
+forall (m :: * -> *) (n :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : r) x)
+-> Sem (e1 : r) x -> Sem (e2 : r) x
+forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : r) a
+reinterpretH e1 (Sem rInitial) x
+-> Sem (WithTactics e1 f (Sem rInitial) (e2 : r)) (f x)
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : r) x
+forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : r) x
+f) (Union (e2 : r) (Sem (e1 : r)) x
+-> Union (e2 : r) (Sem (e2 : r)) x)
+-> Union (e2 : r) (Sem (e1 : r)) x
+-> Union (e2 : r) (Sem (e2 : r)) x
+forall a b. (a -> b) -> a -> b
+$ Union (e2 : r) (Sem (e1 : r)) x
+x
+Right (Weaving e1 (Sem rInitial) a
+e f ()
+s forall x. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+d f a -> x
+y forall x. f x -> Maybe x
+v) -> do
+(f a -> x) -> m (f a) -> m x
+forall a b. (a -> b) -> m a -> m b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap f a -> x
+y (m (f a) -> m x) -> m (f a) -> m x
+forall a b. (a -> b) -> a -> b
+$ (forall x. Union (e2 : r) (Sem (e2 : r)) x -> m x)
+-> Sem (e2 : r) (f a) -> m (f a)
+forall (m :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> Sem r a -> m a
+usingSem Union (e2 : r) (Sem (e2 : r)) x -> m x
+forall x. Union (e2 : r) (Sem (e2 : r)) x -> m x
+k
+(Sem (e2 : r) (f a) -> m (f a)) -> Sem (e2 : r) (f a) -> m (f a)
+forall a b. (a -> b) -> a -> b
+$ f ()
+-> (forall x. f (Sem rInitial x) -> Sem (e1 : e2 : r) (f x))
+-> (forall x. f x -> Maybe x)
+-> (forall x. f (Sem rInitial x) -> Sem (e2 : r) (f x))
+-> Sem (Tactics f (Sem rInitial) (e1 : e2 : r) : e2 : r) (f a)
+-> Sem (e2 : r) (f a)
+forall (f :: * -> *) (m :: * -> *) (r2 :: [(* -> *) -> * -> *])
+(r :: [(* -> *) -> * -> *]) a.
+Functor f =>
+f ()
+-> (forall x. f (m x) -> Sem r2 (f x))
+-> (forall x. f x -> Maybe x)
+-> (forall x. f (m x) -> Sem r (f x))
+-> Sem (Tactics f m r2 : r) a
+-> Sem r a
+runTactics f ()
+s (Sem (e1 : r) (f x) -> Sem (e1 : e2 : r) (f x)
+forall (e2 :: (* -> *) -> * -> *) (e1 :: (* -> *) -> * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+Sem (e1 : r) a -> Sem (e1 : e2 : r) a
+raiseUnder (Sem (e1 : r) (f x) -> Sem (e1 : e2 : r) (f x))
+-> (f (Sem rInitial x) -> Sem (e1 : r) (f x))
+-> f (Sem rInitial x)
+-> Sem (e1 : e2 : r) (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+d) f x -> Maybe x
+forall x. f x -> Maybe x
+v ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : r) x)
+-> Sem (e1 : r) (f x) -> Sem (e2 : r) (f x)
+forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : r) a
+reinterpretH e1 (Sem rInitial) x
+-> Sem (Tactics f (Sem rInitial) (e1 : e2 : r) : e2 : r) (f x)
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : r) x
+forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : r) x
+f (Sem (e1 : r) (f x) -> Sem (e2 : r) (f x))
+-> (f (Sem rInitial x) -> Sem (e1 : r) (f x))
+-> f (Sem rInitial x)
+-> Sem (e2 : r) (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+d)
+(Sem (Tactics f (Sem rInitial) (e1 : e2 : r) : e2 : r) (f a)
+-> Sem (e2 : r) (f a))
+-> Sem (Tactics f (Sem rInitial) (e1 : e2 : r) : e2 : r) (f a)
+-> Sem (e2 : r) (f a)
+forall a b. (a -> b) -> a -> b
+$ e1 (Sem rInitial) a -> Tactical e1 (Sem rInitial) (e2 : r) a
+forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : r) x
+f e1 (Sem rInitial) a
+e
+{-# INLINE[3] reinterpretH #-}
+reinterpret
+:: forall e1 e2 r a
+. FirstOrder e1 "reinterpret"
+=> (∀ rInitial x. e1 (Sem rInitial) x -> Sem (e2 ': r) x)
+-> Sem (e1 ': r) a
+-> Sem (e2 ': r) a
+reinterpret :: forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+FirstOrder e1 "reinterpret" =>
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Sem (e2 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : r) a
+reinterpret = ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : r) a)
+-> (forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Sem (e2 : r) x)
+-> Sem (e1 : r) a
+-> Sem (e2 : r) a
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) t.
+((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> t)
+-> (forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Sem r x)
+-> t
+firstOrder (forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : r) a
+forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : r) a
+reinterpretH
+{-# INLINE[3] reinterpret #-}
+reinterpret2H
+:: forall e1 e2 e3 r a
+. (∀ rInitial x. e1 (Sem rInitial) x ->
+Tactical e1 (Sem rInitial) (e2 ': e3 ': r) x)
+-> Sem (e1 ': r) a
+-> Sem (e2 ': e3 ': r) a
+reinterpret2H :: forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(e3 :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : e3 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : e3 : r) a
+reinterpret2H forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : e3 : r) x
+f (Sem forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a
+m) = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e2 : e3 : r) (Sem (e2 : e3 : r)) x -> m x)
+-> m a)
+-> Sem (e2 : e3 : r) a
+forall (r :: [(* -> *) -> * -> *]) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e2 : e3 : r) (Sem (e2 : e3 : r)) x -> m x)
+-> m a)
+-> Sem (e2 : e3 : r) a)
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e2 : e3 : r) (Sem (e2 : e3 : r)) x -> m x)
+-> m a)
+-> Sem (e2 : e3 : r) a
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union (e2 : e3 : r) (Sem (e2 : e3 : r)) x -> m x
+k -> (forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a
+forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a
+m ((forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a)
+-> (forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a
+forall a b. (a -> b) -> a -> b
+$ \Union (e1 : r) (Sem (e1 : r)) x
+u ->
+case Union (e1 : r) (Sem (e1 : r)) x
+-> Either
+(Union (e3 : r) (Sem (e1 : r)) x) (Weaving e1 (Sem (e1 : r)) x)
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *])
+(m :: * -> *) a (f :: (* -> *) -> * -> *).
+Union (e : r) m a -> Either (Union (f : r) m a) (Weaving e m a)
+decompCoerce Union (e1 : r) (Sem (e1 : r)) x
+u of
+Left Union (e3 : r) (Sem (e1 : r)) x
+x -> Union (e2 : e3 : r) (Sem (e2 : e3 : r)) x -> m x
+forall x. Union (e2 : e3 : r) (Sem (e2 : e3 : r)) x -> m x
+k (Union (e2 : e3 : r) (Sem (e2 : e3 : r)) x -> m x)
+-> Union (e2 : e3 : r) (Sem (e2 : e3 : r)) x -> m x
+forall a b. (a -> b) -> a -> b
+$ Union (e3 : r) (Sem (e2 : e3 : r)) x
+-> Union (e2 : e3 : r) (Sem (e2 : e3 : r)) x
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *])
+(m :: * -> *) a.
+Union r m a -> Union (e : r) m a
+weaken (Union (e3 : r) (Sem (e2 : e3 : r)) x
+-> Union (e2 : e3 : r) (Sem (e2 : e3 : r)) x)
+-> Union (e3 : r) (Sem (e2 : e3 : r)) x
+-> Union (e2 : e3 : r) (Sem (e2 : e3 : r)) x
+forall a b. (a -> b) -> a -> b
+$ (forall x. Sem (e1 : r) x -> Sem (e2 : e3 : r) x)
+-> Union (e3 : r) (Sem (e1 : r)) x
+-> Union (e3 : r) (Sem (e2 : e3 : r)) x
+forall (m :: * -> *) (n :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : e3 : r) x)
+-> Sem (e1 : r) x -> Sem (e2 : e3 : r) x
+forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(e3 :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : e3 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : e3 : r) a
+reinterpret2H e1 (Sem rInitial) x
+-> Sem (WithTactics e1 f (Sem rInitial) (e2 : e3 : r)) (f x)
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : e3 : r) x
+forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : e3 : r) x
+f) (Union (e3 : r) (Sem (e1 : r)) x
+-> Union (e3 : r) (Sem (e2 : e3 : r)) x)
+-> Union (e3 : r) (Sem (e1 : r)) x
+-> Union (e3 : r) (Sem (e2 : e3 : r)) x
+forall a b. (a -> b) -> a -> b
+$ Union (e3 : r) (Sem (e1 : r)) x
+x
+Right (Weaving e1 (Sem rInitial) a
+e f ()
+s forall x. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+d f a -> x
+y forall x. f x -> Maybe x
+v) -> do
+(f a -> x) -> m (f a) -> m x
+forall a b. (a -> b) -> m a -> m b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap f a -> x
+y (m (f a) -> m x) -> m (f a) -> m x
+forall a b. (a -> b) -> a -> b
+$ (forall x. Union (e2 : e3 : r) (Sem (e2 : e3 : r)) x -> m x)
+-> Sem (e2 : e3 : r) (f a) -> m (f a)
+forall (m :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> Sem r a -> m a
+usingSem Union (e2 : e3 : r) (Sem (e2 : e3 : r)) x -> m x
+forall x. Union (e2 : e3 : r) (Sem (e2 : e3 : r)) x -> m x
+k
+(Sem (e2 : e3 : r) (f a) -> m (f a))
+-> Sem (e2 : e3 : r) (f a) -> m (f a)
+forall a b. (a -> b) -> a -> b
+$ f ()
+-> (forall x. f (Sem rInitial x) -> Sem (e1 : e2 : e3 : r) (f x))
+-> (forall x. f x -> Maybe x)
+-> (forall x. f (Sem rInitial x) -> Sem (e2 : e3 : r) (f x))
+-> Sem
+(Tactics f (Sem rInitial) (e1 : e2 : e3 : r) : e2 : e3 : r) (f a)
+-> Sem (e2 : e3 : r) (f a)
+forall (f :: * -> *) (m :: * -> *) (r2 :: [(* -> *) -> * -> *])
+(r :: [(* -> *) -> * -> *]) a.
+Functor f =>
+f ()
+-> (forall x. f (m x) -> Sem r2 (f x))
+-> (forall x. f x -> Maybe x)
+-> (forall x. f (m x) -> Sem r (f x))
+-> Sem (Tactics f m r2 : r) a
+-> Sem r a
+runTactics f ()
+s (Sem (e1 : r) (f x) -> Sem (e1 : e2 : e3 : r) (f x)
+forall (e2 :: (* -> *) -> * -> *) (e3 :: (* -> *) -> * -> *)
+(e1 :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+Sem (e1 : r) a -> Sem (e1 : e2 : e3 : r) a
+raiseUnder2 (Sem (e1 : r) (f x) -> Sem (e1 : e2 : e3 : r) (f x))
+-> (f (Sem rInitial x) -> Sem (e1 : r) (f x))
+-> f (Sem rInitial x)
+-> Sem (e1 : e2 : e3 : r) (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+d) f x -> Maybe x
+forall x. f x -> Maybe x
+v ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : e3 : r) x)
+-> Sem (e1 : r) (f x) -> Sem (e2 : e3 : r) (f x)
+forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(e3 :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : e3 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : e3 : r) a
+reinterpret2H e1 (Sem rInitial) x
+-> Sem
+(Tactics f (Sem rInitial) (e1 : e2 : e3 : r) : e2 : e3 : r) (f x)
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : e3 : r) x
+forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : e3 : r) x
+f (Sem (e1 : r) (f x) -> Sem (e2 : e3 : r) (f x))
+-> (f (Sem rInitial x) -> Sem (e1 : r) (f x))
+-> f (Sem rInitial x)
+-> Sem (e2 : e3 : r) (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+d)
+(Sem
+(Tactics f (Sem rInitial) (e1 : e2 : e3 : r) : e2 : e3 : r) (f a)
+-> Sem (e2 : e3 : r) (f a))
+-> Sem
+(Tactics f (Sem rInitial) (e1 : e2 : e3 : r) : e2 : e3 : r) (f a)
+-> Sem (e2 : e3 : r) (f a)
+forall a b. (a -> b) -> a -> b
+$ e1 (Sem rInitial) a -> Tactical e1 (Sem rInitial) (e2 : e3 : r) a
+forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : e3 : r) x
+f e1 (Sem rInitial) a
+e
+{-# INLINE[3] reinterpret2H #-}
+reinterpret2
+:: forall e1 e2 e3 r a
+. FirstOrder e1 "reinterpret2"
+=> (∀ rInitial x. e1 (Sem rInitial) x ->
+Sem (e2 ': e3 ': r) x)
+-> Sem (e1 ': r) a
+-> Sem (e2 ': e3 ': r) a
+reinterpret2 :: forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(e3 :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+FirstOrder e1 "reinterpret2" =>
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Sem (e2 : e3 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : e3 : r) a
+reinterpret2 = ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : e3 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : e3 : r) a)
+-> (forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Sem (e2 : e3 : r) x)
+-> Sem (e1 : r) a
+-> Sem (e2 : e3 : r) a
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) t.
+((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> t)
+-> (forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Sem r x)
+-> t
+firstOrder (forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : e3 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : e3 : r) a
+forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(e3 :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : e3 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : e3 : r) a
+reinterpret2H
+{-# INLINE[3] reinterpret2 #-}
+reinterpret3H
+:: forall e1 e2 e3 e4 r a
+. (∀ rInitial x. e1 (Sem rInitial) x ->
+Tactical e1 (Sem rInitial) (e2 ': e3 ': e4 ': r) x)
+-> Sem (e1 ': r) a
+-> Sem (e2 ': e3 ': e4 ': r) a
+reinterpret3H :: forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(e3 :: (* -> *) -> * -> *) (e4 :: (* -> *) -> * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x
+-> Tactical e1 (Sem rInitial) (e2 : e3 : e4 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : e3 : e4 : r) a
+reinterpret3H forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x
+-> Tactical e1 (Sem rInitial) (e2 : e3 : e4 : r) x
+f (Sem forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a
+m) = (forall (m :: * -> *).
+Monad m =>
+(forall x.
+Union (e2 : e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x -> m x)
+-> m a)
+-> Sem (e2 : e3 : e4 : r) a
+forall (r :: [(* -> *) -> * -> *]) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x.
+Union (e2 : e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x -> m x)
+-> m a)
+-> Sem (e2 : e3 : e4 : r) a)
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x.
+Union (e2 : e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x -> m x)
+-> m a)
+-> Sem (e2 : e3 : e4 : r) a
+forall a b. (a -> b) -> a -> b
+$ \forall x.
+Union (e2 : e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x -> m x
+k -> (forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a
+forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a
+m ((forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a)
+-> (forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a
+forall a b. (a -> b) -> a -> b
+$ \Union (e1 : r) (Sem (e1 : r)) x
+u ->
+case Union (e1 : r) (Sem (e1 : r)) x
+-> Either
+(Union (e4 : r) (Sem (e1 : r)) x) (Weaving e1 (Sem (e1 : r)) x)
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *])
+(m :: * -> *) a (f :: (* -> *) -> * -> *).
+Union (e : r) m a -> Either (Union (f : r) m a) (Weaving e m a)
+decompCoerce Union (e1 : r) (Sem (e1 : r)) x
+u of
+Left Union (e4 : r) (Sem (e1 : r)) x
+x -> Union (e2 : e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x -> m x
+forall x.
+Union (e2 : e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x -> m x
+k (Union (e2 : e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x -> m x)
+-> (Union (e4 : r) (Sem (e1 : r)) x
+-> Union (e2 : e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x)
+-> Union (e4 : r) (Sem (e1 : r)) x
+-> m x
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Union (e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x
+-> Union (e2 : e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *])
+(m :: * -> *) a.
+Union r m a -> Union (e : r) m a
+weaken (Union (e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x
+-> Union (e2 : e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x)
+-> (Union (e4 : r) (Sem (e1 : r)) x
+-> Union (e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x)
+-> Union (e4 : r) (Sem (e1 : r)) x
+-> Union (e2 : e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Union (e4 : r) (Sem (e2 : e3 : e4 : r)) x
+-> Union (e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *])
+(m :: * -> *) a.
+Union r m a -> Union (e : r) m a
+weaken (Union (e4 : r) (Sem (e2 : e3 : e4 : r)) x
+-> Union (e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x)
+-> (Union (e4 : r) (Sem (e1 : r)) x
+-> Union (e4 : r) (Sem (e2 : e3 : e4 : r)) x)
+-> Union (e4 : r) (Sem (e1 : r)) x
+-> Union (e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (forall x. Sem (e1 : r) x -> Sem (e2 : e3 : e4 : r) x)
+-> Union (e4 : r) (Sem (e1 : r)) x
+-> Union (e4 : r) (Sem (e2 : e3 : e4 : r)) x
+forall (m :: * -> *) (n :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x
+-> Tactical e1 (Sem rInitial) (e2 : e3 : e4 : r) x)
+-> Sem (e1 : r) x -> Sem (e2 : e3 : e4 : r) x
+forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(e3 :: (* -> *) -> * -> *) (e4 :: (* -> *) -> * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x
+-> Tactical e1 (Sem rInitial) (e2 : e3 : e4 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : e3 : e4 : r) a
+reinterpret3H e1 (Sem rInitial) x
+-> Sem (WithTactics e1 f (Sem rInitial) (e2 : e3 : e4 : r)) (f x)
+e1 (Sem rInitial) x
+-> Tactical e1 (Sem rInitial) (e2 : e3 : e4 : r) x
+forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x
+-> Tactical e1 (Sem rInitial) (e2 : e3 : e4 : r) x
+f) (Union (e4 : r) (Sem (e1 : r)) x -> m x)
+-> Union (e4 : r) (Sem (e1 : r)) x -> m x
+forall a b. (a -> b) -> a -> b
+$ Union (e4 : r) (Sem (e1 : r)) x
+x
+Right (Weaving e1 (Sem rInitial) a
+e f ()
+s forall x. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+d f a -> x
+y forall x. f x -> Maybe x
+v) ->
+(f a -> x) -> m (f a) -> m x
+forall a b. (a -> b) -> m a -> m b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap f a -> x
+y (m (f a) -> m x) -> m (f a) -> m x
+forall a b. (a -> b) -> a -> b
+$ (forall x.
+Union (e2 : e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x -> m x)
+-> Sem (e2 : e3 : e4 : r) (f a) -> m (f a)
+forall (m :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> Sem r a -> m a
+usingSem Union (e2 : e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x -> m x
+forall x.
+Union (e2 : e3 : e4 : r) (Sem (e2 : e3 : e4 : r)) x -> m x
+k
+(Sem (e2 : e3 : e4 : r) (f a) -> m (f a))
+-> Sem (e2 : e3 : e4 : r) (f a) -> m (f a)
+forall a b. (a -> b) -> a -> b
+$ f ()
+-> (forall x.
+f (Sem rInitial x) -> Sem (e1 : e2 : e3 : e4 : r) (f x))
+-> (forall x. f x -> Maybe x)
+-> (forall x. f (Sem rInitial x) -> Sem (e2 : e3 : e4 : r) (f x))
+-> Sem
+(Tactics f (Sem rInitial) (e1 : e2 : e3 : e4 : r)
+: e2 : e3 : e4 : r)
+(f a)
+-> Sem (e2 : e3 : e4 : r) (f a)
+forall (f :: * -> *) (m :: * -> *) (r2 :: [(* -> *) -> * -> *])
+(r :: [(* -> *) -> * -> *]) a.
+Functor f =>
+f ()
+-> (forall x. f (m x) -> Sem r2 (f x))
+-> (forall x. f x -> Maybe x)
+-> (forall x. f (m x) -> Sem r (f x))
+-> Sem (Tactics f m r2 : r) a
+-> Sem r a
+runTactics f ()
+s (Sem (e1 : r) (f x) -> Sem (e1 : e2 : e3 : e4 : r) (f x)
+forall (e2 :: (* -> *) -> * -> *) (e3 :: (* -> *) -> * -> *)
+(e4 :: (* -> *) -> * -> *) (e1 :: (* -> *) -> * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+Sem (e1 : r) a -> Sem (e1 : e2 : e3 : e4 : r) a
+raiseUnder3 (Sem (e1 : r) (f x) -> Sem (e1 : e2 : e3 : e4 : r) (f x))
+-> (f (Sem rInitial x) -> Sem (e1 : r) (f x))
+-> f (Sem rInitial x)
+-> Sem (e1 : e2 : e3 : e4 : r) (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+d) f x -> Maybe x
+forall x. f x -> Maybe x
+v ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x
+-> Tactical e1 (Sem rInitial) (e2 : e3 : e4 : r) x)
+-> Sem (e1 : r) (f x) -> Sem (e2 : e3 : e4 : r) (f x)
+forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(e3 :: (* -> *) -> * -> *) (e4 :: (* -> *) -> * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x
+-> Tactical e1 (Sem rInitial) (e2 : e3 : e4 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : e3 : e4 : r) a
+reinterpret3H e1 (Sem rInitial) x
+-> Sem
+(Tactics f (Sem rInitial) (e1 : e2 : e3 : e4 : r)
+: e2 : e3 : e4 : r)
+(f x)
+e1 (Sem rInitial) x
+-> Tactical e1 (Sem rInitial) (e2 : e3 : e4 : r) x
+forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x
+-> Tactical e1 (Sem rInitial) (e2 : e3 : e4 : r) x
+f (Sem (e1 : r) (f x) -> Sem (e2 : e3 : e4 : r) (f x))
+-> (f (Sem rInitial x) -> Sem (e1 : r) (f x))
+-> f (Sem rInitial x)
+-> Sem (e2 : e3 : e4 : r) (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+d)
+(Sem
+(Tactics f (Sem rInitial) (e1 : e2 : e3 : e4 : r)
+: e2 : e3 : e4 : r)
+(f a)
+-> Sem (e2 : e3 : e4 : r) (f a))
+-> Sem
+(Tactics f (Sem rInitial) (e1 : e2 : e3 : e4 : r)
+: e2 : e3 : e4 : r)
+(f a)
+-> Sem (e2 : e3 : e4 : r) (f a)
+forall a b. (a -> b) -> a -> b
+$ e1 (Sem rInitial) a
+-> Tactical e1 (Sem rInitial) (e2 : e3 : e4 : r) a
+forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x
+-> Tactical e1 (Sem rInitial) (e2 : e3 : e4 : r) x
+f e1 (Sem rInitial) a
+e
+{-# INLINE[3] reinterpret3H #-}
+reinterpret3
+:: forall e1 e2 e3 e4 r a
+. FirstOrder e1 "reinterpret3"
+=> (∀ rInitial x. e1 (Sem rInitial) x -> Sem (e2 ': e3 ': e4 ': r) x)
+-> Sem (e1 ': r) a
+-> Sem (e2 ': e3 ': e4 ': r) a
+reinterpret3 :: forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(e3 :: (* -> *) -> * -> *) (e4 :: (* -> *) -> * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+FirstOrder e1 "reinterpret3" =>
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Sem (e2 : e3 : e4 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : e3 : e4 : r) a
+reinterpret3 = ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x
+-> Tactical e1 (Sem rInitial) (e2 : e3 : e4 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : e3 : e4 : r) a)
+-> (forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Sem (e2 : e3 : e4 : r) x)
+-> Sem (e1 : r) a
+-> Sem (e2 : e3 : e4 : r) a
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) t.
+((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> t)
+-> (forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Sem r x)
+-> t
+firstOrder (forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x
+-> Tactical e1 (Sem rInitial) (e2 : e3 : e4 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : e3 : e4 : r) a
+forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(e3 :: (* -> *) -> * -> *) (e4 :: (* -> *) -> * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x
+-> Tactical e1 (Sem rInitial) (e2 : e3 : e4 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : e3 : e4 : r) a
+reinterpret3H
+{-# INLINE[3] reinterpret3 #-}
+intercept
+:: ( Member e r
+, FirstOrder e "intercept"
+)
+=> (∀ x rInitial. e (Sem rInitial) x -> Sem r x)
+-> Sem r a
+-> Sem r a
+intercept :: forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+(Member e r, FirstOrder e "intercept") =>
+(forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Sem r x)
+-> Sem r a -> Sem r a
+intercept forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Sem r x
+f = (forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem r a -> Sem r a
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+Member e r =>
+(forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem r a -> Sem r a
+interceptH ((forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem r a -> Sem r a)
+-> (forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem r a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \(e (Sem rInitial) x
+e :: e (Sem rInitial) x) ->
+forall (m :: * -> *) (f :: * -> *) (r :: [(* -> *) -> * -> *])
+(e :: (* -> *) -> * -> *) a.
+Functor f =>
+Sem r a -> Sem (WithTactics e f m r) (f a)
+liftT @(Sem rInitial) (Sem r x -> Sem (WithTactics e f (Sem rInitial) r) (f x))
+-> Sem r x -> Sem (WithTactics e f (Sem rInitial) r) (f x)
+forall a b. (a -> b) -> a -> b
+$ e (Sem rInitial) x -> Sem r x
+forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Sem r x
+f e (Sem rInitial) x
+e
+{-# INLINE intercept #-}
+interceptH
+:: Member e r
+=> (∀ x rInitial. e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem r a
+-> Sem r a
+interceptH :: forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+Member e r =>
+(forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem r a -> Sem r a
+interceptH = ElemOf e r
+-> (forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem r a
+-> Sem r a
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+ElemOf e r
+-> (forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem r a
+-> Sem r a
+interceptUsingH ElemOf e r
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]).
+Member e r =>
+ElemOf e r
+membership
+{-# INLINE interceptH #-}
+interceptUsing
+:: FirstOrder e "interceptUsing"
+=> ElemOf e r
+-> (∀ x rInitial. e (Sem rInitial) x -> Sem r x)
+-> Sem r a
+-> Sem r a
+interceptUsing :: forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+FirstOrder e "interceptUsing" =>
+ElemOf e r
+-> (forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Sem r x)
+-> Sem r a
+-> Sem r a
+interceptUsing ElemOf e r
+pr forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Sem r x
+f = ElemOf e r
+-> (forall {x} {rInitial :: [(* -> *) -> * -> *]}.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem r a
+-> Sem r a
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+ElemOf e r
+-> (forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem r a
+-> Sem r a
+interceptUsingH ElemOf e r
+pr ((forall {x} {rInitial :: [(* -> *) -> * -> *]}.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem r a -> Sem r a)
+-> (forall {x} {rInitial :: [(* -> *) -> * -> *]}.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem r a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \(e (Sem rInitial) x
+e :: e (Sem rInitial) x) ->
+forall (m :: * -> *) (f :: * -> *) (r :: [(* -> *) -> * -> *])
+(e :: (* -> *) -> * -> *) a.
+Functor f =>
+Sem r a -> Sem (WithTactics e f m r) (f a)
+liftT @(Sem rInitial) (Sem r x -> Sem (WithTactics e f (Sem rInitial) r) (f x))
+-> Sem r x -> Sem (WithTactics e f (Sem rInitial) r) (f x)
+forall a b. (a -> b) -> a -> b
+$ e (Sem rInitial) x -> Sem r x
+forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Sem r x
+f e (Sem rInitial) x
+e
+{-# INLINE interceptUsing #-}
+interceptUsingH
+:: ElemOf e r
+-> (∀ x rInitial. e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem r a
+-> Sem r a
+interceptUsingH :: forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+ElemOf e r
+-> (forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem r a
+-> Sem r a
+interceptUsingH ElemOf e r
+pr forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x
+f (Sem forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a
+m) = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+forall (r :: [(* -> *) -> * -> *]) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a)
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union r (Sem r) x -> m x
+k -> (forall x. Union r (Sem r) x -> m x) -> m a
+forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a
+m ((forall x. Union r (Sem r) x -> m x) -> m a)
+-> (forall x. Union r (Sem r) x -> m x) -> m a
+forall a b. (a -> b) -> a -> b
+$ \Union r (Sem r) x
+u ->
+case ElemOf e r -> Union r (Sem r) x -> Maybe (Weaving e (Sem r) x)
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *])
+(m :: * -> *) a.
+ElemOf e r -> Union r m a -> Maybe (Weaving e m a)
+prjUsing ElemOf e r
+pr Union r (Sem r) x
+u of
+Just (Weaving e (Sem rInitial) a
+e f ()
+s forall x. f (Sem rInitial x) -> Sem r (f x)
+d f a -> x
+y forall x. f x -> Maybe x
+v) ->
+(f a -> x) -> m (f a) -> m x
+forall a b. (a -> b) -> m a -> m b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap f a -> x
+y (m (f a) -> m x) -> m (f a) -> m x
+forall a b. (a -> b) -> a -> b
+$ (forall x. Union r (Sem r) x -> m x) -> Sem r (f a) -> m (f a)
+forall (m :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> Sem r a -> m a
+usingSem Union r (Sem r) x -> m x
+forall x. Union r (Sem r) x -> m x
+k
+(Sem r (f a) -> m (f a)) -> Sem r (f a) -> m (f a)
+forall a b. (a -> b) -> a -> b
+$ f ()
+-> (forall x. f (Sem rInitial x) -> Sem (e : r) (f x))
+-> (forall x. f x -> Maybe x)
+-> (forall x. f (Sem rInitial x) -> Sem r (f x))
+-> Sem (Tactics f (Sem rInitial) (e : r) : r) (f a)
+-> Sem r (f a)
+forall (f :: * -> *) (m :: * -> *) (r2 :: [(* -> *) -> * -> *])
+(r :: [(* -> *) -> * -> *]) a.
+Functor f =>
+f ()
+-> (forall x. f (m x) -> Sem r2 (f x))
+-> (forall x. f x -> Maybe x)
+-> (forall x. f (m x) -> Sem r (f x))
+-> Sem (Tactics f m r2 : r) a
+-> Sem r a
+runTactics f ()
+s (Sem r (f x) -> Sem (e : r) (f x)
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+Sem r a -> Sem (e : r) a
+raise (Sem r (f x) -> Sem (e : r) (f x))
+-> (f (Sem rInitial x) -> Sem r (f x))
+-> f (Sem rInitial x)
+-> Sem (e : r) (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> Sem r (f x)
+forall x. f (Sem rInitial x) -> Sem r (f x)
+d) f x -> Maybe x
+forall x. f x -> Maybe x
+v (ElemOf e r
+-> (forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem r (f x)
+-> Sem r (f x)
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+ElemOf e r
+-> (forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem r a
+-> Sem r a
+interceptUsingH ElemOf e r
+pr e (Sem rInitial) x
+-> Sem (Tactics f (Sem rInitial) (e : r) : r) (f x)
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x
+forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x
+f (Sem r (f x) -> Sem r (f x))
+-> (f (Sem rInitial x) -> Sem r (f x))
+-> f (Sem rInitial x)
+-> Sem r (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> Sem r (f x)
+forall x. f (Sem rInitial x) -> Sem r (f x)
+d)
+(Sem (Tactics f (Sem rInitial) (e : r) : r) (f a) -> Sem r (f a))
+-> Sem (Tactics f (Sem rInitial) (e : r) : r) (f a) -> Sem r (f a)
+forall a b. (a -> b) -> a -> b
+$ e (Sem rInitial) a -> Tactical e (Sem rInitial) r a
+forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x
+f e (Sem rInitial) a
+e
+Maybe (Weaving e (Sem r) x)
+Nothing -> Union r (Sem r) x -> m x
+forall x. Union r (Sem r) x -> m x
+k (Union r (Sem r) x -> m x) -> Union r (Sem r) x -> m x
+forall a b. (a -> b) -> a -> b
+$ (forall x. Sem r x -> Sem r x)
+-> Union r (Sem r) x -> Union r (Sem r) x
+forall (m :: * -> *) (n :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist (ElemOf e r
+-> (forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem r x
+-> Sem r x
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+ElemOf e r
+-> (forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem r a
+-> Sem r a
+interceptUsingH ElemOf e r
+pr e (Sem rInitial) x -> Sem (WithTactics e f (Sem rInitial) r) (f x)
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x
+forall x (rInitial :: [(* -> *) -> * -> *]).
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x
+f) Union r (Sem r) x
+u
+{-# INLINE interceptUsingH #-}
+rewrite
+:: forall e1 e2 r a
+. (forall rInitial x. e1 (Sem rInitial) x -> e2 (Sem rInitial) x)
+-> Sem (e1 ': r) a
+-> Sem (e2 ': r) a
+rewrite :: forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> e2 (Sem rInitial) x)
+-> Sem (e1 : r) a -> Sem (e2 : r) a
+rewrite forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> e2 (Sem rInitial) x
+f (Sem forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a
+m) = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e2 : r) (Sem (e2 : r)) x -> m x) -> m a)
+-> Sem (e2 : r) a
+forall (r :: [(* -> *) -> * -> *]) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e2 : r) (Sem (e2 : r)) x -> m x) -> m a)
+-> Sem (e2 : r) a)
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e2 : r) (Sem (e2 : r)) x -> m x) -> m a)
+-> Sem (e2 : r) a
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union (e2 : r) (Sem (e2 : r)) x -> m x
+k -> (forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a
+forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a
+m ((forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a)
+-> (forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a
+forall a b. (a -> b) -> a -> b
+$ \Union (e1 : r) (Sem (e1 : r)) x
+u ->
+Union (e2 : r) (Sem (e2 : r)) x -> m x
+forall x. Union (e2 : r) (Sem (e2 : r)) x -> m x
+k (Union (e2 : r) (Sem (e2 : r)) x -> m x)
+-> Union (e2 : r) (Sem (e2 : r)) x -> m x
+forall a b. (a -> b) -> a -> b
+$ (forall x. Sem (e1 : r) x -> Sem (e2 : r) x)
+-> Union (e2 : r) (Sem (e1 : r)) x
+-> Union (e2 : r) (Sem (e2 : r)) x
+forall (m :: * -> *) (n :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> e2 (Sem rInitial) x)
+-> Sem (e1 : r) x -> Sem (e2 : r) x
+forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> e2 (Sem rInitial) x)
+-> Sem (e1 : r) a -> Sem (e2 : r) a
+rewrite e1 (Sem rInitial) x -> e2 (Sem rInitial) x
+forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> e2 (Sem rInitial) x
+f) (Union (e2 : r) (Sem (e1 : r)) x
+-> Union (e2 : r) (Sem (e2 : r)) x)
+-> Union (e2 : r) (Sem (e1 : r)) x
+-> Union (e2 : r) (Sem (e2 : r)) x
+forall a b. (a -> b) -> a -> b
+$ case Union (e1 : r) (Sem (e1 : r)) x
+-> Either
+(Union (e2 : r) (Sem (e1 : r)) x) (Weaving e1 (Sem (e1 : r)) x)
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *])
+(m :: * -> *) a (f :: (* -> *) -> * -> *).
+Union (e : r) m a -> Either (Union (f : r) m a) (Weaving e m a)
+decompCoerce Union (e1 : r) (Sem (e1 : r)) x
+u of
+Left Union (e2 : r) (Sem (e1 : r)) x
+x -> Union (e2 : r) (Sem (e1 : r)) x
+x
+Right (Weaving e1 (Sem rInitial) a
+e f ()
+s forall x. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+d f a -> x
+n forall x. f x -> Maybe x
+y) ->
+ElemOf e2 (e2 : r)
+-> Weaving e2 (Sem (e1 : r)) x -> Union (e2 : r) (Sem (e1 : r)) x
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *])
+(mWoven :: * -> *) a.
+ElemOf e r -> Weaving e mWoven a -> Union r mWoven a
+Union ElemOf e2 (e2 : r)
+forall {k} (r :: [k]) (e :: k) (r' :: [k]).
+(r ~ (e : r')) =>
+ElemOf e r
+Here (Weaving e2 (Sem (e1 : r)) x -> Union (e2 : r) (Sem (e1 : r)) x)
+-> Weaving e2 (Sem (e1 : r)) x -> Union (e2 : r) (Sem (e1 : r)) x
+forall a b. (a -> b) -> a -> b
+$ e2 (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> Sem (e1 : r) (f x))
+-> (f a -> x)
+-> (forall x. f x -> Maybe x)
+-> Weaving e2 (Sem (e1 : r)) x
+forall (f :: * -> *) (e :: (* -> *) -> * -> *)
+(rInitial :: [(* -> *) -> * -> *]) a resultType (mAfter :: * -> *).
+Functor f =>
+e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> mAfter (f x))
+-> (f a -> resultType)
+-> (forall x. f x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving (e1 (Sem rInitial) a -> e2 (Sem rInitial) a
+forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> e2 (Sem rInitial) x
+f e1 (Sem rInitial) a
+e) f ()
+s f (Sem rInitial x) -> Sem (e1 : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+d f a -> x
+n f x -> Maybe x
+forall x. f x -> Maybe x
+y
+transform
+:: forall e1 e2 r a
+. Member e2 r
+=> (forall rInitial x. e1 (Sem rInitial) x -> e2 (Sem rInitial) x)
+-> Sem (e1 ': r) a
+-> Sem r a
+transform :: forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+Member e2 r =>
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> e2 (Sem rInitial) x)
+-> Sem (e1 : r) a -> Sem r a
+transform forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> e2 (Sem rInitial) x
+f (Sem forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a
+m) = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+forall (r :: [(* -> *) -> * -> *]) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a)
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union r (Sem r) x -> m x
+k -> (forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a
+forall (m :: * -> *).
+Monad m =>
+(forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a
+m ((forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a)
+-> (forall x. Union (e1 : r) (Sem (e1 : r)) x -> m x) -> m a
+forall a b. (a -> b) -> a -> b
+$ \Union (e1 : r) (Sem (e1 : r)) x
+u ->
+Union r (Sem r) x -> m x
+forall x. Union r (Sem r) x -> m x
+k (Union r (Sem r) x -> m x) -> Union r (Sem r) x -> m x
+forall a b. (a -> b) -> a -> b
+$ (forall x. Sem (e1 : r) x -> Sem r x)
+-> Union r (Sem (e1 : r)) x -> Union r (Sem r) x
+forall (m :: * -> *) (n :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> e2 (Sem rInitial) x)
+-> Sem (e1 : r) x -> Sem r x
+forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+Member e2 r =>
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> e2 (Sem rInitial) x)
+-> Sem (e1 : r) a -> Sem r a
+transform e1 (Sem rInitial) x -> e2 (Sem rInitial) x
+forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> e2 (Sem rInitial) x
+f) (Union r (Sem (e1 : r)) x -> Union r (Sem r) x)
+-> Union r (Sem (e1 : r)) x -> Union r (Sem r) x
+forall a b. (a -> b) -> a -> b
+$ case Union (e1 : r) (Sem (e1 : r)) x
+-> Either (Union r (Sem (e1 : r)) x) (Weaving e1 (Sem (e1 : r)) x)
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *])
+(m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp Union (e1 : r) (Sem (e1 : r)) x
+u of
+Left Union r (Sem (e1 : r)) x
+g -> Union r (Sem (e1 : r)) x
+g
+Right (Weaving e1 (Sem rInitial) a
+e f ()
+s forall x. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+wv f a -> x
+ex forall x. f x -> Maybe x
+ins) ->
+Weaving e2 (Sem (e1 : r)) x -> Union r (Sem (e1 : r)) x
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *])
+(m :: * -> *) a.
+Member e r =>
+Weaving e m a -> Union r m a
+injWeaving (e2 (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> Sem (e1 : r) (f x))
+-> (f a -> x)
+-> (forall x. f x -> Maybe x)
+-> Weaving e2 (Sem (e1 : r)) x
+forall (f :: * -> *) (e :: (* -> *) -> * -> *)
+(rInitial :: [(* -> *) -> * -> *]) a resultType (mAfter :: * -> *).
+Functor f =>
+e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> mAfter (f x))
+-> (f a -> resultType)
+-> (forall x. f x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving (e1 (Sem rInitial) a -> e2 (Sem rInitial) a
+forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> e2 (Sem rInitial) x
+f e1 (Sem rInitial) a
+e) f ()
+s f (Sem rInitial x) -> Sem (e1 : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (e1 : r) (f x)
+wv f a -> x
+ex f x -> Maybe x
+forall x. f x -> Maybe x
+ins)

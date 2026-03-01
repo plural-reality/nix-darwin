@@ -1,0 +1,58 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- data Error e m a where
+- throw :: forall e r a. Member (Error e) r => e -> Sem r a
+- catch :: forall e r a. Member (Error e) r => Sem r a -> (e -> Sem r a) -> Sem r a
+- fromEither :: Member (Error e) r => Either e a -> Sem r a
+- fromEitherM :: forall e m r a. (Member (Error e) r, Member (Embed m) r) => m (Either e a) -> Sem r a
+- fromException :: forall e r a. (Exception e, Member (Error e) r, Member (Embed IO) r) => IO a -> Sem r a
+- fromExceptionVia :: (Exception exc, Member (Error err) r, Member (Embed IO) r) => (exc -> err) -> IO a -> Sem r a
+- fromExceptionSem :: forall e r a. (Exception e, Member (Error e) r, Member (Final IO) r) => Sem r a -> Sem r a
+- fromExceptionSemVia :: (Exception exc, Member (Error err) r, Member (Final IO) r) => (exc -> err) -> Sem r a -> Sem r a
+- note :: Member (Error e) r => e -> Maybe a -> Sem r a
+- try :: Member (Error e) r => Sem r a -> Sem r (Either e a)
+- tryJust :: Member (Error e) r => (e -> Maybe b) -> Sem r a -> Sem r (Either b a)
+- catchJust :: Member (Error e) r => (e -> Maybe b) -> Sem r a -> (b -> Sem r a) -> Sem r a
+- runError :: Sem (Error e ': r) a -> Sem r (Either e a)
+- mapError :: forall e1 e2 r a. Member (Error e2) r => (e1 -> e2) -> Sem (Error e1 ': r) a -> Sem r a
+- errorToIOFinal :: forall e r a. Member (Final IO) r => Sem (Error e ': r) a -> Sem r (Either e a)
+Effect
+data Error e m a where Source #
+This effect abstracts the throwing and catching of errors, leaving
+it up to the interpreter whether to use exceptions or monad transformers
+like ExceptT
+to perform the short-circuiting mechanism.
+| Throw :: e -> Error e m a | Short-circuit the current program using the given error value. |
+| Catch :: forall e m a. m a -> (e -> m a) -> Error e m a | Recover from an error that might have been thrown in the higher-order action given by the first argument by passing the error to the handler given by the second argument. |
+Actions
+throw :: forall e r a. Member (Error e) r => e -> Sem r a Source #
+Short-circuit the current program using the given error value.
+catch :: forall e r a. Member (Error e) r => Sem r a -> (e -> Sem r a) -> Sem r a Source #
+Recover from an error that might have been thrown in the higher-order action given by the first argument by passing the error to the handler given by the second argument.
+fromEitherM :: forall e m r a. (Member (Error e) r, Member (Embed m) r) => m (Either e a) -> Sem r a Source #
+A combinator doing embed
+and fromEither
+at the same time. Useful for
+interoperating with IO
+.
+Since: 0.5.1.0
+fromException :: forall e r a. (Exception e, Member (Error e) r, Member (Embed IO) r) => IO a -> Sem r a Source #
+fromExceptionVia :: (Exception exc, Member (Error err) r, Member (Embed IO) r) => (exc -> err) -> IO a -> Sem r a Source #
+Like fromException
+, but with the ability to transform the exception
+before turning it into an Error
+.
+fromExceptionSem :: forall e r a. (Exception e, Member (Error e) r, Member (Final IO) r) => Sem r a -> Sem r a Source #
+fromExceptionSemVia :: (Exception exc, Member (Error err) r, Member (Final IO) r) => (exc -> err) -> Sem r a -> Sem r a Source #
+Like fromExceptionSem
+, but with the ability to transform the exception
+before turning it into an Error
+.
+Interpretations
+mapError :: forall e1 e2 r a. Member (Error e2) r => (e1 -> e2) -> Sem (Error e1 ': r) a -> Sem r a Source #
+Transform one Error
+into another. This function can be used to aggregate
+multiple errors into a single type.
+Since: 1.0.0.0

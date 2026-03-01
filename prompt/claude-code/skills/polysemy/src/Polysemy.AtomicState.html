@@ -1,0 +1,451 @@
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE TemplateHaskell #-}
+module Polysemy.AtomicState
+(
+AtomicState (..)
+, atomicState
+, atomicState'
+, atomicGet
+, atomicGets
+, atomicPut
+, atomicModify
+, atomicModify'
+, runAtomicStateIORef
+, runAtomicStateTVar
+, atomicStateToIO
+, atomicStateToState
+, runAtomicStateViaState
+, evalAtomicStateViaState
+, execAtomicStateViaState
+) where
+import Control.Concurrent.STM
+import Polysemy
+import Polysemy.State
+import Data.IORef
+data AtomicState s m a where
+AtomicState :: (s -> (s, a)) -> AtomicState s m a
+AtomicGet :: AtomicState s m s
+makeSem_ ''AtomicState
+atomicState :: forall s a r
+. Member (AtomicState s) r
+=> (s -> (s, a))
+-> Sem r a
+atomicGet :: forall s r
+. Member (AtomicState s) r
+=> Sem r s
+atomicGets :: forall s s' r
+. Member (AtomicState s) r
+=> (s -> s')
+-> Sem r s'
+atomicGets :: forall s s' (r :: EffectRow).
+Member (AtomicState s) r =>
+(s -> s') -> Sem r s'
+atomicGets = ((s -> s') -> Sem r s -> Sem r s'
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> Sem r s
+forall s (r :: EffectRow). Member (AtomicState s) r => Sem r s
+atomicGet)
+{-# INLINE atomicGets #-}
+atomicState' :: forall s a r
+. Member (AtomicState s) r
+=> (s -> (s, a))
+-> Sem r a
+atomicState' :: forall s a (r :: EffectRow).
+Member (AtomicState s) r =>
+(s -> (s, a)) -> Sem r a
+atomicState' s -> (s, a)
+f = do
+!a
+a <- (s -> (s, a)) -> Sem r a
+forall s a (r :: EffectRow).
+Member (AtomicState s) r =>
+(s -> (s, a)) -> Sem r a
+atomicState ((s -> (s, a)) -> Sem r a) -> (s -> (s, a)) -> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \s
+s ->
+case s -> (s, a)
+f s
+s of
+v :: (s, a)
+v@(!s
+_, a
+_) -> (s, a)
+v
+a -> Sem r a
+forall a. a -> Sem r a
+forall (m :: * -> *) a. Monad m => a -> m a
+return a
+a
+{-# INLINE atomicState' #-}
+atomicPut :: Member (AtomicState s) r
+=> s
+-> Sem r ()
+atomicPut :: forall s (r :: EffectRow).
+Member (AtomicState s) r =>
+s -> Sem r ()
+atomicPut s
+s = do
+!()
+_ <- (s -> (s, ())) -> Sem r ()
+forall s a (r :: EffectRow).
+Member (AtomicState s) r =>
+(s -> (s, a)) -> Sem r a
+atomicState ((s -> (s, ())) -> Sem r ()) -> (s -> (s, ())) -> Sem r ()
+forall a b. (a -> b) -> a -> b
+$ \s
+_ -> (s
+s, ())
+() -> Sem r ()
+forall a. a -> Sem r a
+forall (m :: * -> *) a. Monad m => a -> m a
+return ()
+{-# INLINE atomicPut #-}
+atomicModify :: Member (AtomicState s) r
+=> (s -> s)
+-> Sem r ()
+atomicModify :: forall s (r :: EffectRow).
+Member (AtomicState s) r =>
+(s -> s) -> Sem r ()
+atomicModify s -> s
+f = (s -> (s, ())) -> Sem r ()
+forall s a (r :: EffectRow).
+Member (AtomicState s) r =>
+(s -> (s, a)) -> Sem r a
+atomicState ((s -> (s, ())) -> Sem r ()) -> (s -> (s, ())) -> Sem r ()
+forall a b. (a -> b) -> a -> b
+$ \s
+s -> (s -> s
+f s
+s, ())
+{-# INLINE atomicModify #-}
+atomicModify' :: Member (AtomicState s) r
+=> (s -> s)
+-> Sem r ()
+atomicModify' :: forall s (r :: EffectRow).
+Member (AtomicState s) r =>
+(s -> s) -> Sem r ()
+atomicModify' s -> s
+f = do
+!()
+_ <- (s -> (s, ())) -> Sem r ()
+forall s a (r :: EffectRow).
+Member (AtomicState s) r =>
+(s -> (s, a)) -> Sem r a
+atomicState ((s -> (s, ())) -> Sem r ()) -> (s -> (s, ())) -> Sem r ()
+forall a b. (a -> b) -> a -> b
+$ \s
+s -> let !s' :: s
+s' = s -> s
+f s
+s in (s
+s', ())
+() -> Sem r ()
+forall a. a -> Sem r a
+forall (m :: * -> *) a. Monad m => a -> m a
+return ()
+{-# INLINE atomicModify' #-}
+runAtomicStateIORef :: forall s r a
+. Member (Embed IO) r
+=> IORef s
+-> Sem (AtomicState s ': r) a
+-> Sem r a
+runAtomicStateIORef :: forall s (r :: EffectRow) a.
+Member (Embed IO) r =>
+IORef s -> Sem (AtomicState s : r) a -> Sem r a
+runAtomicStateIORef IORef s
+ref = (forall (rInitial :: EffectRow) x.
+AtomicState s (Sem rInitial) x -> Sem r x)
+-> Sem (AtomicState s : r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: EffectRow) x. e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: EffectRow) x.
+AtomicState s (Sem rInitial) x -> Sem r x)
+-> Sem (AtomicState s : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+AtomicState s (Sem rInitial) x -> Sem r x)
+-> Sem (AtomicState s : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+AtomicState s -> (s, x)
+f -> IO x -> Sem r x
+forall (m :: * -> *) (r :: EffectRow) a.
+Member (Embed m) r =>
+m a -> Sem r a
+embed (IO x -> Sem r x) -> IO x -> Sem r x
+forall a b. (a -> b) -> a -> b
+$ IORef s -> (s -> (s, x)) -> IO x
+forall a b. IORef a -> (a -> (a, b)) -> IO b
+atomicModifyIORef IORef s
+ref s -> (s, x)
+f
+AtomicState s (Sem rInitial) x
+AtomicGet -> IO x -> Sem r x
+forall (m :: * -> *) (r :: EffectRow) a.
+Member (Embed m) r =>
+m a -> Sem r a
+embed (IO x -> Sem r x) -> IO x -> Sem r x
+forall a b. (a -> b) -> a -> b
+$ IORef x -> IO x
+forall a. IORef a -> IO a
+readIORef IORef s
+IORef x
+ref
+{-# INLINE runAtomicStateIORef #-}
+runAtomicStateTVar :: Member (Embed IO) r
+=> TVar s
+-> Sem (AtomicState s ': r) a
+-> Sem r a
+runAtomicStateTVar :: forall (r :: EffectRow) s a.
+Member (Embed IO) r =>
+TVar s -> Sem (AtomicState s : r) a -> Sem r a
+runAtomicStateTVar TVar s
+tvar = (forall (rInitial :: EffectRow) x.
+AtomicState s (Sem rInitial) x -> Sem r x)
+-> Sem (AtomicState s : r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: EffectRow) x. e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: EffectRow) x.
+AtomicState s (Sem rInitial) x -> Sem r x)
+-> Sem (AtomicState s : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+AtomicState s (Sem rInitial) x -> Sem r x)
+-> Sem (AtomicState s : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+AtomicState s -> (s, x)
+f -> IO x -> Sem r x
+forall (m :: * -> *) (r :: EffectRow) a.
+Member (Embed m) r =>
+m a -> Sem r a
+embed (IO x -> Sem r x) -> IO x -> Sem r x
+forall a b. (a -> b) -> a -> b
+$ STM x -> IO x
+forall a. STM a -> IO a
+atomically (STM x -> IO x) -> STM x -> IO x
+forall a b. (a -> b) -> a -> b
+$ do
+(s
+s', x
+a) <- s -> (s, x)
+f (s -> (s, x)) -> STM s -> STM (s, x)
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> TVar s -> STM s
+forall a. TVar a -> STM a
+readTVar TVar s
+tvar
+TVar s -> s -> STM ()
+forall a. TVar a -> a -> STM ()
+writeTVar TVar s
+tvar s
+s'
+x -> STM x
+forall a. a -> STM a
+forall (m :: * -> *) a. Monad m => a -> m a
+return x
+a
+AtomicState s (Sem rInitial) x
+AtomicGet -> IO x -> Sem r x
+forall (m :: * -> *) (r :: EffectRow) a.
+Member (Embed m) r =>
+m a -> Sem r a
+embed (IO x -> Sem r x) -> IO x -> Sem r x
+forall a b. (a -> b) -> a -> b
+$ TVar x -> IO x
+forall a. TVar a -> IO a
+readTVarIO TVar s
+TVar x
+tvar
+{-# INLINE runAtomicStateTVar #-}
+atomicStateToIO :: forall s r a
+. Member (Embed IO) r
+=> s
+-> Sem (AtomicState s ': r) a
+-> Sem r (s, a)
+atomicStateToIO :: forall s (r :: EffectRow) a.
+Member (Embed IO) r =>
+s -> Sem (AtomicState s : r) a -> Sem r (s, a)
+atomicStateToIO s
+s Sem (AtomicState s : r) a
+sem = do
+IORef s
+ref <- IO (IORef s) -> Sem r (IORef s)
+forall (m :: * -> *) (r :: EffectRow) a.
+Member (Embed m) r =>
+m a -> Sem r a
+embed (IO (IORef s) -> Sem r (IORef s))
+-> IO (IORef s) -> Sem r (IORef s)
+forall a b. (a -> b) -> a -> b
+$ s -> IO (IORef s)
+forall a. a -> IO (IORef a)
+newIORef s
+s
+a
+res <- IORef s -> Sem (AtomicState s : r) a -> Sem r a
+forall s (r :: EffectRow) a.
+Member (Embed IO) r =>
+IORef s -> Sem (AtomicState s : r) a -> Sem r a
+runAtomicStateIORef IORef s
+ref Sem (AtomicState s : r) a
+sem
+s
+end <- IO s -> Sem r s
+forall (m :: * -> *) (r :: EffectRow) a.
+Member (Embed m) r =>
+m a -> Sem r a
+embed (IO s -> Sem r s) -> IO s -> Sem r s
+forall a b. (a -> b) -> a -> b
+$ IORef s -> IO s
+forall a. IORef a -> IO a
+readIORef IORef s
+ref
+(s, a) -> Sem r (s, a)
+forall a. a -> Sem r a
+forall (m :: * -> *) a. Monad m => a -> m a
+return (s
+end, a
+res)
+{-# INLINE atomicStateToIO #-}
+atomicStateToState :: Member (State s) r
+=> Sem (AtomicState s ': r) a
+-> Sem r a
+atomicStateToState :: forall s (r :: EffectRow) a.
+Member (State s) r =>
+Sem (AtomicState s : r) a -> Sem r a
+atomicStateToState = (forall (rInitial :: EffectRow) x.
+AtomicState s (Sem rInitial) x -> Sem r x)
+-> Sem (AtomicState s : r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: EffectRow) x. e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: EffectRow) x.
+AtomicState s (Sem rInitial) x -> Sem r x)
+-> Sem (AtomicState s : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+AtomicState s (Sem rInitial) x -> Sem r x)
+-> Sem (AtomicState s : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+AtomicState s -> (s, x)
+f -> do
+(s
+s', x
+a) <- s -> (s, x)
+f (s -> (s, x)) -> Sem r s -> Sem r (s, x)
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> Sem r s
+forall s (r :: EffectRow). Member (State s) r => Sem r s
+get
+s -> Sem r ()
+forall s (r :: EffectRow). Member (State s) r => s -> Sem r ()
+put s
+s'
+x -> Sem r x
+forall a. a -> Sem r a
+forall (m :: * -> *) a. Monad m => a -> m a
+return x
+a
+AtomicState s (Sem rInitial) x
+AtomicGet -> Sem r x
+forall s (r :: EffectRow). Member (State s) r => Sem r s
+get
+{-# INLINE atomicStateToState #-}
+runAtomicStateViaState :: s
+-> Sem (AtomicState s ': r) a
+-> Sem r (s, a)
+runAtomicStateViaState :: forall s (r :: EffectRow) a.
+s -> Sem (AtomicState s : r) a -> Sem r (s, a)
+runAtomicStateViaState s
+s =
+s -> Sem (State s : r) a -> Sem r (s, a)
+forall s (r :: EffectRow) a.
+s -> Sem (State s : r) a -> Sem r (s, a)
+runState s
+s (Sem (State s : r) a -> Sem r (s, a))
+-> (Sem (AtomicState s : r) a -> Sem (State s : r) a)
+-> Sem (AtomicState s : r) a
+-> Sem r (s, a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Sem (AtomicState s : State s : r) a -> Sem (State s : r) a
+forall s (r :: EffectRow) a.
+Member (State s) r =>
+Sem (AtomicState s : r) a -> Sem r a
+atomicStateToState (Sem (AtomicState s : State s : r) a -> Sem (State s : r) a)
+-> (Sem (AtomicState s : r) a
+-> Sem (AtomicState s : State s : r) a)
+-> Sem (AtomicState s : r) a
+-> Sem (State s : r) a
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Sem (AtomicState s : r) a -> Sem (AtomicState s : State s : r) a
+forall (e2 :: Effect) (e1 :: Effect) (r :: EffectRow) a.
+Sem (e1 : r) a -> Sem (e1 : e2 : r) a
+raiseUnder
+{-# INLINE runAtomicStateViaState #-}
+evalAtomicStateViaState :: s
+-> Sem (AtomicState s ': r) a
+-> Sem r a
+evalAtomicStateViaState :: forall s (r :: EffectRow) a.
+s -> Sem (AtomicState s : r) a -> Sem r a
+evalAtomicStateViaState s
+s =
+s -> Sem (State s : r) a -> Sem r a
+forall s (r :: EffectRow) a. s -> Sem (State s : r) a -> Sem r a
+evalState s
+s (Sem (State s : r) a -> Sem r a)
+-> (Sem (AtomicState s : r) a -> Sem (State s : r) a)
+-> Sem (AtomicState s : r) a
+-> Sem r a
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Sem (AtomicState s : State s : r) a -> Sem (State s : r) a
+forall s (r :: EffectRow) a.
+Member (State s) r =>
+Sem (AtomicState s : r) a -> Sem r a
+atomicStateToState (Sem (AtomicState s : State s : r) a -> Sem (State s : r) a)
+-> (Sem (AtomicState s : r) a
+-> Sem (AtomicState s : State s : r) a)
+-> Sem (AtomicState s : r) a
+-> Sem (State s : r) a
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Sem (AtomicState s : r) a -> Sem (AtomicState s : State s : r) a
+forall (e2 :: Effect) (e1 :: Effect) (r :: EffectRow) a.
+Sem (e1 : r) a -> Sem (e1 : e2 : r) a
+raiseUnder
+{-# INLINE evalAtomicStateViaState #-}
+execAtomicStateViaState :: s
+-> Sem (AtomicState s ': r) a
+-> Sem r s
+execAtomicStateViaState :: forall s (r :: EffectRow) a.
+s -> Sem (AtomicState s : r) a -> Sem r s
+execAtomicStateViaState s
+s =
+s -> Sem (State s : r) a -> Sem r s
+forall s (r :: EffectRow) a. s -> Sem (State s : r) a -> Sem r s
+execState s
+s (Sem (State s : r) a -> Sem r s)
+-> (Sem (AtomicState s : r) a -> Sem (State s : r) a)
+-> Sem (AtomicState s : r) a
+-> Sem r s
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Sem (AtomicState s : State s : r) a -> Sem (State s : r) a
+forall s (r :: EffectRow) a.
+Member (State s) r =>
+Sem (AtomicState s : r) a -> Sem r a
+atomicStateToState (Sem (AtomicState s : State s : r) a -> Sem (State s : r) a)
+-> (Sem (AtomicState s : r) a
+-> Sem (AtomicState s : State s : r) a)
+-> Sem (AtomicState s : r) a
+-> Sem (State s : r) a
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Sem (AtomicState s : r) a -> Sem (AtomicState s : State s : r) a
+forall (e2 :: Effect) (e1 :: Effect) (r :: EffectRow) a.
+Sem (e1 : r) a -> Sem (e1 : e2 : r) a
+raiseUnder
+{-# INLINE execAtomicStateViaState #-}

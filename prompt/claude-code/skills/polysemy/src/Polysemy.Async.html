@@ -1,0 +1,125 @@
+{-# LANGUAGE TemplateHaskell #-}
+module Polysemy.Async
+(
+Async (..)
+, async
+, await
+, cancel
+, sequenceConcurrently
+, asyncToIOFinal
+) where
+import qualified Control.Concurrent.Async as A
+import Polysemy
+import Polysemy.Final
+data Async m a where
+Async :: m a -> Async m (A.Async (Maybe a))
+Await :: A.Async a -> Async m a
+Cancel :: A.Async a -> Async m ()
+makeSem ''Async
+sequenceConcurrently :: forall t r a. (Traversable t, Member Async r) =>
+t (Sem r a) -> Sem r (t (Maybe a))
+sequenceConcurrently :: forall (t :: * -> *) (r :: EffectRow) a.
+(Traversable t, Member Async r) =>
+t (Sem r a) -> Sem r (t (Maybe a))
+sequenceConcurrently t (Sem r a)
+t = (Sem r a -> Sem r (Async (Maybe a)))
+-> t (Sem r a) -> Sem r (t (Async (Maybe a)))
+forall (t :: * -> *) (f :: * -> *) a b.
+(Traversable t, Applicative f) =>
+(a -> f b) -> t a -> f (t b)
+forall (f :: * -> *) a b.
+Applicative f =>
+(a -> f b) -> t a -> f (t b)
+traverse Sem r a -> Sem r (Async (Maybe a))
+forall (r :: EffectRow) a.
+Member Async r =>
+Sem r a -> Sem r (Async (Maybe a))
+async t (Sem r a)
+t Sem r (t (Async (Maybe a)))
+-> (t (Async (Maybe a)) -> Sem r (t (Maybe a)))
+-> Sem r (t (Maybe a))
+forall a b. Sem r a -> (a -> Sem r b) -> Sem r b
+forall (m :: * -> *) a b. Monad m => m a -> (a -> m b) -> m b
+>>= (Async (Maybe a) -> Sem r (Maybe a))
+-> t (Async (Maybe a)) -> Sem r (t (Maybe a))
+forall (t :: * -> *) (f :: * -> *) a b.
+(Traversable t, Applicative f) =>
+(a -> f b) -> t a -> f (t b)
+forall (f :: * -> *) a b.
+Applicative f =>
+(a -> f b) -> t a -> f (t b)
+traverse Async (Maybe a) -> Sem r (Maybe a)
+forall (r :: EffectRow) a. Member Async r => Async a -> Sem r a
+await
+{-# INLINABLE sequenceConcurrently #-}
+asyncToIOFinal :: Member (Final IO) r
+=> Sem (Async ': r) a
+-> Sem r a
+asyncToIOFinal :: forall (r :: EffectRow) a.
+Member (Final IO) r =>
+Sem (Async : r) a -> Sem r a
+asyncToIOFinal = (forall x (rInitial :: EffectRow).
+Async (Sem rInitial) x -> Strategic IO (Sem rInitial) x)
+-> Sem (Async : r) a -> Sem r a
+forall (m :: * -> *) (e :: Effect) (r :: EffectRow) a.
+Member (Final m) r =>
+(forall x (rInitial :: EffectRow).
+e (Sem rInitial) x -> Strategic m (Sem rInitial) x)
+-> Sem (e : r) a -> Sem r a
+interpretFinal ((forall x (rInitial :: EffectRow).
+Async (Sem rInitial) x -> Strategic IO (Sem rInitial) x)
+-> Sem (Async : r) a -> Sem r a)
+-> (forall x (rInitial :: EffectRow).
+Async (Sem rInitial) x -> Strategic IO (Sem rInitial) x)
+-> Sem (Async : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+Async Sem rInitial a
+m -> do
+Inspector f
+ins <- Sem (WithStrategy IO f (Sem rInitial)) (Inspector f)
+forall (m :: * -> *) (f :: * -> *) (n :: * -> *).
+Sem (WithStrategy m f n) (Inspector f)
+getInspectorS
+IO (f a)
+m' <- Sem rInitial a -> Sem (WithStrategy IO f (Sem rInitial)) (IO (f a))
+forall (n :: * -> *) a (m :: * -> *) (f :: * -> *).
+n a -> Sem (WithStrategy m f n) (m (f a))
+runS Sem rInitial a
+m
+IO x -> Strategic IO (Sem rInitial) x
+forall (m :: * -> *) a (n :: * -> *).
+Functor m =>
+m a -> Strategic m n a
+liftS (IO x -> Strategic IO (Sem rInitial) x)
+-> IO x -> Strategic IO (Sem rInitial) x
+forall a b. (a -> b) -> a -> b
+$ IO (Maybe a) -> IO (Async (Maybe a))
+forall a. IO a -> IO (Async a)
+A.async (Inspector f -> forall x. f x -> Maybe x
+forall (f :: * -> *). Inspector f -> forall x. f x -> Maybe x
+inspect Inspector f
+ins (f a -> Maybe a) -> IO (f a) -> IO (Maybe a)
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> IO (f a)
+m')
+Await Async x
+a -> IO x -> Strategic IO (Sem rInitial) x
+forall (m :: * -> *) a (n :: * -> *).
+Functor m =>
+m a -> Strategic m n a
+liftS (Async x -> IO x
+forall a. Async a -> IO a
+A.wait Async x
+a)
+Cancel Async a
+a -> IO x -> Strategic IO (Sem rInitial) x
+forall (m :: * -> *) a (n :: * -> *).
+Functor m =>
+m a -> Strategic m n a
+liftS (Async a -> IO ()
+forall a. Async a -> IO ()
+A.cancel Async a
+a)
+{-# INLINE asyncToIOFinal #-}

@@ -1,0 +1,28 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+module Polysemy.IO
+(
+embedToMonadIO
+) where
+import Control.Monad.IO.Class
+import Polysemy
+import Polysemy.Embed
+embedToMonadIO
+:: forall m r a
+. ( MonadIO m
+, Member (Embed m) r
+)
+=> Sem (Embed IO ': r) a
+-> Sem r a
+embedToMonadIO :: forall (m :: * -> *) (r :: EffectRow) a.
+(MonadIO m, Member (Embed m) r) =>
+Sem (Embed IO : r) a -> Sem r a
+embedToMonadIO = (forall x. IO x -> m x) -> Sem (Embed IO : r) a -> Sem r a
+forall (m1 :: * -> *) (m2 :: * -> *) (r :: EffectRow) a.
+Member (Embed m2) r =>
+(forall x. m1 x -> m2 x) -> Sem (Embed m1 : r) a -> Sem r a
+runEmbedded ((forall x. IO x -> m x) -> Sem (Embed IO : r) a -> Sem r a)
+-> (forall x. IO x -> m x) -> Sem (Embed IO : r) a -> Sem r a
+forall a b. (a -> b) -> a -> b
+$ forall (m :: * -> *) a. MonadIO m => IO a -> m a
+liftIO @m
+{-# INLINE embedToMonadIO #-}

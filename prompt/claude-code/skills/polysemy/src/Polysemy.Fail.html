@@ -1,0 +1,138 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+module Polysemy.Fail
+(
+Fail(..)
+, runFail
+, failToError
+, failToNonDet
+, failToEmbed
+) where
+import Control.Applicative
+import Polysemy
+import Polysemy.Fail.Type
+import Polysemy.Error
+import Polysemy.NonDet
+import Control.Monad.Fail as Fail
+runFail :: Sem (Fail ': r) a
+-> Sem r (Either String a)
+runFail :: forall (r :: [(* -> *) -> * -> *]) a.
+Sem (Fail : r) a -> Sem r (Either String a)
+runFail = Sem (Error String : r) a -> Sem r (Either String a)
+forall e (r :: [(* -> *) -> * -> *]) a.
+Sem (Error e : r) a -> Sem r (Either e a)
+runError (Sem (Error String : r) a -> Sem r (Either String a))
+-> (Sem (Fail : r) a -> Sem (Error String : r) a)
+-> Sem (Fail : r) a
+-> Sem r (Either String a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (forall (rInitial :: [(* -> *) -> * -> *]) x.
+Fail (Sem rInitial) x -> Sem (Error String : r) x)
+-> Sem (Fail : r) a -> Sem (Error String : r) a
+forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+FirstOrder e1 "reinterpret" =>
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e1 (Sem rInitial) x -> Sem (e2 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : r) a
+reinterpret (\(Fail String
+s) -> String -> Sem (Error String : r) x
+forall e (r :: [(* -> *) -> * -> *]) a.
+Member (Error e) r =>
+e -> Sem r a
+throw String
+s)
+{-# INLINE runFail #-}
+failToError :: Member (Error e) r
+=> (String -> e)
+-> Sem (Fail ': r) a
+-> Sem r a
+failToError :: forall e (r :: [(* -> *) -> * -> *]) a.
+Member (Error e) r =>
+(String -> e) -> Sem (Fail : r) a -> Sem r a
+failToError String -> e
+f = (forall (rInitial :: [(* -> *) -> * -> *]) x.
+Fail (Sem rInitial) x -> Sem r x)
+-> Sem (Fail : r) a -> Sem r a
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+Fail (Sem rInitial) x -> Sem r x)
+-> Sem (Fail : r) a -> Sem r a)
+-> (forall (rInitial :: [(* -> *) -> * -> *]) x.
+Fail (Sem rInitial) x -> Sem r x)
+-> Sem (Fail : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \(Fail String
+s) -> e -> Sem r x
+forall e (r :: [(* -> *) -> * -> *]) a.
+Member (Error e) r =>
+e -> Sem r a
+throw (String -> e
+f String
+s)
+{-# INLINE failToError #-}
+failToNonDet :: Member NonDet r
+=> Sem (Fail ': r) a
+-> Sem r a
+failToNonDet :: forall (r :: [(* -> *) -> * -> *]) a.
+Member NonDet r =>
+Sem (Fail : r) a -> Sem r a
+failToNonDet = (forall (rInitial :: [(* -> *) -> * -> *]) x.
+Fail (Sem rInitial) x -> Sem r x)
+-> Sem (Fail : r) a -> Sem r a
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+Fail (Sem rInitial) x -> Sem r x)
+-> Sem (Fail : r) a -> Sem r a)
+-> (forall (rInitial :: [(* -> *) -> * -> *]) x.
+Fail (Sem rInitial) x -> Sem r x)
+-> Sem (Fail : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \(Fail String
+_) -> Sem r x
+forall a. Sem r a
+forall (f :: * -> *) a. Alternative f => f a
+empty
+{-# INLINE failToNonDet #-}
+failToEmbed :: forall m r a
+. (Member (Embed m) r, MonadFail m)
+=> Sem (Fail ': r) a
+-> Sem r a
+failToEmbed :: forall (m :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+(Member (Embed m) r, MonadFail m) =>
+Sem (Fail : r) a -> Sem r a
+failToEmbed = (forall (rInitial :: [(* -> *) -> * -> *]) x.
+Fail (Sem rInitial) x -> Sem r x)
+-> Sem (Fail : r) a -> Sem r a
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+Fail (Sem rInitial) x -> Sem r x)
+-> Sem (Fail : r) a -> Sem r a)
+-> (forall (rInitial :: [(* -> *) -> * -> *]) x.
+Fail (Sem rInitial) x -> Sem r x)
+-> Sem (Fail : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \(Fail String
+s) -> forall (m :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+Member (Embed m) r =>
+m a -> Sem r a
+embed @m (String -> m x
+forall a. String -> m a
+forall (m :: * -> *) a. MonadFail m => String -> m a
+Fail.fail String
+s)
+{-# INLINE failToEmbed #-}

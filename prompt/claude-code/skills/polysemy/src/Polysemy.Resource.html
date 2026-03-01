@@ -1,0 +1,437 @@
+{-# LANGUAGE TemplateHaskell #-}
+module Polysemy.Resource
+(
+Resource (..)
+, bracket
+, bracket_
+, bracketOnError
+, finally
+, onException
+, runResource
+, resourceToIOFinal
+) where
+import qualified Control.Exception as X
+import Polysemy
+import Polysemy.Final
+data Resource m a where
+Bracket
+:: m a
+-> (a -> m c)
+-> (a -> m b)
+-> Resource m b
+BracketOnError
+:: m a
+-> (a -> m c)
+-> (a -> m b)
+-> Resource m b
+makeSem ''Resource
+bracket_
+:: Member Resource r
+=> Sem r a
+-> Sem r b
+-> Sem r c
+-> Sem r c
+bracket_ :: forall (r :: EffectRow) a b c.
+Member Resource r =>
+Sem r a -> Sem r b -> Sem r c -> Sem r c
+bracket_ Sem r a
+begin Sem r b
+end Sem r c
+act = Sem r a -> (a -> Sem r b) -> (a -> Sem r c) -> Sem r c
+forall (r :: EffectRow) a c b.
+Member Resource r =>
+Sem r a -> (a -> Sem r c) -> (a -> Sem r b) -> Sem r b
+bracket Sem r a
+begin (Sem r b -> a -> Sem r b
+forall a b. a -> b -> a
+const Sem r b
+end) (Sem r c -> a -> Sem r c
+forall a b. a -> b -> a
+const Sem r c
+act)
+finally
+:: Member Resource r
+=> Sem r a
+-> Sem r b
+-> Sem r a
+finally :: forall (r :: EffectRow) a b.
+Member Resource r =>
+Sem r a -> Sem r b -> Sem r a
+finally Sem r a
+act Sem r b
+end = Sem r () -> (() -> Sem r b) -> (() -> Sem r a) -> Sem r a
+forall (r :: EffectRow) a c b.
+Member Resource r =>
+Sem r a -> (a -> Sem r c) -> (a -> Sem r b) -> Sem r b
+bracket (() -> Sem r ()
+forall a. a -> Sem r a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure ()) (Sem r b -> () -> Sem r b
+forall a b. a -> b -> a
+const Sem r b
+end) (Sem r a -> () -> Sem r a
+forall a b. a -> b -> a
+const Sem r a
+act)
+onException
+:: Member Resource r
+=> Sem r a
+-> Sem r b
+-> Sem r a
+onException :: forall (r :: EffectRow) a b.
+Member Resource r =>
+Sem r a -> Sem r b -> Sem r a
+onException Sem r a
+act Sem r b
+end = Sem r () -> (() -> Sem r b) -> (() -> Sem r a) -> Sem r a
+forall (r :: EffectRow) a c b.
+Member Resource r =>
+Sem r a -> (a -> Sem r c) -> (a -> Sem r b) -> Sem r b
+bracketOnError (() -> Sem r ()
+forall a. a -> Sem r a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure ()) (Sem r b -> () -> Sem r b
+forall a b. a -> b -> a
+const Sem r b
+end) (Sem r a -> () -> Sem r a
+forall a b. a -> b -> a
+const Sem r a
+act)
+resourceToIOFinal :: Member (Final IO) r
+=> Sem (Resource ': r) a
+-> Sem r a
+resourceToIOFinal :: forall (r :: EffectRow) a.
+Member (Final IO) r =>
+Sem (Resource : r) a -> Sem r a
+resourceToIOFinal = (forall x (rInitial :: EffectRow).
+Resource (Sem rInitial) x -> Strategic IO (Sem rInitial) x)
+-> Sem (Resource : r) a -> Sem r a
+forall (m :: * -> *) (e :: Effect) (r :: EffectRow) a.
+Member (Final m) r =>
+(forall x (rInitial :: EffectRow).
+e (Sem rInitial) x -> Strategic m (Sem rInitial) x)
+-> Sem (e : r) a -> Sem r a
+interpretFinal ((forall x (rInitial :: EffectRow).
+Resource (Sem rInitial) x -> Strategic IO (Sem rInitial) x)
+-> Sem (Resource : r) a -> Sem r a)
+-> (forall x (rInitial :: EffectRow).
+Resource (Sem rInitial) x -> Strategic IO (Sem rInitial) x)
+-> Sem (Resource : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+Bracket Sem rInitial a
+alloc a -> Sem rInitial c
+dealloc a -> Sem rInitial x
+use -> do
+IO (f a)
+a <- Sem rInitial a -> Sem (WithStrategy IO f (Sem rInitial)) (IO (f a))
+forall (n :: * -> *) a (m :: * -> *) (f :: * -> *).
+n a -> Sem (WithStrategy m f n) (m (f a))
+runS Sem rInitial a
+alloc
+f a -> IO (f c)
+d <- (a -> Sem rInitial c)
+-> Sem (WithStrategy IO f (Sem rInitial)) (f a -> IO (f c))
+forall a (n :: * -> *) b (m :: * -> *) (f :: * -> *).
+(a -> n b) -> Sem (WithStrategy m f n) (f a -> m (f b))
+bindS a -> Sem rInitial c
+dealloc
+f a -> IO (f x)
+u <- (a -> Sem rInitial x)
+-> Sem (WithStrategy IO f (Sem rInitial)) (f a -> IO (f x))
+forall a (n :: * -> *) b (m :: * -> *) (f :: * -> *).
+(a -> n b) -> Sem (WithStrategy m f n) (f a -> m (f b))
+bindS a -> Sem rInitial x
+use
+IO (f x) -> Sem (WithStrategy IO f (Sem rInitial)) (IO (f x))
+forall a. a -> Sem (WithStrategy IO f (Sem rInitial)) a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (IO (f x) -> Sem (WithStrategy IO f (Sem rInitial)) (IO (f x)))
+-> IO (f x) -> Sem (WithStrategy IO f (Sem rInitial)) (IO (f x))
+forall a b. (a -> b) -> a -> b
+$ IO (f a) -> (f a -> IO (f c)) -> (f a -> IO (f x)) -> IO (f x)
+forall a b c. IO a -> (a -> IO b) -> (a -> IO c) -> IO c
+X.bracket IO (f a)
+a f a -> IO (f c)
+d f a -> IO (f x)
+u
+BracketOnError Sem rInitial a
+alloc a -> Sem rInitial c
+dealloc a -> Sem rInitial x
+use -> do
+Inspector f
+ins <- Sem (WithStrategy IO f (Sem rInitial)) (Inspector f)
+forall (m :: * -> *) (f :: * -> *) (n :: * -> *).
+Sem (WithStrategy m f n) (Inspector f)
+getInspectorS
+IO (f a)
+a <- Sem rInitial a -> Sem (WithStrategy IO f (Sem rInitial)) (IO (f a))
+forall (n :: * -> *) a (m :: * -> *) (f :: * -> *).
+n a -> Sem (WithStrategy m f n) (m (f a))
+runS Sem rInitial a
+alloc
+f a -> IO (f c)
+d <- (a -> Sem rInitial c)
+-> Sem (WithStrategy IO f (Sem rInitial)) (f a -> IO (f c))
+forall a (n :: * -> *) b (m :: * -> *) (f :: * -> *).
+(a -> n b) -> Sem (WithStrategy m f n) (f a -> m (f b))
+bindS a -> Sem rInitial c
+dealloc
+f a -> IO (f x)
+u <- (a -> Sem rInitial x)
+-> Sem (WithStrategy IO f (Sem rInitial)) (f a -> IO (f x))
+forall a (n :: * -> *) b (m :: * -> *) (f :: * -> *).
+(a -> n b) -> Sem (WithStrategy m f n) (f a -> m (f b))
+bindS a -> Sem rInitial x
+use
+IO (f x) -> Sem (WithStrategy IO f (Sem rInitial)) (IO (f x))
+forall a. a -> Sem (WithStrategy IO f (Sem rInitial)) a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (IO (f x) -> Sem (WithStrategy IO f (Sem rInitial)) (IO (f x)))
+-> IO (f x) -> Sem (WithStrategy IO f (Sem rInitial)) (IO (f x))
+forall a b. (a -> b) -> a -> b
+$
+IO (f a) -> (f a -> IO (f c)) -> (f a -> IO (f x)) -> IO (f x)
+forall a b c. IO a -> (a -> IO b) -> (a -> IO c) -> IO c
+X.bracketOnError
+IO (f a)
+a
+f a -> IO (f c)
+d
+(\f a
+x -> do
+f x
+result <- f a -> IO (f x)
+u f a
+x
+case Inspector f -> forall x. f x -> Maybe x
+forall (f :: * -> *). Inspector f -> forall x. f x -> Maybe x
+inspect Inspector f
+ins f x
+result of
+Just x
+_ -> f x -> IO (f x)
+forall a. a -> IO a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure f x
+result
+Maybe x
+Nothing -> do
+f c
+_ <- f a -> IO (f c)
+d f a
+x
+f x -> IO (f x)
+forall a. a -> IO a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure f x
+result
+)
+{-# INLINE resourceToIOFinal #-}
+runResource
+:: ∀ r a
+. Sem (Resource ': r) a
+-> Sem r a
+runResource :: forall (r :: EffectRow) a. Sem (Resource : r) a -> Sem r a
+runResource = (forall (rInitial :: EffectRow) x.
+Resource (Sem rInitial) x -> Tactical Resource (Sem rInitial) r x)
+-> Sem (Resource : r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+(forall (rInitial :: EffectRow) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem (e : r) a -> Sem r a
+interpretH ((forall (rInitial :: EffectRow) x.
+Resource (Sem rInitial) x -> Tactical Resource (Sem rInitial) r x)
+-> Sem (Resource : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+Resource (Sem rInitial) x -> Tactical Resource (Sem rInitial) r x)
+-> Sem (Resource : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+Bracket Sem rInitial a
+alloc a -> Sem rInitial c
+dealloc a -> Sem rInitial x
+use -> do
+Sem (Resource : r) (f a)
+a <- Sem rInitial a
+-> Sem
+(WithTactics Resource f (Sem rInitial) r)
+(Sem (Resource : r) (f a))
+forall (m :: * -> *) a (e :: Effect) (f :: * -> *)
+(r :: EffectRow).
+m a -> Sem (WithTactics e f m r) (Sem (e : r) (f a))
+runT Sem rInitial a
+alloc
+f a -> Sem (Resource : r) (f c)
+d <- (a -> Sem rInitial c)
+-> Sem
+(WithTactics Resource f (Sem rInitial) r)
+(f a -> Sem (Resource : r) (f c))
+forall a (m :: * -> *) b (e :: Effect) (f :: * -> *)
+(r :: EffectRow).
+(a -> m b) -> Sem (WithTactics e f m r) (f a -> Sem (e : r) (f b))
+bindT a -> Sem rInitial c
+dealloc
+f a -> Sem (Resource : r) (f x)
+u <- (a -> Sem rInitial x)
+-> Sem
+(WithTactics Resource f (Sem rInitial) r)
+(f a -> Sem (Resource : r) (f x))
+forall a (m :: * -> *) b (e :: Effect) (f :: * -> *)
+(r :: EffectRow).
+(a -> m b) -> Sem (WithTactics e f m r) (f a -> Sem (e : r) (f b))
+bindT a -> Sem rInitial x
+use
+let run_it :: Sem (Resource : r) a -> Sem (e : r) a
+run_it = Sem r a -> Sem (e : r) a
+forall (e :: Effect) (r :: EffectRow) a. Sem r a -> Sem (e : r) a
+raise (Sem r a -> Sem (e : r) a)
+-> (Sem (Resource : r) a -> Sem r a)
+-> Sem (Resource : r) a
+-> Sem (e : r) a
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Sem (Resource : r) a -> Sem r a
+forall (r :: EffectRow) a. Sem (Resource : r) a -> Sem r a
+runResource
+f a
+resource <- Sem (Resource : r) (f a)
+-> Sem (WithTactics Resource f (Sem rInitial) r) (f a)
+forall {r :: EffectRow} {a} {e :: Effect}.
+Sem (Resource : r) a -> Sem (e : r) a
+run_it Sem (Resource : r) (f a)
+a
+f x
+result <- Sem (Resource : r) (f x)
+-> Sem (WithTactics Resource f (Sem rInitial) r) (f x)
+forall {r :: EffectRow} {a} {e :: Effect}.
+Sem (Resource : r) a -> Sem (e : r) a
+run_it (Sem (Resource : r) (f x)
+-> Sem (WithTactics Resource f (Sem rInitial) r) (f x))
+-> Sem (Resource : r) (f x)
+-> Sem (WithTactics Resource f (Sem rInitial) r) (f x)
+forall a b. (a -> b) -> a -> b
+$ f a -> Sem (Resource : r) (f x)
+u f a
+resource
+f c
+_ <- Sem (Resource : r) (f c)
+-> Sem (WithTactics Resource f (Sem rInitial) r) (f c)
+forall {r :: EffectRow} {a} {e :: Effect}.
+Sem (Resource : r) a -> Sem (e : r) a
+run_it (Sem (Resource : r) (f c)
+-> Sem (WithTactics Resource f (Sem rInitial) r) (f c))
+-> Sem (Resource : r) (f c)
+-> Sem (WithTactics Resource f (Sem rInitial) r) (f c)
+forall a b. (a -> b) -> a -> b
+$ f a -> Sem (Resource : r) (f c)
+d f a
+resource
+f x -> Sem (WithTactics Resource f (Sem rInitial) r) (f x)
+forall a. a -> Sem (WithTactics Resource f (Sem rInitial) r) a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure f x
+result
+BracketOnError Sem rInitial a
+alloc a -> Sem rInitial c
+dealloc a -> Sem rInitial x
+use -> do
+Sem (Resource : r) (f a)
+a <- Sem rInitial a
+-> Sem
+(WithTactics Resource f (Sem rInitial) r)
+(Sem (Resource : r) (f a))
+forall (m :: * -> *) a (e :: Effect) (f :: * -> *)
+(r :: EffectRow).
+m a -> Sem (WithTactics e f m r) (Sem (e : r) (f a))
+runT Sem rInitial a
+alloc
+f a -> Sem (Resource : r) (f c)
+d <- (a -> Sem rInitial c)
+-> Sem
+(WithTactics Resource f (Sem rInitial) r)
+(f a -> Sem (Resource : r) (f c))
+forall a (m :: * -> *) b (e :: Effect) (f :: * -> *)
+(r :: EffectRow).
+(a -> m b) -> Sem (WithTactics e f m r) (f a -> Sem (e : r) (f b))
+bindT a -> Sem rInitial c
+dealloc
+f a -> Sem (Resource : r) (f x)
+u <- (a -> Sem rInitial x)
+-> Sem
+(WithTactics Resource f (Sem rInitial) r)
+(f a -> Sem (Resource : r) (f x))
+forall a (m :: * -> *) b (e :: Effect) (f :: * -> *)
+(r :: EffectRow).
+(a -> m b) -> Sem (WithTactics e f m r) (f a -> Sem (e : r) (f b))
+bindT a -> Sem rInitial x
+use
+let run_it :: Sem (Resource : r) a -> Sem (e : r) a
+run_it = Sem r a -> Sem (e : r) a
+forall (e :: Effect) (r :: EffectRow) a. Sem r a -> Sem (e : r) a
+raise (Sem r a -> Sem (e : r) a)
+-> (Sem (Resource : r) a -> Sem r a)
+-> Sem (Resource : r) a
+-> Sem (e : r) a
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Sem (Resource : r) a -> Sem r a
+forall (r :: EffectRow) a. Sem (Resource : r) a -> Sem r a
+runResource
+f a
+resource <- Sem (Resource : r) (f a)
+-> Sem (WithTactics Resource f (Sem rInitial) r) (f a)
+forall {r :: EffectRow} {a} {e :: Effect}.
+Sem (Resource : r) a -> Sem (e : r) a
+run_it Sem (Resource : r) (f a)
+a
+f x
+result <- Sem (Resource : r) (f x)
+-> Sem (WithTactics Resource f (Sem rInitial) r) (f x)
+forall {r :: EffectRow} {a} {e :: Effect}.
+Sem (Resource : r) a -> Sem (e : r) a
+run_it (Sem (Resource : r) (f x)
+-> Sem (WithTactics Resource f (Sem rInitial) r) (f x))
+-> Sem (Resource : r) (f x)
+-> Sem (WithTactics Resource f (Sem rInitial) r) (f x)
+forall a b. (a -> b) -> a -> b
+$ f a -> Sem (Resource : r) (f x)
+u f a
+resource
+Inspector f
+ins <- Sem (WithTactics Resource f (Sem rInitial) r) (Inspector f)
+forall (e :: Effect) (f :: * -> *) (m :: * -> *) (r :: EffectRow).
+Sem (WithTactics e f m r) (Inspector f)
+getInspectorT
+case Inspector f -> forall x. f x -> Maybe x
+forall (f :: * -> *). Inspector f -> forall x. f x -> Maybe x
+inspect Inspector f
+ins f x
+result of
+Just x
+_ -> f x -> Sem (WithTactics Resource f (Sem rInitial) r) (f x)
+forall a. a -> Sem (WithTactics Resource f (Sem rInitial) r) a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure f x
+result
+Maybe x
+Nothing -> do
+f c
+_ <- Sem (Resource : r) (f c)
+-> Sem (WithTactics Resource f (Sem rInitial) r) (f c)
+forall {r :: EffectRow} {a} {e :: Effect}.
+Sem (Resource : r) a -> Sem (e : r) a
+run_it (Sem (Resource : r) (f c)
+-> Sem (WithTactics Resource f (Sem rInitial) r) (f c))
+-> Sem (Resource : r) (f c)
+-> Sem (WithTactics Resource f (Sem rInitial) r) (f c)
+forall a b. (a -> b) -> a -> b
+$ f a -> Sem (Resource : r) (f c)
+d f a
+resource
+f x -> Sem (WithTactics Resource f (Sem rInitial) r) (f x)
+forall a. a -> Sem (WithTactics Resource f (Sem rInitial) r) a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure f x
+result
+{-# INLINE runResource #-}

@@ -1,0 +1,42 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# OPTIONS_HADDOCK not-home #-}
+module Polysemy.Internal.Bundle where
+import Polysemy (Members)
+import Polysemy.Internal.Union (ElemOf(..), membership)
+import Polysemy.Internal.Kind (Append)
+extendMembership :: forall r r' e. ElemOf e r -> ElemOf e (Append r r')
+extendMembership :: forall {a} (r :: [a]) (r' :: [a]) (e :: a).
+ElemOf e r -> ElemOf e (Append r r')
+extendMembership ElemOf e r
+Here = ElemOf e (e : Append r' r')
+ElemOf e (Append r r')
+forall {k} (r :: [k]) (e :: k) (r' :: [k]).
+(r ~ (e : r')) =>
+ElemOf e r
+Here
+extendMembership (There ElemOf e r
+e) = ElemOf e (Append r r') -> ElemOf e (e' : Append r r')
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There (forall (r :: [a]) (r' :: [a]) (e :: a).
+ElemOf e r -> ElemOf e (Append r r')
+forall {a} (r :: [a]) (r' :: [a]) (e :: a).
+ElemOf e r -> ElemOf e (Append r r')
+extendMembership @_ @r' ElemOf e r
+e)
+{-# INLINE extendMembership #-}
+subsumeMembership :: forall r r' e. Members r r' => ElemOf e r -> ElemOf e r'
+subsumeMembership :: forall (r :: [Effect]) (r' :: [Effect]) (e :: Effect).
+Members r r' =>
+ElemOf e r -> ElemOf e r'
+subsumeMembership ElemOf e r
+Here = forall (e :: Effect) (r :: [Effect]). Member e r => ElemOf e r
+membership @e @r'
+subsumeMembership (There (ElemOf e r
+pr :: ElemOf e r'')) = forall (r :: [Effect]) (r' :: [Effect]) (e :: Effect).
+Members r r' =>
+ElemOf e r -> ElemOf e r'
+subsumeMembership @r'' @r' ElemOf e r
+pr
+{-# INLINE subsumeMembership #-}

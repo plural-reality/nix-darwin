@@ -1,0 +1,17 @@
+{
+  description = "@USERNAME@'s nix-darwin configuration";
+  inputs.nix-darwin-upstream.url = "github:yuidvg/nix-darwin";
+  outputs = { nix-darwin-upstream, ... }: {
+    darwinConfigurations."@HOSTNAME@" = nix-darwin-upstream.lib.mkSystem {
+      userConfig = {
+        username = "@USERNAME@";
+        hostname = "@HOSTNAME@";
+        gitName = "@GIT_NAME@";
+        gitEmail = "@GIT_EMAIL@";
+      };
+      secretsFile = ./secrets.yaml;
+      # extraHomeModules = [];
+      # extraDarwinModules = [];
+    };
+  };
+}

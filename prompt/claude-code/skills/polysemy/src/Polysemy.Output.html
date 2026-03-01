@@ -1,0 +1,627 @@
+{-# LANGUAGE BangPatterns, TemplateHaskell #-}
+module Polysemy.Output
+(
+Output (..)
+, output
+, runOutputList
+, runLazyOutputList
+, runOutputMonoid
+, runLazyOutputMonoid
+, runOutputMonoidAssocR
+, runLazyOutputMonoidAssocR
+, runOutputMonoidIORef
+, runOutputMonoidTVar
+, outputToIOMonoid
+, outputToIOMonoidAssocR
+, ignoreOutput
+, runOutputBatched
+, runOutputSem
+) where
+import Data.IORef
+import Control.Concurrent.STM
+import qualified Control.Monad.Trans.Writer.Lazy as Lazy
+import Data.Semigroup (Endo(..))
+import Data.Bifunctor (first)
+import Polysemy
+import Polysemy.State
+import Control.Monad (when)
+import Polysemy.Internal.Union
+import Polysemy.Internal.Writer
+data Output o m a where
+Output :: o -> Output o m ()
+makeSem ''Output
+runOutputList
+:: forall o r a
+. Sem (Output o ': r) a
+-> Sem r ([o], a)
+runOutputList :: forall o (r :: EffectRow) a. Sem (Output o : r) a -> Sem r ([o], a)
+runOutputList = (([o], a) -> ([o], a)) -> Sem r ([o], a) -> Sem r ([o], a)
+forall a b. (a -> b) -> Sem r a -> Sem r b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap (([o] -> [o]) -> ([o], a) -> ([o], a)
+forall a b c. (a -> b) -> (a, c) -> (b, c)
+forall (p :: * -> * -> *) a b c.
+Bifunctor p =>
+(a -> b) -> p a c -> p b c
+first [o] -> [o]
+forall a. [a] -> [a]
+reverse) (Sem r ([o], a) -> Sem r ([o], a))
+-> (Sem (Output o : r) a -> Sem r ([o], a))
+-> Sem (Output o : r) a
+-> Sem r ([o], a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. [o] -> Sem (State [o] : r) a -> Sem r ([o], a)
+forall s (r :: EffectRow) a.
+s -> Sem (State s : r) a -> Sem r (s, a)
+runState [] (Sem (State [o] : r) a -> Sem r ([o], a))
+-> (Sem (Output o : r) a -> Sem (State [o] : r) a)
+-> Sem (Output o : r) a
+-> Sem r ([o], a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (forall (rInitial :: EffectRow) x.
+Output o (Sem rInitial) x -> Sem (State [o] : r) x)
+-> Sem (Output o : r) a -> Sem (State [o] : r) a
+forall (e1 :: Effect) (e2 :: Effect) (r :: EffectRow) a.
+FirstOrder e1 "reinterpret" =>
+(forall (rInitial :: EffectRow) x.
+e1 (Sem rInitial) x -> Sem (e2 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : r) a
+reinterpret
+(\case
+Output o
+o -> ([o] -> [o]) -> Sem (State [o] : r) ()
+forall s (r :: EffectRow).
+Member (State s) r =>
+(s -> s) -> Sem r ()
+modify' (o
+o o -> [o] -> [o]
+forall a. a -> [a] -> [a]
+:)
+)
+{-# INLINE runOutputList #-}
+runLazyOutputList
+:: forall o r a
+. Sem (Output o ': r) a
+-> Sem r ([o], a)
+runLazyOutputList :: forall o (r :: EffectRow) a. Sem (Output o : r) a -> Sem r ([o], a)
+runLazyOutputList = (o -> [o]) -> Sem (Output o : r) a -> Sem r ([o], a)
+forall o m (r :: EffectRow) a.
+Monoid m =>
+(o -> m) -> Sem (Output o : r) a -> Sem r (m, a)
+runLazyOutputMonoidAssocR o -> [o]
+forall a. a -> [a]
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure
+{-# INLINE runLazyOutputList #-}
+runOutputMonoid
+:: forall o m r a
+. Monoid m
+=> (o -> m)
+-> Sem (Output o ': r) a
+-> Sem r (m, a)
+runOutputMonoid :: forall o m (r :: EffectRow) a.
+Monoid m =>
+(o -> m) -> Sem (Output o : r) a -> Sem r (m, a)
+runOutputMonoid o -> m
+f = m -> Sem (State m : r) a -> Sem r (m, a)
+forall s (r :: EffectRow) a.
+s -> Sem (State s : r) a -> Sem r (s, a)
+runState m
+forall a. Monoid a => a
+mempty (Sem (State m : r) a -> Sem r (m, a))
+-> (Sem (Output o : r) a -> Sem (State m : r) a)
+-> Sem (Output o : r) a
+-> Sem r (m, a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (forall (rInitial :: EffectRow) x.
+Output o (Sem rInitial) x -> Sem (State m : r) x)
+-> Sem (Output o : r) a -> Sem (State m : r) a
+forall (e1 :: Effect) (e2 :: Effect) (r :: EffectRow) a.
+FirstOrder e1 "reinterpret" =>
+(forall (rInitial :: EffectRow) x.
+e1 (Sem rInitial) x -> Sem (e2 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : r) a
+reinterpret
+(\case
+Output o
+o -> (m -> m) -> Sem (State m : r) ()
+forall s (r :: EffectRow).
+Member (State s) r =>
+(s -> s) -> Sem r ()
+modify' (m -> m -> m
+forall a. Monoid a => a -> a -> a
+`mappend` o -> m
+f o
+o)
+)
+{-# INLINE runOutputMonoid #-}
+runLazyOutputMonoid
+:: forall o m r a
+. Monoid m
+=> (o -> m)
+-> Sem (Output o ': r) a
+-> Sem r (m, a)
+runLazyOutputMonoid :: forall o m (r :: EffectRow) a.
+Monoid m =>
+(o -> m) -> Sem (Output o : r) a -> Sem r (m, a)
+runLazyOutputMonoid o -> m
+f = (forall (m :: * -> *) x.
+Monad m =>
+Weaving (Output o) (WriterT m m) x -> WriterT m m x)
+-> Sem (Output o : r) a -> Sem r (m, a)
+forall o (e :: Effect) (r :: EffectRow) a.
+Monoid o =>
+(forall (m :: * -> *) x.
+Monad m =>
+Weaving e (WriterT o m) x -> WriterT o m x)
+-> Sem (e : r) a -> Sem r (o, a)
+interpretViaLazyWriter ((forall (m :: * -> *) x.
+Monad m =>
+Weaving (Output o) (WriterT m m) x -> WriterT m m x)
+-> Sem (Output o : r) a -> Sem r (m, a))
+-> (forall (m :: * -> *) x.
+Monad m =>
+Weaving (Output o) (WriterT m m) x -> WriterT m m x)
+-> Sem (Output o : r) a
+-> Sem r (m, a)
+forall a b. (a -> b) -> a -> b
+$ \(Weaving Output o (Sem rInitial) a
+e f ()
+s forall x. f (Sem rInitial x) -> WriterT m m (f x)
+_ f a -> x
+ex forall x. f x -> Maybe x
+_) ->
+case Output o (Sem rInitial) a
+e of
+Output o
+o -> f a -> x
+ex f a
+f ()
+s x -> WriterT m m () -> WriterT m m x
+forall a b. a -> WriterT m m b -> WriterT m m a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ m -> WriterT m m ()
+forall (m :: * -> *) w. Monad m => w -> WriterT w m ()
+Lazy.tell (o -> m
+f o
+o)
+runOutputMonoidAssocR
+:: forall o m r a
+. Monoid m
+=> (o -> m)
+-> Sem (Output o ': r) a
+-> Sem r (m, a)
+runOutputMonoidAssocR :: forall o m (r :: EffectRow) a.
+Monoid m =>
+(o -> m) -> Sem (Output o : r) a -> Sem r (m, a)
+runOutputMonoidAssocR o -> m
+f =
+((Endo m, a) -> (m, a)) -> Sem r (Endo m, a) -> Sem r (m, a)
+forall a b. (a -> b) -> Sem r a -> Sem r b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap ((Endo m -> m) -> (Endo m, a) -> (m, a)
+forall a b c. (a -> b) -> (a, c) -> (b, c)
+forall (p :: * -> * -> *) a b c.
+Bifunctor p =>
+(a -> b) -> p a c -> p b c
+first (Endo m -> m -> m
+forall a. Endo a -> a -> a
+`appEndo` m
+forall a. Monoid a => a
+mempty))
+(Sem r (Endo m, a) -> Sem r (m, a))
+-> (Sem (Output o : r) a -> Sem r (Endo m, a))
+-> Sem (Output o : r) a
+-> Sem r (m, a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (o -> Endo m) -> Sem (Output o : r) a -> Sem r (Endo m, a)
+forall o m (r :: EffectRow) a.
+Monoid m =>
+(o -> m) -> Sem (Output o : r) a -> Sem r (m, a)
+runOutputMonoid (\o
+o -> let !o' :: m
+o' = o -> m
+f o
+o in (m -> m) -> Endo m
+forall a. (a -> a) -> Endo a
+Endo (m
+o' m -> m -> m
+forall a. Semigroup a => a -> a -> a
+<>))
+{-# INLINE runOutputMonoidAssocR #-}
+runLazyOutputMonoidAssocR
+:: forall o m r a
+. Monoid m
+=> (o -> m)
+-> Sem (Output o ': r) a
+-> Sem r (m, a)
+runLazyOutputMonoidAssocR :: forall o m (r :: EffectRow) a.
+Monoid m =>
+(o -> m) -> Sem (Output o : r) a -> Sem r (m, a)
+runLazyOutputMonoidAssocR o -> m
+f =
+((Endo m, a) -> (m, a)) -> Sem r (Endo m, a) -> Sem r (m, a)
+forall a b. (a -> b) -> Sem r a -> Sem r b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap ((Endo m -> m) -> (Endo m, a) -> (m, a)
+forall a b c. (a -> b) -> (a, c) -> (b, c)
+forall (p :: * -> * -> *) a b c.
+Bifunctor p =>
+(a -> b) -> p a c -> p b c
+first (Endo m -> m -> m
+forall a. Endo a -> a -> a
+`appEndo` m
+forall a. Monoid a => a
+mempty))
+(Sem r (Endo m, a) -> Sem r (m, a))
+-> (Sem (Output o : r) a -> Sem r (Endo m, a))
+-> Sem (Output o : r) a
+-> Sem r (m, a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (o -> Endo m) -> Sem (Output o : r) a -> Sem r (Endo m, a)
+forall o m (r :: EffectRow) a.
+Monoid m =>
+(o -> m) -> Sem (Output o : r) a -> Sem r (m, a)
+runLazyOutputMonoid (\o
+o -> let o' :: m
+o' = o -> m
+f o
+o in (m -> m) -> Endo m
+forall a. (a -> a) -> Endo a
+Endo (m
+o' m -> m -> m
+forall a. Semigroup a => a -> a -> a
+<>))
+{-# INLINE runLazyOutputMonoidAssocR #-}
+runOutputMonoidIORef
+:: forall o m r a
+. (Monoid m, Member (Embed IO) r)
+=> IORef m
+-> (o -> m)
+-> Sem (Output o ': r) a
+-> Sem r a
+runOutputMonoidIORef :: forall o m (r :: EffectRow) a.
+(Monoid m, Member (Embed IO) r) =>
+IORef m -> (o -> m) -> Sem (Output o : r) a -> Sem r a
+runOutputMonoidIORef IORef m
+ref o -> m
+f = (forall (rInitial :: EffectRow) x.
+Output o (Sem rInitial) x -> Sem r x)
+-> Sem (Output o : r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: EffectRow) x. e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: EffectRow) x.
+Output o (Sem rInitial) x -> Sem r x)
+-> Sem (Output o : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+Output o (Sem rInitial) x -> Sem r x)
+-> Sem (Output o : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+Output o
+o -> IO x -> Sem r x
+forall (m :: * -> *) (r :: EffectRow) a.
+Member (Embed m) r =>
+m a -> Sem r a
+embed (IO x -> Sem r x) -> IO x -> Sem r x
+forall a b. (a -> b) -> a -> b
+$ IORef m -> (m -> (m, x)) -> IO x
+forall a b. IORef a -> (a -> (a, b)) -> IO b
+atomicModifyIORef' IORef m
+ref (\m
+s -> let !o' :: m
+o' = o -> m
+f o
+o in (m
+s m -> m -> m
+forall a. Semigroup a => a -> a -> a
+<> m
+o', ()))
+{-# INLINE runOutputMonoidIORef #-}
+runOutputMonoidTVar
+:: forall o m r a
+. (Monoid m, Member (Embed IO) r)
+=> TVar m
+-> (o -> m)
+-> Sem (Output o ': r) a
+-> Sem r a
+runOutputMonoidTVar :: forall o m (r :: EffectRow) a.
+(Monoid m, Member (Embed IO) r) =>
+TVar m -> (o -> m) -> Sem (Output o : r) a -> Sem r a
+runOutputMonoidTVar TVar m
+tvar o -> m
+f = (forall (rInitial :: EffectRow) x.
+Output o (Sem rInitial) x -> Sem r x)
+-> Sem (Output o : r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: EffectRow) x. e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: EffectRow) x.
+Output o (Sem rInitial) x -> Sem r x)
+-> Sem (Output o : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+Output o (Sem rInitial) x -> Sem r x)
+-> Sem (Output o : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+Output o
+o -> IO x -> Sem r x
+forall (m :: * -> *) (r :: EffectRow) a.
+Member (Embed m) r =>
+m a -> Sem r a
+embed (IO x -> Sem r x) -> IO x -> Sem r x
+forall a b. (a -> b) -> a -> b
+$ STM x -> IO x
+forall a. STM a -> IO a
+atomically (STM x -> IO x) -> STM x -> IO x
+forall a b. (a -> b) -> a -> b
+$ do
+m
+s <- TVar m -> STM m
+forall a. TVar a -> STM a
+readTVar TVar m
+tvar
+TVar m -> m -> STM ()
+forall a. TVar a -> a -> STM ()
+writeTVar TVar m
+tvar (m -> STM x) -> m -> STM x
+forall a b. (a -> b) -> a -> b
+$! m
+s m -> m -> m
+forall a. Semigroup a => a -> a -> a
+<> o -> m
+f o
+o
+{-# INLINE runOutputMonoidTVar #-}
+outputToIOMonoid
+:: forall o m r a
+. (Monoid m, Member (Embed IO) r)
+=> (o -> m)
+-> Sem (Output o ': r) a
+-> Sem r (m, a)
+outputToIOMonoid :: forall o m (r :: EffectRow) a.
+(Monoid m, Member (Embed IO) r) =>
+(o -> m) -> Sem (Output o : r) a -> Sem r (m, a)
+outputToIOMonoid o -> m
+f Sem (Output o : r) a
+sem = do
+IORef m
+ref <- IO (IORef m) -> Sem r (IORef m)
+forall (m :: * -> *) (r :: EffectRow) a.
+Member (Embed m) r =>
+m a -> Sem r a
+embed (IO (IORef m) -> Sem r (IORef m))
+-> IO (IORef m) -> Sem r (IORef m)
+forall a b. (a -> b) -> a -> b
+$ m -> IO (IORef m)
+forall a. a -> IO (IORef a)
+newIORef m
+forall a. Monoid a => a
+mempty
+a
+res <- IORef m -> (o -> m) -> Sem (Output o : r) a -> Sem r a
+forall o m (r :: EffectRow) a.
+(Monoid m, Member (Embed IO) r) =>
+IORef m -> (o -> m) -> Sem (Output o : r) a -> Sem r a
+runOutputMonoidIORef IORef m
+ref o -> m
+f Sem (Output o : r) a
+sem
+m
+end <- IO m -> Sem r m
+forall (m :: * -> *) (r :: EffectRow) a.
+Member (Embed m) r =>
+m a -> Sem r a
+embed (IO m -> Sem r m) -> IO m -> Sem r m
+forall a b. (a -> b) -> a -> b
+$ IORef m -> IO m
+forall a. IORef a -> IO a
+readIORef IORef m
+ref
+(m, a) -> Sem r (m, a)
+forall a. a -> Sem r a
+forall (m :: * -> *) a. Monad m => a -> m a
+return (m
+end, a
+res)
+outputToIOMonoidAssocR
+:: forall o m r a
+. (Monoid m, Member (Embed IO) r)
+=> (o -> m)
+-> Sem (Output o ': r) a
+-> Sem r (m, a)
+outputToIOMonoidAssocR :: forall o m (r :: EffectRow) a.
+(Monoid m, Member (Embed IO) r) =>
+(o -> m) -> Sem (Output o : r) a -> Sem r (m, a)
+outputToIOMonoidAssocR o -> m
+f =
+(((Endo m, a) -> (m, a)) -> Sem r (Endo m, a) -> Sem r (m, a)
+forall a b. (a -> b) -> Sem r a -> Sem r b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap (((Endo m, a) -> (m, a)) -> Sem r (Endo m, a) -> Sem r (m, a))
+-> ((Endo m -> m) -> (Endo m, a) -> (m, a))
+-> (Endo m -> m)
+-> Sem r (Endo m, a)
+-> Sem r (m, a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (Endo m -> m) -> (Endo m, a) -> (m, a)
+forall a b c. (a -> b) -> (a, c) -> (b, c)
+forall (p :: * -> * -> *) a b c.
+Bifunctor p =>
+(a -> b) -> p a c -> p b c
+first) (Endo m -> m -> m
+forall a. Endo a -> a -> a
+`appEndo` m
+forall a. Monoid a => a
+mempty)
+(Sem r (Endo m, a) -> Sem r (m, a))
+-> (Sem (Output o : r) a -> Sem r (Endo m, a))
+-> Sem (Output o : r) a
+-> Sem r (m, a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (o -> Endo m) -> Sem (Output o : r) a -> Sem r (Endo m, a)
+forall o m (r :: EffectRow) a.
+(Monoid m, Member (Embed IO) r) =>
+(o -> m) -> Sem (Output o : r) a -> Sem r (m, a)
+outputToIOMonoid (\o
+o -> let !o' :: m
+o' = o -> m
+f o
+o in (m -> m) -> Endo m
+forall a. (a -> a) -> Endo a
+Endo (m
+o' m -> m -> m
+forall a. Semigroup a => a -> a -> a
+<>))
+ignoreOutput :: Sem (Output o ': r) a -> Sem r a
+ignoreOutput :: forall o (r :: EffectRow) a. Sem (Output o : r) a -> Sem r a
+ignoreOutput = (forall (rInitial :: EffectRow) x.
+Output o (Sem rInitial) x -> Sem r x)
+-> Sem (Output o : r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: EffectRow) x. e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: EffectRow) x.
+Output o (Sem rInitial) x -> Sem r x)
+-> Sem (Output o : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+Output o (Sem rInitial) x -> Sem r x)
+-> Sem (Output o : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+Output o
+_ -> x -> Sem r x
+forall a. a -> Sem r a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure ()
+{-# INLINE ignoreOutput #-}
+runOutputBatched
+:: forall o r a
+. Member (Output [o]) r
+=> Int
+-> Sem (Output o ': r) a
+-> Sem r a
+runOutputBatched :: forall o (r :: EffectRow) a.
+Member (Output [o]) r =>
+Int -> Sem (Output o : r) a -> Sem r a
+runOutputBatched Int
+0 Sem (Output o : r) a
+m = Sem (Output o : r) a -> Sem r a
+forall o (r :: EffectRow) a. Sem (Output o : r) a -> Sem r a
+ignoreOutput Sem (Output o : r) a
+m
+runOutputBatched Int
+size Sem (Output o : r) a
+m = do
+((Int
+c, [o]
+res), a
+a) <-
+(Int, [o]) -> Sem (State (Int, [o]) : r) a -> Sem r ((Int, [o]), a)
+forall s (r :: EffectRow) a.
+s -> Sem (State s : r) a -> Sem r (s, a)
+runState (Int
+0 :: Int, [] :: [o]) (Sem (State (Int, [o]) : r) a -> Sem r ((Int, [o]), a))
+-> Sem (State (Int, [o]) : r) a -> Sem r ((Int, [o]), a)
+forall a b. (a -> b) -> a -> b
+$ (forall (rInitial :: EffectRow) x.
+Output o (Sem rInitial) x -> Sem (State (Int, [o]) : r) x)
+-> Sem (Output o : r) a -> Sem (State (Int, [o]) : r) a
+forall (e1 :: Effect) (e2 :: Effect) (r :: EffectRow) a.
+FirstOrder e1 "reinterpret" =>
+(forall (rInitial :: EffectRow) x.
+e1 (Sem rInitial) x -> Sem (e2 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : r) a
+reinterpret (\case
+Output o
+o -> do
+(Int
+count, [o]
+acc) <- Sem (State (Int, [o]) : r) (Int, [o])
+forall s (r :: EffectRow). Member (State s) r => Sem r s
+get
+let newCount :: Int
+newCount = Int
+1 Int -> Int -> Int
+forall a. Num a => a -> a -> a
++ Int
+count
+newAcc :: [o]
+newAcc = o
+o o -> [o] -> [o]
+forall a. a -> [a] -> [a]
+: [o]
+acc
+if Int
+newCount Int -> Int -> Bool
+forall a. Ord a => a -> a -> Bool
+< Int
+size
+then (Int, [o]) -> Sem (State (Int, [o]) : r) ()
+forall s (r :: EffectRow). Member (State s) r => s -> Sem r ()
+put (Int
+newCount, [o]
+newAcc)
+else do
+[o] -> Sem (State (Int, [o]) : r) ()
+forall o (r :: EffectRow). Member (Output o) r => o -> Sem r ()
+output ([o] -> [o]
+forall a. [a] -> [a]
+reverse [o]
+newAcc)
+(Int, [o]) -> Sem (State (Int, [o]) : r) ()
+forall s (r :: EffectRow). Member (State s) r => s -> Sem r ()
+put (Int
+0 :: Int, [] :: [o])
+) Sem (Output o : r) a
+m
+Bool -> Sem r () -> Sem r ()
+forall (f :: * -> *). Applicative f => Bool -> f () -> f ()
+when (Int
+c Int -> Int -> Bool
+forall a. Ord a => a -> a -> Bool
+> Int
+0) (Sem r () -> Sem r ()) -> Sem r () -> Sem r ()
+forall a b. (a -> b) -> a -> b
+$ forall o (r :: EffectRow). Member (Output o) r => o -> Sem r ()
+output @[o] ([o] -> [o]
+forall a. [a] -> [a]
+reverse [o]
+res)
+a -> Sem r a
+forall a. a -> Sem r a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure a
+a
+runOutputSem :: (o -> Sem r ()) -> Sem (Output o ': r) a -> Sem r a
+runOutputSem :: forall o (r :: EffectRow) a.
+(o -> Sem r ()) -> Sem (Output o : r) a -> Sem r a
+runOutputSem o -> Sem r ()
+act = (forall (rInitial :: EffectRow) x.
+Output o (Sem rInitial) x -> Sem r x)
+-> Sem (Output o : r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: EffectRow) x. e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: EffectRow) x.
+Output o (Sem rInitial) x -> Sem r x)
+-> Sem (Output o : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+Output o (Sem rInitial) x -> Sem r x)
+-> Sem (Output o : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+Output o
+o -> o -> Sem r ()
+act o
+o
+{-# INLINE runOutputSem #-}

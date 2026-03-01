@@ -1,0 +1,31 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- newtype Tagged k e m a where
+- tag :: forall k e r a. Member (Tagged k e) r => Sem (e ': r) a -> Sem r a
+- tagged :: forall k e r a. Sem (e ': r) a -> Sem (Tagged k e ': r) a
+- untag :: forall k e r a. Sem (Tagged k e ': r) a -> Sem (e ': r) a
+- retag :: forall k1 k2 e r a. Member (Tagged k2 e) r => Sem (Tagged k1 e ': r) a -> Sem r a
+Effect
+newtype Tagged k e m a where Source #
+An effect for annotating effects and disambiguating identical effects.
+Actions
+tag :: forall k e r a. Member (Tagged k e) r => Sem (e ': r) a -> Sem r a Source #
+Tag uses of an effect, effectively gaining access to the tagged effect locally.
+This may be used to create tagged-
+variants of regular actions.
+For example:
+taggedLocal :: forall k i r a .Member
+(Tagged
+k (Reader
+i)) r => (i -> i) ->Sem
+r a ->Sem
+r a taggedLocal f m =tag
+@k @(Reader
+i) $local
+@i f (raise
+m)
+tagged :: forall k e r a. Sem (e ': r) a -> Sem (Tagged k e ': r) a Source #
+A reinterpreting version of tag
+.

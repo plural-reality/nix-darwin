@@ -1,0 +1,16 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- type family IfStuck (expr :: k) (b :: k1) (c :: Exp k1) :: k1 where ...
+- type WhenStuck expr b = IfStuck expr b NoErrorFcf
+- type UnlessStuck expr c = IfStuck expr NoError c
+Documentation
+type family IfStuck (expr :: k) (b :: k1) (c :: Exp k1) :: k1 where ... Source #
+leaves IfStuck
+expr b cb
+in the residual constraints whenever
+expr
+is stuck, otherwise it Eval
+uates c
+.

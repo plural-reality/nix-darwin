@@ -1,0 +1,21 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- class InsertAtIndex (index :: Nat) (head :: [k]) (tail :: [k]) (oldTail :: [k]) (full :: [k]) (inserted :: [k]) where
+- insertAtIndex :: SList inserted
+Documentation
+class InsertAtIndex (index :: Nat) (head :: [k]) (tail :: [k]) (oldTail :: [k]) (full :: [k]) (inserted :: [k]) where Source #
+Infer a partition of the result type full
+so that for the fixed segments
+head
+and tail
+, the new segment inserted
+contains the missing effects
+between them.
+insertAtIndex :: SList inserted Source #
+Instances
+| inserted ~ ('[] :: [k]) => InsertAtIndex index (head :: [k]) (oldTail :: [k]) (oldTail :: [k]) (full :: [k]) (inserted :: [k]) Source # | |
+Defined in Polysemy.Internal.Index insertAtIndex :: SList inserted Source # | |
+| (InsertAtIndex index head tail oldTail full insertedTail, inserted ~ (e ': insertedTail)) => InsertAtIndex index (head :: [a]) (e ': tail :: [a]) (oldTail :: [a]) (full :: [a]) (inserted :: [a]) Source # | |
+Defined in Polysemy.Internal.Index insertAtIndex :: SList inserted Source # |

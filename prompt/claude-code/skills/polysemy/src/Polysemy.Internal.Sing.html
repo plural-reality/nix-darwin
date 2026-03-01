@@ -1,0 +1,43 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# OPTIONS_HADDOCK not-home #-}
+module Polysemy.Internal.Sing where
+import GHC.TypeLits (Nat, type (-))
+import Polysemy.Internal.Kind (Effect)
+data SList l where
+SEnd :: SList '[]
+SCons :: SList xs -> SList (x ': xs)
+class KnownList l where
+singList :: SList l
+instance KnownList '[] where
+singList :: SList '[]
+singList = SList '[]
+forall k. SList '[]
+SEnd
+{-# INLINE singList #-}
+instance KnownList xs => KnownList (x ': xs) where
+singList :: SList (x : xs)
+singList = SList xs -> SList (x : xs)
+forall {k} (xs :: [k]) (x :: k). SList xs -> SList (x : xs)
+SCons SList xs
+forall {k} (l :: [k]). KnownList l => SList l
+singList
+{-# INLINE singList #-}
+class ListOfLength (n :: Nat) (l :: [Effect]) where
+listOfLength :: SList l
+instance {-# OVERLAPPING #-} (l ~ '[]) => ListOfLength 0 l where
+listOfLength :: SList l
+listOfLength = SList l
+SList '[]
+forall k. SList '[]
+SEnd
+{-# INLINE listOfLength #-}
+instance (ListOfLength (n - 1) xs, l ~ (x ': xs)) => ListOfLength n l where
+listOfLength :: SList l
+listOfLength = SList xs -> SList (x : xs)
+forall {k} (xs :: [k]) (x :: k). SList xs -> SList (x : xs)
+SCons (forall (n :: Nat) (l :: [Effect]). ListOfLength n l => SList l
+listOfLength @(n - 1))
+{-# INLINE listOfLength #-}

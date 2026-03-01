@@ -1,0 +1,207 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+the final target monad of the effect stack
+Synopsis
+- newtype Final m z a where
+- WithWeavingToFinal :: ThroughWeavingToFinal m z a -> Final m z a
+- type ThroughWeavingToFinal m z a = forall f. Functor f => f () -> (forall x. f (z x) -> m (f x)) -> (forall x. f x -> Maybe x) -> m (f a)
+- withWeavingToFinal :: forall m r a. Member (Final m) r => ThroughWeavingToFinal m (Sem r) a -> Sem r a
+- withStrategicToFinal :: Member (Final m) r => Strategic m (Sem r) a -> Sem r a
+- embedFinal :: (Member (Final m) r, Functor m) => m a -> Sem r a
+- interpretFinal :: forall m e r a. Member (Final m) r => (forall x rInitial. e (Sem rInitial) x -> Strategic m (Sem rInitial) x) -> Sem (e ': r) a -> Sem r a
+- type Strategic m n a = forall f. Functor f => Sem (WithStrategy m f n) (m (f a))
+- type WithStrategy m f n = '[Strategy m f n]
+- pureS :: Applicative m => a -> Strategic m n a
+- liftS :: Functor m => m a -> Strategic m n a
+- runS :: n a -> Sem (WithStrategy m f n) (m (f a))
+- bindS :: (a -> n b) -> Sem (WithStrategy m f n) (f a -> m (f b))
+- getInspectorS :: forall m f n. Sem (WithStrategy m f n) (Inspector f)
+- getInitialStateS :: forall m f n. Sem (WithStrategy m f n) (f ())
+- runFinal :: Monad m => Sem '[Final m] a -> m a
+- finalToFinal :: forall m1 m2 r a. Member (Final m2) r => (forall x. m1 x -> m2 x) -> (forall x. m2 x -> m1 x) -> Sem (Final m1 ': r) a -> Sem r a
+- embedToFinal :: (Member (Final m) r, Functor m) => Sem (Embed m ': r) a -> Sem r a
+Effect
+newtype Final m z a where Source #
+An effect for embedding higher-order actions in the final target monad of the effect stack.
+This is very useful for writing interpreters that interpret higher-order effects in terms of the final monad.
+Final
+is more powerful than Embed
+, but is also less flexible
+to interpret (compare runEmbedded
+with finalToFinal
+).
+If you only need the power of embed
+, then you should use Embed
+instead.
+Beware: Final
+actions are interpreted as actions of the final monad,
+and the effectful state visible to
+withWeavingToFinal
+/ withStrategicToFinal
+/ interpretFinal
+is that of all interpreters run in order to produce the final monad.
+This means that any interpreter built using Final
+will not
+respect local/global state semantics based on the order of
+interpreters run. You should signal interpreters that make use of
+Final
+by adding a -
+suffix to the names of these.Final
+State semantics of effects that are not interpreted in terms of the final monad will always appear local to effects that are interpreted in terms of the final monad.
+State semantics between effects that are interpreted in terms of the final monad depend on the final monad. For example, if the final monad is a monad transformer stack, then state semantics will depend on the order monad transformers are stacked.
+Since: 1.2.0.0
+| WithWeavingToFinal :: ThroughWeavingToFinal m z a -> Final m z a |
+type ThroughWeavingToFinal m z a = forall f. Functor f => f () -> (forall x. f (z x) -> m (f x)) -> (forall x. f x -> Maybe x) -> m (f a) Source #
+This represents a function which produces
+an action of the final monad m
+given:
+- The initial effectful state at the moment the action is to be executed.
+- A way to convert
+z
+(which is typically
+) toSem
+rm
+by threading the effectful state through. - An inspector that is able to view some value within the effectful state if the effectful state contains any values.
+A
+provides these components,
+hence the name Weaving
+ThroughWeavingToFinal
+.
+Since: 1.2.0.0
+Actions
+withWeavingToFinal :: forall m r a. Member (Final m) r => ThroughWeavingToFinal m (Sem r) a -> Sem r a Source #
+Allows for embedding higher-order actions of the final monad
+by providing the means of explicitly threading effects through
+to the final monad.Sem
+r
+Consider using withStrategicToFinal
+instead,
+which provides a more user-friendly interface, but is also slightly weaker.
+You are discouraged from using withWeavingToFinal
+directly
+in application code, as it ties your application code directly to
+the final monad.
+Since: 1.2.0.0
+withStrategicToFinal :: Member (Final m) r => Strategic m (Sem r) a -> Sem r a Source #
+Allows for embedding higher-order actions of the final monad
+by providing the means of explicitly threading effects through
+to the final monad. This is done through the use of the Sem
+rStrategic
+environment, which provides runS
+and bindS
+.
+You are discouraged from using withStrategicToFinal
+in application code,
+as it ties your application code directly to the final monad.
+Since: 1.2.0.0
+embedFinal :: (Member (Final m) r, Functor m) => m a -> Sem r a Source #
+withWeavingToFinal
+admits an implementation of embed
+.
+Just like embed
+, you are discouraged from using this in application code.
+Since: 1.2.0.0
+Combinators for Interpreting to the Final Monad
+| :: forall m e r a. Member (Final m) r | |
+| => (forall x rInitial. e (Sem rInitial) x -> Strategic m (Sem rInitial) x) | A natural transformation from the handled effect to the final monad. |
+| -> Sem (e ': r) a | |
+| -> Sem r a |
+Like interpretH
+, but may be used to
+interpret higher-order effects in terms of the final monad.
+interpretFinal
+requires less boilerplate than using interpretH
+together with withStrategicToFinal
+/ withWeavingToFinal
+,
+but is also less powerful.
+interpretFinal
+does not provide any means of executing actions
+of
+as you interpret each action, and the provided interpreter
+is automatically recursively used to process higher-order occurences of
+Sem
+r
+to Sem
+(e ': r)
+.Sem
+r
+If you need greater control of how the effect is interpreted,
+use interpretH
+together with withStrategicToFinal
+/
+withWeavingToFinal
+instead.
+Beware: Effects that aren't interpreted in terms of the final
+monad will have local state semantics in regards to effects
+interpreted using interpretFinal
+. See Final
+.
+Since: 1.2.0.0
+Strategy
+Strategy is a domain-specific language very similar to Tactics
+(see Tactical
+), and is used to describe how higher-order
+effects are threaded down to the final monad.
+Much like Tactics
+, computations can be run and threaded
+through the use of runS
+and bindS
+, and first-order constructors
+may use pureS
+. In addition, liftS
+may be used to
+lift actions of the final monad.
+Unlike Tactics
+, the final return value within a Strategic
+must be a monadic value of the target monad
+with the functorial state wrapped inside of it.
+type WithStrategy m f n = '[Strategy m f n] Source #
+Since: 1.2.0.0
+liftS :: Functor m => m a -> Strategic m n a Source #
+Lifts an action of the final monad into Strategic
+.
+Note: you don't need to use this function if you already have a monadic
+action with the functorial state threaded into it, by the use of
+runS
+or bindS
+.
+In these cases, you need only use pure
+to embed the action into the
+Strategic
+environment.
+Since: 1.2.0.0
+runS :: n a -> Sem (WithStrategy m f n) (m (f a)) Source #
+Lifts a monadic action into the stateful environment, in terms
+of the final monad.
+The stateful environment will be the same as the one that the Strategy
+is initially run in.
+Use bindS
+if you'd prefer to explicitly manage your stateful environment.
+Since: 1.2.0.0
+bindS :: (a -> n b) -> Sem (WithStrategy m f n) (f a -> m (f b)) Source #
+getInspectorS :: forall m f n. Sem (WithStrategy m f n) (Inspector f) Source #
+Get a natural transformation capable of potentially inspecting values
+inside of f
+. Binding the result of getInspectorS
+produces a function that
+can sometimes peek inside values returned by bindS
+.
+This is often useful for running callback functions that are not managed by polysemy code.
+See also getInspectorT
+Since: 1.2.0.0
+getInitialStateS :: forall m f n. Sem (WithStrategy m f n) (f ()) Source #
+Interpretations
+runFinal :: Monad m => Sem '[Final m] a -> m a Source #
+Lower a Sem
+containing only a single lifted, final Monad
+into that
+monad.
+If you also need to process an
+effect, use this together with
+Embed
+membedToFinal
+.
+Since: 1.2.0.0
+finalToFinal :: forall m1 m2 r a. Member (Final m2) r => (forall x. m1 x -> m2 x) -> (forall x. m2 x -> m1 x) -> Sem (Final m1 ': r) a -> Sem r a Source #

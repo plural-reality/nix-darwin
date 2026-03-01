@@ -1,0 +1,771 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- data Sem r a
+- class Member (t :: Effect) (r :: EffectRow)
+- type family Members es r :: Constraint where ...
+- run :: Sem '[] a -> a
+- runM :: Monad m => Sem '[Embed m] a -> m a
+- runFinal :: Monad m => Sem '[Final m] a -> m a
+- type InterpreterFor e r = forall a. Sem (e ': r) a -> Sem r a
+- type InterpretersFor es r = forall a. Sem (Append es r) a -> Sem r a
+- newtype Embed m (z :: Type -> Type) a where
+- embed :: Member (Embed m) r => m a -> Sem r a
+- embedToFinal :: (Member (Final m) r, Functor m) => Sem (Embed m ': r) a -> Sem r a
+- data Final m z a
+- embedFinal :: (Member (Final m) r, Functor m) => m a -> Sem r a
+- raise :: forall e r a. Sem r a -> Sem (e ': r) a
+- raiseUnder :: forall e2 e1 r a. Sem (e1 ': r) a -> Sem (e1 ': (e2 ': r)) a
+- raiseUnder2 :: forall e2 e3 e1 r a. Sem (e1 ': r) a -> Sem (e1 ': (e2 ': (e3 ': r))) a
+- raiseUnder3 :: forall e2 e3 e4 e1 r a. Sem (e1 ': r) a -> Sem (e1 ': (e2 ': (e3 ': (e4 ': r)))) a
+- raise2Under :: forall e3 e1 e2 r a. Sem (e1 : (e2 : r)) a -> Sem (e1 : (e2 : (e3 : r))) a
+- raise3Under :: forall e4 e1 e2 e3 r a. Sem (e1 : (e2 : (e3 : r))) a -> Sem (e1 : (e2 : (e3 : (e4 : r)))) a
+- raise_ :: forall r r' a. Raise r r' => Sem r a -> Sem r' a
+- subsume_ :: forall r r' a. Subsume r r' => Sem r a -> Sem r' a
+- insertAt :: forall index inserted head oldTail tail old full a. (ListOfLength index head, WhenStuck index InsertAtUnprovidedIndex, old ~ Append head oldTail, tail ~ Append inserted oldTail, full ~ Append head tail, InsertAtIndex index head tail oldTail full inserted) => Sem old a -> Sem full a
+- subsume :: forall e r a. Member e r => Sem (e ': r) a -> Sem r a
+- send :: Member e r => e (Sem r) a -> Sem r a
+- makeSem :: Name -> Q [Dec]
+- makeSem_ :: Name -> Q [Dec]
+- interpret :: FirstOrder e "interpret" => (forall rInitial x. e (Sem rInitial) x -> Sem r x) -> Sem (e ': r) a -> Sem r a
+- intercept :: (Member e r, FirstOrder e "intercept") => (forall x rInitial. e (Sem rInitial) x -> Sem r x) -> Sem r a -> Sem r a
+- reinterpret :: forall e1 e2 r a. FirstOrder e1 "reinterpret" => (forall rInitial x. e1 (Sem rInitial) x -> Sem (e2 ': r) x) -> Sem (e1 ': r) a -> Sem (e2 ': r) a
+- reinterpret2 :: forall e1 e2 e3 r a. FirstOrder e1 "reinterpret2" => (forall rInitial x. e1 (Sem rInitial) x -> Sem (e2 ': (e3 ': r)) x) -> Sem (e1 ': r) a -> Sem (e2 ': (e3 ': r)) a
+- reinterpret3 :: forall e1 e2 e3 e4 r a. FirstOrder e1 "reinterpret3" => (forall rInitial x. e1 (Sem rInitial) x -> Sem (e2 ': (e3 ': (e4 ': r))) x) -> Sem (e1 ': r) a -> Sem (e2 ': (e3 ': (e4 ': r))) a
+- rewrite :: forall e1 e2 r a. (forall rInitial x. e1 (Sem rInitial) x -> e2 (Sem rInitial) x) -> Sem (e1 ': r) a -> Sem (e2 ': r) a
+- transform :: forall e1 e2 r a. Member e2 r => (forall rInitial x. e1 (Sem rInitial) x -> e2 (Sem rInitial) x) -> Sem (e1 ': r) a -> Sem r a
+- interpretH :: (forall rInitial x. e (Sem rInitial) x -> Tactical e (Sem rInitial) r x) -> Sem (e ': r) a -> Sem r a
+- interceptH :: Member e r => (forall x rInitial. e (Sem rInitial) x -> Tactical e (Sem rInitial) r x) -> Sem r a -> Sem r a
+- reinterpretH :: forall e1 e2 r a. (forall rInitial x. e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 ': r) x) -> Sem (e1 ': r) a -> Sem (e2 ': r) a
+- reinterpret2H :: forall e1 e2 e3 r a. (forall rInitial x. e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 ': (e3 ': r)) x) -> Sem (e1 ': r) a -> Sem (e2 ': (e3 ': r)) a
+- reinterpret3H :: forall e1 e2 e3 e4 r a. (forall rInitial x. e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 ': (e3 ': (e4 ': r))) x) -> Sem (e1 ': r) a -> Sem (e2 ': (e3 ': (e4 ': r))) a
+- type Effect = (Type -> Type) -> Type -> Type
+- type EffectRow = [Effect]
+- type Tactical e m r x = forall f. Functor f => Sem (WithTactics e f m r) (f x)
+- type WithTactics e f m r = Tactics f m (e ': r) ': r
+- getInitialStateT :: forall f m r e. Sem (WithTactics e f m r) (f ())
+- pureT :: Functor f => a -> Sem (WithTactics e f m r) (f a)
+- runTSimple :: m a -> Tactical e m r a
+- bindTSimple :: forall m f r e a b. (a -> m b) -> f a -> Sem (WithTactics e f m r) (f b)
+- runT :: m a -> Sem (WithTactics e f m r) (Sem (e ': r) (f a))
+- bindT :: (a -> m b) -> Sem (WithTactics e f m r) (f a -> Sem (e ': r) (f b))
+- getInspectorT :: forall e f m r. Sem (WithTactics e f m r) (Inspector f)
+- newtype Inspector f = Inspector {}
+Core Types
+The Sem
+monad handles computations of arbitrary extensible effects.
+A value of type Sem r
+describes a program with the capabilities of
+r
+. For best results, r
+should always be kept polymorphic, but you can
+add capabilities via the Member
+constraint.
+The value of the Sem
+monad is that it allows you to write programs
+against a set of effects without a predefined meaning, and provide that
+meaning later. For example, unlike with mtl, you can decide to interpret an
+Error
+effect traditionally as an Either
+, or instead
+as (a significantly faster) IO
+Exception
+. These
+interpretations (and others that you might add) may be used interchangeably
+without needing to write any newtypes or Monad
+instances. The only
+change needed to swap interpretations is to change a call from
+runError
+to errorToIOFinal
+.
+The effect stack r
+can contain arbitrary other monads inside of it. These
+monads are lifted into effects via the Embed
+effect. Monadic values can be
+lifted into a Sem
+via embed
+.
+Higher-order actions of another monad can be lifted into higher-order actions
+of Sem
+via the Final
+effect, which is more powerful
+than Embed
+, but also less flexible to interpret.
+A Sem
+can be interpreted as a pure value (via run
+) or as any
+traditional Monad
+(via runM
+or runFinal
+).
+Each effect E
+comes equipped with some interpreters of the form:
+runE ::Sem
+(E ': r) a ->Sem
+r a
+which is responsible for removing the effect E
+from the effect stack. It
+is the order in which you call the interpreters that determines the
+monomorphic representation of the r
+parameter.
+Order of interpreters can be important - it determines behaviour of effects that manipulate state or change control flow. For example, when interpreting this action:
+>>>
+:{
+example :: Members '[State String, Error String] r => Sem r String example = do put "start" let throwing, catching :: Members '[State String, Error String] r => Sem r String throwing = do modify (++"-throw") throw "error" get catching = do modify (++"-catch") get catch @String throwing (\ _ -> catching) :}
+when handling Error
+first, state is preserved after error
+occurs:
+>>>
+:{
+example & runError & fmap (either id id) & evalState "" & runM & (print =<<) :} "start-throw-catch"
+while handling State
+first discards state in such cases:
+>>>
+:{
+example & evalState "" & runError & fmap (either id id) & runM & (print =<<) :} "start-catch"
+A good rule of thumb is to handle effects which should have "global" behaviour over other effects later in the chain.
+After all of your effects are handled, you'll be left with either
+a
+, a Sem
+'[] a
+, or a Sem
+'[ Embed
+m ] a
+value, which can be consumed respectively by Sem
+'[ Final
+m ] arun
+, runM
+, and
+runFinal
+.
+Examples
+As an example of keeping r
+polymorphic, we can consider the type
+Member
+(State
+String) r =>Sem
+r ()
+to be a program with access to
+get
+::Sem
+r Stringput
+:: String ->Sem
+r ()
+methods.
+By also adding a
+Member
+(Error
+Bool) r
+constraint on r
+, we gain access to the
+throw
+:: Bool ->Sem
+r acatch
+::Sem
+r a -> (Bool ->Sem
+r a) ->Sem
+r a
+functions as well.
+In this sense, a
+constraint is
+analogous to mtl's Member
+(State
+s) r
+and should
+be thought of as such. However, unlike mtl, a MonadState
+s mSem
+monad may have
+an arbitrary number of the same effect.
+For example, we can write a Sem
+program which can output either
+Int
+s or Bool
+s:
+foo :: (Member
+(Output
+Int) r ,Member
+(Output
+Bool) r ) =>Sem
+r () foo = dooutput
+@Int 5output
+True
+Notice that we must use -XTypeApplications
+to specify that we'd like to
+use the (Output
+Int
+) effect.
+Since: 0.1.2.0
+Instances
+| Member (Fail :: (Type -> Type) -> Type -> Type) r => MonadFail (Sem r) Source # | Since: 1.1.0.0 |
+Defined in Polysemy.Internal | |
+| Member Fixpoint r => MonadFix (Sem r) Source # | |
+Defined in Polysemy.Internal | |
+| Member (Embed IO) r => MonadIO (Sem r) Source # | This instance will only lift |
+Defined in Polysemy.Internal | |
+| Member NonDet r => Alternative (Sem r) Source # | |
+| Applicative (Sem f) Source # | |
+| Functor (Sem f) Source # | |
+| Monad (Sem f) Source # | |
+| Member NonDet r => MonadPlus (Sem r) Source # | Since: 0.2.1.0 |
+| Monoid a => Monoid (Sem f a) Source # | Since: 1.6.0.0 |
+| Semigroup a => Semigroup (Sem f a) Source # | Since: 1.6.0.0 |
+class Member (t :: Effect) (r :: EffectRow) Source #
+This class indicates that an effect must be present in the caller's stack. It is the main mechanism by which a program defines its effect dependencies.
+membership'
+Instances
+| Member t z => Member t (_1 ': z) Source # | |
+Defined in Polysemy.Internal.Union membership' :: ElemOf t (_1 ': z) | |
+| Member t (t ': z) Source # | |
+Defined in Polysemy.Internal.Union membership' :: ElemOf t (t ': z) |
+type family Members es r :: Constraint where ... Source #
+Makes constraints of functions that use multiple effects shorter by
+translating single list of effects into multiple Member
+constraints:
+foo ::Members
+'[Output
+Int ,Output
+Bool ,State
+String ] r =>Sem
+r ()
+translates into:
+foo :: (Member
+(Output
+Int) r ,Member
+(Output
+Bool) r ,Member
+(State
+String) r ) =>Sem
+r ()
+Since: 0.1.2.0
+Running Sem
+runFinal :: Monad m => Sem '[Final m] a -> m a Source #
+Lower a Sem
+containing only a single lifted, final Monad
+into that
+monad.
+If you also need to process an
+effect, use this together with
+Embed
+membedToFinal
+.
+Since: 1.2.0.0
+Type synonyms for user convenience
+type InterpreterFor e r = forall a. Sem (e ': r) a -> Sem r a Source #
+Type synonym for interpreters that consume an effect without changing the return value. Offered for user convenience.
+r
+Is kept polymorphic so it's possible to place constraints upon it:
+teletypeToIO ::Member
+(Embed IO) r =>InterpreterFor
+Teletype r
+type InterpretersFor es r = forall a. Sem (Append es r) a -> Sem r a Source #
+Variant of InterpreterFor
+that takes a list of effects.
+@since 1.5.0.0
+Interoperating With Other Monads
+Embed
+newtype Embed m (z :: Type -> Type) a where Source #
+An effect which allows a regular Monad
+m
+into the Sem
+ecosystem. Monadic actions in m
+can be lifted into Sem
+via
+embed
+.
+For example, you can use this effect to lift IO
+actions directly into
+Sem
+:
+embed
+(putStrLn "hello") ::Member
+(Embed
+IO) r =>Sem
+r ()
+That being said, you lose out on a significant amount of the benefits of
+Sem
+by using embed
+directly in application code; doing
+so will tie your application code directly to the underlying monad, and
+prevent you from interpreting it differently. For best results, only use
+Embed
+in your effect interpreters.
+Consider using trace
+and traceToIO
+as
+a substitute for using putStrLn
+directly.
+Since: 1.0.0.0
+embed :: Member (Embed m) r => m a -> Sem r a Source #
+Embed a monadic action m
+in Sem
+.
+Since: 1.0.0.0
+Final
+For advanced uses of Final
+, including creating your own interpreters
+that make use of it, see Polysemy.Final
+An effect for embedding higher-order actions in the final target monad of the effect stack.
+This is very useful for writing interpreters that interpret higher-order effects in terms of the final monad.
+Final
+is more powerful than Embed
+, but is also less flexible
+to interpret (compare runEmbedded
+with finalToFinal
+).
+If you only need the power of embed
+, then you should use Embed
+instead.
+Beware: Final
+actions are interpreted as actions of the final monad,
+and the effectful state visible to
+withWeavingToFinal
+/ withStrategicToFinal
+/ interpretFinal
+is that of all interpreters run in order to produce the final monad.
+This means that any interpreter built using Final
+will not
+respect local/global state semantics based on the order of
+interpreters run. You should signal interpreters that make use of
+Final
+by adding a -
+suffix to the names of these.Final
+State semantics of effects that are not interpreted in terms of the final monad will always appear local to effects that are interpreted in terms of the final monad.
+State semantics between effects that are interpreted in terms of the final monad depend on the final monad. For example, if the final monad is a monad transformer stack, then state semantics will depend on the order monad transformers are stacked.
+Since: 1.2.0.0
+embedFinal :: (Member (Final m) r, Functor m) => m a -> Sem r a Source #
+withWeavingToFinal
+admits an implementation of embed
+.
+Just like embed
+, you are discouraged from using this in application code.
+Since: 1.2.0.0
+Lifting
+raiseUnder :: forall e2 e1 r a. Sem (e1 ': r) a -> Sem (e1 ': (e2 ': r)) a Source #
+Like raise
+, but introduces a new effect underneath the head of the
+list. See raiseUnder2
+or raiseUnder3
+for introducing more effects. If
+you need to introduce even more of them, check out subsume_
+.
+raiseUnder
+can be used in order to turn transformative interpreters
+into reinterpreters. This is especially useful if you're writing an
+interpreter which introduces an intermediary effect, and then want to use
+an existing interpreter on that effect.
+For example, given:
+fooToBar ::Member
+Bar r =>Sem
+(Foo ': r) a ->Sem
+r a runBar ::Sem
+(Bar ': r) a ->Sem
+r a
+You can write:
+runFoo ::Sem
+(Foo ': r) a ->Sem
+r a runFoo = runBar -- Consume Bar . fooToBar -- Interpret Foo in terms of the new Bar .raiseUnder
+-- Introduces Bar under Foo
+Since: 1.2.0.0
+raiseUnder2 :: forall e2 e3 e1 r a. Sem (e1 ': r) a -> Sem (e1 ': (e2 ': (e3 ': r))) a Source #
+Like raise
+, but introduces two new effects underneath the head of the
+list.
+Since: 1.2.0.0
+raiseUnder3 :: forall e2 e3 e4 e1 r a. Sem (e1 ': r) a -> Sem (e1 ': (e2 ': (e3 ': (e4 ': r)))) a Source #
+Like raise
+, but introduces three new effects underneath the head of the
+list.
+Since: 1.2.0.0
+raise2Under :: forall e3 e1 e2 r a. Sem (e1 : (e2 : r)) a -> Sem (e1 : (e2 : (e3 : r))) a Source #
+Like raise
+, but introduces an effect two levels underneath the head of
+the list.
+Since: 1.4.0.0
+raise3Under :: forall e4 e1 e2 e3 r a. Sem (e1 : (e2 : (e3 : r))) a -> Sem (e1 : (e2 : (e3 : (e4 : r)))) a Source #
+Like raise
+, but introduces an effect three levels underneath the head
+of the list.
+Since: 1.4.0.0
+raise_ :: forall r r' a. Raise r r' => Sem r a -> Sem r' a Source #
+Introduce an arbitrary number of effects on top of the effect stack. This
+function is highly polymorphic, so it may be good idea to use its more
+concrete versions (like raise
+) or type annotations to avoid vague errors
+in ambiguous contexts.
+Since: 1.4.0.0
+subsume_ :: forall r r' a. Subsume r r' => Sem r a -> Sem r' a Source #
+Allows reordering and adding known effects on top of the effect stack, as
+long as the polymorphic "tail" of new stack is a raise
+-d version of the
+original one. This function is highly polymorphic, so it may be a good idea
+to use its more concrete version (subsume
+), fitting functions from the
+raise
+family or type annotations to avoid vague errors in ambiguous
+contexts.
+Since: 1.4.0.0
+insertAt :: forall index inserted head oldTail tail old full a. (ListOfLength index head, WhenStuck index InsertAtUnprovidedIndex, old ~ Append head oldTail, tail ~ Append inserted oldTail, full ~ Append head tail, InsertAtIndex index head tail oldTail full inserted) => Sem old a -> Sem full a Source #
+Introduce a set of effects into Sem
+at the index i
+, before the effect
+that previously occupied that position. This is intended to be used with a
+type application:
+let sem1 :: Sem [e1, e2, e3, e4, e5] a sem1 = insertAt @2 (sem0 :: Sem [e1, e2, e5] a)
+Since: 1.6.0.0
+Trivial Interpretation
+subsume :: forall e r a. Member e r => Sem (e ': r) a -> Sem r a Source #
+Interprets an effect in terms of another identical effect.
+This is useful for defining interpreters that use reinterpretH
+without immediately consuming the newly introduced effect.
+Using such an interpreter recursively may result in duplicate effects,
+which may then be eliminated using subsume
+.
+For a version that can introduce an arbitrary number of new effects and
+reorder existing ones, see subsume_
+.
+Since: 1.2.0.0
+Creating New Effects
+Effects should be defined as a GADT (enable -XGADTs
+), with kind (*
+-> *) -> * -> *
+. Every primitive action in the effect should be its
+own constructor of the type. For example, we can model an effect which
+interacts with a tty console as follows:
+data Console m a where WriteLine :: String -> Console m () ReadLine :: Console m String
+Notice that the a
+parameter gets instantiated at the desired return
+type of the actions. Writing a line returns a ()
+, but reading one
+returns String
+.
+By enabling -XTemplateHaskell
+, we can use the makeSem
+function
+to generate smart constructors for the actions. These smart constructors
+can be invoked directly inside of the Sem
+monad.
+makeSem ''Console
+results in the following definitions:
+writeLine ::Member
+Console r => String ->Sem
+r () readLine ::Member
+Console r =>Sem
+r String
+Each of these generated definitions make use of send
+in order to perform
+the corresponding action of the effect. If you don't want to use
+Template Haskell, you can write the necessary boilerplate yourself by
+using send
+directly.
+Effects which don't make use of the m
+parameter are known as
+"first-order effects."
+Higher-Order Effects
+Every effect has access to the m
+parameter, which corresponds to the
+Sem
+monad it's used in. Using this parameter, we're capable of
+writing effects which themselves contain subcomputations.
+For example, the definition of Error
+is
+dataError
+e m a whereThrow
+:: e ->Error
+e m aCatch
+:: m a -> (e -> m a) ->Error
+e m a
+where Catch
+is an action that can run an exception
+handler if its first argument calls throw
+.
+makeSem ''Error
+throw
+::Member
+(Error
+e) r => e ->Sem
+r acatch
+::Member
+(Error
+e) r =>Sem
+r a -> (e ->Sem
+r a) ->Sem
+r a
+As you see, in the smart constructors, the m
+parameter has become
+.Sem
+r
+send :: Member e r => e (Sem r) a -> Sem r a Source #
+Execute an action of an effect.
+This is primarily used to create methods for actions of effects:
+data FooBar m a where Foo :: String -> m a -> FooBar m a Bar :: FooBar m Int foo :: Member FooBar r => String -> Sem r a -> Sem r a foo s m = send (Foo s m) bar :: Member FooBar r => Sem r Int bar = send Bar
+makeSem
+allows you to eliminate this boilerplate.
+@since TODO
+makeSem :: Name -> Q [Dec] Source #
+If T
+is a GADT representing an effect algebra, as described in the
+module documentation for Polysemy, $(
+automatically
+generates a smart constructor for every data constructor of makeSem
+''T)T
+. This also
+works for data family instances. Names of smart constructors are created by
+changing first letter to lowercase or removing prefix :
+in case of
+operators. Fixity declaration is preserved for both normal names and
+operators.
+Since: 0.1.2.0
+makeSem_ :: Name -> Q [Dec] Source #
+Like makeSem
+, but does not provide type signatures and fixities. This
+can be used to attach Haddock comments to individual arguments for each
+generated function.
+data Output o m a where Output :: o -> Output o m () makeSem_ ''Output -- | Output the value @o@. output :: forall o r . Member (Output o) r => o -- ^ Value to output. -> Sem r () -- ^ No result.
+Because of limitations in Template Haskell, signatures have to follow some rules to work properly:
+makeSem_
+must be used before the explicit type signatures- signatures have to specify argument of
+Sem
+representing union of effects asr
+(e.g.
+)Sem
+r () - all arguments in effect's type constructor have to follow naming scheme from data constructor's declaration:
+data Foo e m a where FooC1 :: Foo x m () FooC2 :: Foo (Maybe x) m ()
+should have x
+in type signature of fooC1
+:
+fooC1 :: forall x r. Member (Foo x) r => Sem r ()
+and Maybe x
+in signature of fooC2
+:
+fooC2 :: forall x r. Member (Foo (Maybe x)) r => Sem r ()
+- all effect's type variables and
+r
+have to be explicitly quantified usingforall
+(order is not important)
+These restrictions may be removed in the future, depending on changes to the compiler.
+Change in (TODO(Sandy): version): in case of GADTs, signatures now only use names from data constructor's type and not from type constructor declaration.
+Since: 0.1.2.0
+Combinators for Interpreting First-Order Effects
+| :: FirstOrder e "interpret" | |
+| => (forall rInitial x. e (Sem rInitial) x -> Sem r x) | A natural transformation from the handled effect to other effects
+already in |
+| -> Sem (e ': r) a | |
+| -> Sem r a |
+The simplest way to produce an effect handler. Interprets an effect e
+by
+transforming it into other effects inside of r
+.
+| :: (Member e r, FirstOrder e "intercept") | |
+| => (forall x rInitial. e (Sem rInitial) x -> Sem r x) | A natural transformation from the handled effect to other effects
+already in |
+| -> Sem r a | |
+| -> Sem r a |
+Like interpret
+, but instead of handling the effect, allows responding to
+the effect while leaving it unhandled. This allows you, for example, to
+intercept other effects and insert logic around them.
+| :: forall e1 e2 r a. FirstOrder e1 "reinterpret" | |
+| => (forall rInitial x. e1 (Sem rInitial) x -> Sem (e2 ': r) x) | A natural transformation from the handled effect to the new effect. |
+| -> Sem (e1 ': r) a | |
+| -> Sem (e2 ': r) a |
+Like interpret
+, but instead of removing the effect e
+, reencodes it in
+some new effect f
+. This function will fuse when followed by
+runState
+, meaning it's free to reinterpret
+in terms of
+the State
+effect and immediately run it.
+| :: forall e1 e2 e3 r a. FirstOrder e1 "reinterpret2" | |
+| => (forall rInitial x. e1 (Sem rInitial) x -> Sem (e2 ': (e3 ': r)) x) | A natural transformation from the handled effect to the new effects. |
+| -> Sem (e1 ': r) a | |
+| -> Sem (e2 ': (e3 ': r)) a |
+Like reinterpret
+, but introduces two intermediary effects.
+| :: forall e1 e2 e3 e4 r a. FirstOrder e1 "reinterpret3" | |
+| => (forall rInitial x. e1 (Sem rInitial) x -> Sem (e2 ': (e3 ': (e4 ': r))) x) | A natural transformation from the handled effect to the new effects. |
+| -> Sem (e1 ': r) a | |
+| -> Sem (e2 ': (e3 ': (e4 ': r))) a |
+Like reinterpret
+, but introduces three intermediary effects.
+rewrite :: forall e1 e2 r a. (forall rInitial x. e1 (Sem rInitial) x -> e2 (Sem rInitial) x) -> Sem (e1 ': r) a -> Sem (e2 ': r) a Source #
+Rewrite an effect e1
+directly into e2
+, and put it on the top of the
+effect stack.
+Since: 1.2.3.0
+transform :: forall e1 e2 r a. Member e2 r => (forall rInitial x. e1 (Sem rInitial) x -> e2 (Sem rInitial) x) -> Sem (e1 ': r) a -> Sem r a Source #
+Transform an effect e1
+into an effect e2
+that is already somewhere
+inside of the stack.
+Since: 1.2.3.0
+Combinators for Interpreting Higher-Order Effects
+| :: Member e r | |
+| => (forall x rInitial. e (Sem rInitial) x -> Tactical e (Sem rInitial) r x) | A natural transformation from the handled effect to other effects
+already in |
+| -> Sem r a | Unlike |
+| -> Sem r a |
+| :: forall e1 e2 r a. (forall rInitial x. e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 ': r) x) | A natural transformation from the handled effect to the new effect. |
+| -> Sem (e1 ': r) a | |
+| -> Sem (e2 ': r) a |
+Like reinterpret
+, but for higher-order effects.
+See the notes on Tactical
+for how to use this function.
+| :: forall e1 e2 e3 r a. (forall rInitial x. e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 ': (e3 ': r)) x) | A natural transformation from the handled effect to the new effects. |
+| -> Sem (e1 ': r) a | |
+| -> Sem (e2 ': (e3 ': r)) a |
+Like reinterpret2
+, but for higher-order effects.
+See the notes on Tactical
+for how to use this function.
+| :: forall e1 e2 e3 e4 r a. (forall rInitial x. e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 ': (e3 ': (e4 ': r))) x) | A natural transformation from the handled effect to the new effects. |
+| -> Sem (e1 ': r) a | |
+| -> Sem (e2 ': (e3 ': (e4 ': r))) a |
+Like reinterpret3
+, but for higher-order effects.
+See the notes on Tactical
+for how to use this function.
+Kind Synonyms
+Tactics
+Higher-order effects need to explicitly thread other effects' state through themselves. Tactics are a domain-specific language for describing exactly how this threading should take place.
+The first computation to be run should use runT
+, and subsequent
+computations in the same environment should use bindT
+. Any
+first-order constructors which appear in a higher-order context may use
+pureT
+to satisfy the typechecker.
+type Tactical e m r x = forall f. Functor f => Sem (WithTactics e f m r) (f x) Source #
+Tactical
+is an environment in which you're capable of explicitly
+threading higher-order effect states. This is provided by the (internal)
+effect Tactics
+, which is capable of rewriting monadic actions so they run
+in the correct stateful environment.
+Inside a Tactical
+, you're capable of running pureT
+, runT
+and bindT
+which are the main tools for rewriting monadic stateful environments.
+For example, consider trying to write an interpreter for
+Resource
+, whose effect is defined as:
+dataResource
+m a whereBracket
+:: m a -> (a -> m ()) -> (a -> m b) ->Resource
+m b
+Here we have an m a
+which clearly needs to be run first, and then
+subsequently call the a -> m ()
+and a -> m b
+arguments. In a Tactical
+environment, we can write the threading code thusly:
+Bracket
+alloc dealloc use -> do alloc' <-runT
+alloc dealloc' <-bindT
+dealloc use' <-bindT
+use
+where
+alloc' ::Sem
+(Resource
+': r) (f a1) dealloc' :: f a1 ->Sem
+(Resource
+': r) (f ()) use' :: f a1 ->Sem
+(Resource
+': r) (f x)
+The f
+type here is existential and corresponds to "whatever
+state the other effects want to keep track of." f
+is always
+a Functor
+.
+alloc'
+, dealloc'
+and use'
+are now in a form that can be
+easily consumed by your interpreter. At this point, simply bind
+them in the desired order and continue on your merry way.
+We can see from the types of dealloc'
+and use'
+that since they both
+consume a f a1
+, they must run in the same stateful environment. This
+means, for illustration, any put
+s run inside the use
+block will not be visible inside of the dealloc
+block.
+Power users may explicitly use getInitialStateT
+and bindT
+to construct
+whatever data flow they'd like; although this is usually unnecessary.
+type WithTactics e f m r = Tactics f m (e ': r) ': r Source #
+Convenience type alias, see Tactical
+.
+getInitialStateT :: forall f m r e. Sem (WithTactics e f m r) (f ()) Source #
+| :: m a | The monadic action to lift. This is usually a parameter in your effect. |
+| -> Tactical e m r a |
+Run a monadic action in a Tactical
+environment. The stateful environment
+used will be the same one that the effect is initally run in.
+Use bindTSimple
+if you'd prefer to explicitly manage your stateful
+environment.
+This is a less flexible but significantly simpler variant of runT
+.
+Instead of returning a Sem
+action corresponding to the provided action,
+runTSimple
+runs the action immediately.
+Since: 1.5.0.0
+| :: forall m f r e a b. (a -> m b) | The monadic continuation to lift. This is usually a parameter in your effect. Continuations executed via |
+| -> f a | |
+| -> Sem (WithTactics e f m r) (f b) |
+Lift a kleisli action into the stateful environment.
+You can use bindTSimple
+to execute an effect parameter of the form
+a -> m b
+by providing the result of a runTSimple
+or another
+bindTSimple
+.
+This is a less flexible but significantly simpler variant of bindT
+.
+Instead of returning a Sem
+kleisli action corresponding to the
+provided kleisli action, bindTSimple
+runs the kleisli action immediately.
+Since: 1.5.0.0
+| :: m a | The monadic action to lift. This is usually a parameter in your effect. |
+| -> Sem (WithTactics e f m r) (Sem (e ': r) (f a)) |
+| :: (a -> m b) | The monadic continuation to lift. This is usually a parameter in your effect. Continuations lifted via |
+| -> Sem (WithTactics e f m r) (f a -> Sem (e ': r) (f b)) |
+getInspectorT :: forall e f m r. Sem (WithTactics e f m r) (Inspector f) Source #
+Get a natural transformation capable of potentially inspecting values
+inside of f
+. Binding the result of getInspectorT
+produces a function that
+can sometimes peek inside values returned by bindT
+.
+This is often useful for running callback functions that are not managed by polysemy code.
+Example
+We can use the result of getInspectorT
+to "undo" pureT
+(or any of the other
+Tactical
+functions):
+ins <-getInspectorT
+fa <-pureT
+"hello" fb <-pureT
+True let a =inspect
+ins fa -- Just "hello" b =inspect
+ins fb -- Just True
+A container for inspect
+. See the documentation for getInspectorT
+.
+| Inspector | |
+|

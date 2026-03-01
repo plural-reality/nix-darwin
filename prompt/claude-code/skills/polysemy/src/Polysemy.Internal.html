@@ -1,0 +1,1253 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MonoLocalBinds #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# OPTIONS_HADDOCK not-home #-}
+module Polysemy.Internal
+( Sem (..)
+, Member
+, Members
+, send
+, sendUsing
+, embed
+, run
+, runM
+, raise_
+, Raise (..)
+, raise
+, raiseUnder
+, raiseUnder2
+, raiseUnder3
+, raise2Under
+, raise3Under
+, subsume_
+, Subsume (..)
+, subsume
+, subsumeUsing
+, insertAt
+, Embed (..)
+, usingSem
+, liftSem
+, hoistSem
+, restack
+, Append
+, InterpreterFor
+, InterpretersFor
+) where
+import Control.Applicative
+import Control.Monad
+#if __GLASGOW_HASKELL__ < 808
+import Control.Monad.Fail
+#endif
+import Control.Monad.Fix
+import Control.Monad.IO.Class
+import Data.Functor.Identity
+import Data.Kind
+import Polysemy.Embed.Type
+import Polysemy.Fail.Type
+import Polysemy.Internal.Fixpoint
+import Polysemy.Internal.Index (InsertAtUnprovidedIndex, InsertAtIndex(insertAtIndex))
+import Polysemy.Internal.Kind
+import Polysemy.Internal.NonDet
+import Polysemy.Internal.PluginLookup
+import Polysemy.Internal.Union
+import Type.Errors (WhenStuck)
+import Polysemy.Internal.Sing (ListOfLength (listOfLength))
+newtype Sem r a = Sem
+{ forall (r :: EffectRow) a.
+Sem r a
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a
+runSem
+:: ∀ m
+. Monad m
+=> (∀ x. Union r (Sem r) x -> m x)
+-> m a
+}
+instance PluginLookup Plugin
+type family Members es r :: Constraint where
+Members '[] r = ()
+Members (e ': es) r = (Member e r, Members es r)
+usingSem
+:: Monad m
+=> (∀ x. Union r (Sem r) x -> m x)
+-> Sem r a
+-> m a
+usingSem :: forall (m :: * -> *) (r :: EffectRow) a.
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> Sem r a -> m a
+usingSem forall x. Union r (Sem r) x -> m x
+k Sem r a
+m = Sem r a
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a
+forall (r :: EffectRow) a.
+Sem r a
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a
+runSem Sem r a
+m Union r (Sem r) x -> m x
+forall x. Union r (Sem r) x -> m x
+k
+{-# INLINE usingSem #-}
+instance Functor (Sem f) where
+fmap :: forall a b. (a -> b) -> Sem f a -> Sem f b
+fmap a -> b
+f (Sem forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m a
+m) = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m b)
+-> Sem f b
+forall (r :: EffectRow) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m b)
+-> Sem f b)
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m b)
+-> Sem f b
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union f (Sem f) x -> m x
+k -> a -> b
+f (a -> b) -> m a -> m b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> (forall x. Union f (Sem f) x -> m x) -> m a
+forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m a
+m Union f (Sem f) x -> m x
+forall x. Union f (Sem f) x -> m x
+k
+{-# INLINE fmap #-}
+instance Applicative (Sem f) where
+pure :: forall a. a -> Sem f a
+pure a
+a = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m a)
+-> Sem f a
+forall (r :: EffectRow) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m a)
+-> Sem f a)
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m a)
+-> Sem f a
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union f (Sem f) x -> m x
+_ -> a -> m a
+forall a. a -> m a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure a
+a
+{-# INLINE pure #-}
+Sem forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m (a -> b)
+f <*> :: forall a b. Sem f (a -> b) -> Sem f a -> Sem f b
+<*> Sem forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m a
+a = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m b)
+-> Sem f b
+forall (r :: EffectRow) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m b)
+-> Sem f b)
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m b)
+-> Sem f b
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union f (Sem f) x -> m x
+k -> (forall x. Union f (Sem f) x -> m x) -> m (a -> b)
+forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m (a -> b)
+f Union f (Sem f) x -> m x
+forall x. Union f (Sem f) x -> m x
+k m (a -> b) -> m a -> m b
+forall a b. m (a -> b) -> m a -> m b
+forall (f :: * -> *) a b. Applicative f => f (a -> b) -> f a -> f b
+<*> (forall x. Union f (Sem f) x -> m x) -> m a
+forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m a
+a Union f (Sem f) x -> m x
+forall x. Union f (Sem f) x -> m x
+k
+{-# INLINE (<*>) #-}
+liftA2 :: forall a b c. (a -> b -> c) -> Sem f a -> Sem f b -> Sem f c
+liftA2 a -> b -> c
+f Sem f a
+ma Sem f b
+mb = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m c)
+-> Sem f c
+forall (r :: EffectRow) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m c)
+-> Sem f c)
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m c)
+-> Sem f c
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union f (Sem f) x -> m x
+k -> (a -> b -> c) -> m a -> m b -> m c
+forall a b c. (a -> b -> c) -> m a -> m b -> m c
+forall (f :: * -> *) a b c.
+Applicative f =>
+(a -> b -> c) -> f a -> f b -> f c
+liftA2 a -> b -> c
+f (Sem f a
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m a
+forall (r :: EffectRow) a.
+Sem r a
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a
+runSem Sem f a
+ma Union f (Sem f) x -> m x
+forall x. Union f (Sem f) x -> m x
+k) (Sem f b
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m b
+forall (r :: EffectRow) a.
+Sem r a
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a
+runSem Sem f b
+mb Union f (Sem f) x -> m x
+forall x. Union f (Sem f) x -> m x
+k)
+{-# INLINE liftA2 #-}
+Sem f a
+ma <* :: forall a b. Sem f a -> Sem f b -> Sem f a
+<* Sem f b
+mb = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m a)
+-> Sem f a
+forall (r :: EffectRow) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m a)
+-> Sem f a)
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m a)
+-> Sem f a
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union f (Sem f) x -> m x
+k -> Sem f a
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m a
+forall (r :: EffectRow) a.
+Sem r a
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a
+runSem Sem f a
+ma Union f (Sem f) x -> m x
+forall x. Union f (Sem f) x -> m x
+k m a -> m b -> m a
+forall a b. m a -> m b -> m a
+forall (f :: * -> *) a b. Applicative f => f a -> f b -> f a
+<* Sem f b
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m b
+forall (r :: EffectRow) a.
+Sem r a
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a
+runSem Sem f b
+mb Union f (Sem f) x -> m x
+forall x. Union f (Sem f) x -> m x
+k
+{-# INLINE (<*) #-}
+Sem f a
+ma *> :: forall a b. Sem f a -> Sem f b -> Sem f b
+*> Sem f b
+mb = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m b)
+-> Sem f b
+forall (r :: EffectRow) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m b)
+-> Sem f b)
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m b)
+-> Sem f b
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union f (Sem f) x -> m x
+k -> Sem f a
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m a
+forall (r :: EffectRow) a.
+Sem r a
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a
+runSem Sem f a
+ma Union f (Sem f) x -> m x
+forall x. Union f (Sem f) x -> m x
+k m a -> (a -> m b) -> m b
+forall a b. m a -> (a -> m b) -> m b
+forall (m :: * -> *) a b. Monad m => m a -> (a -> m b) -> m b
+>>= \a
+_ -> Sem f b
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m b
+forall (r :: EffectRow) a.
+Sem r a
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a
+runSem Sem f b
+mb Union f (Sem f) x -> m x
+forall x. Union f (Sem f) x -> m x
+k
+{-# INLINE (*>) #-}
+instance Monad (Sem f) where
+Sem forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m a
+ma >>= :: forall a b. Sem f a -> (a -> Sem f b) -> Sem f b
+>>= a -> Sem f b
+f = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m b)
+-> Sem f b
+forall (r :: EffectRow) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m b)
+-> Sem f b)
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m b)
+-> Sem f b
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union f (Sem f) x -> m x
+k -> do
+a
+z <- (forall x. Union f (Sem f) x -> m x) -> m a
+forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m a
+ma Union f (Sem f) x -> m x
+forall x. Union f (Sem f) x -> m x
+k
+Sem f b
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union f (Sem f) x -> m x) -> m b
+forall (r :: EffectRow) a.
+Sem r a
+-> forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a
+runSem (a -> Sem f b
+f a
+z) Union f (Sem f) x -> m x
+forall x. Union f (Sem f) x -> m x
+k
+{-# INLINE (>>=) #-}
+instance (Member NonDet r) => Alternative (Sem r) where
+empty :: forall a. Sem r a
+empty = NonDet (Sem r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+Member e r =>
+e (Sem r) a -> Sem r a
+send NonDet (Sem r) a
+forall (m :: * -> *) a. NonDet m a
+Empty
+{-# INLINE empty #-}
+Sem r a
+a <|> :: forall a. Sem r a -> Sem r a -> Sem r a
+<|> Sem r a
+b = NonDet (Sem r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+Member e r =>
+e (Sem r) a -> Sem r a
+send (Sem r a -> Sem r a -> NonDet (Sem r) a
+forall (m :: * -> *) a. m a -> m a -> NonDet m a
+Choose Sem r a
+a Sem r a
+b)
+{-# INLINE (<|>) #-}
+instance (Member NonDet r) => MonadPlus (Sem r) where
+mzero :: forall a. Sem r a
+mzero = Sem r a
+forall a. Sem r a
+forall (f :: * -> *) a. Alternative f => f a
+empty
+mplus :: forall a. Sem r a -> Sem r a -> Sem r a
+mplus = Sem r a -> Sem r a -> Sem r a
+forall a. Sem r a -> Sem r a -> Sem r a
+forall (f :: * -> *) a. Alternative f => f a -> f a -> f a
+(<|>)
+instance (Member Fail r) => MonadFail (Sem r) where
+fail :: forall a. String -> Sem r a
+fail = Fail (Sem r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+Member e r =>
+e (Sem r) a -> Sem r a
+send (Fail (Sem r) a -> Sem r a)
+-> (String -> Fail (Sem r) a) -> String -> Sem r a
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. String -> Fail (Sem r) a
+forall {k} {k1} (m :: k) (a :: k1). String -> Fail m a
+Fail
+{-# INLINE fail #-}
+instance Semigroup a => Semigroup (Sem f a) where
+<> :: Sem f a -> Sem f a -> Sem f a
+(<>) = (a -> a -> a) -> Sem f a -> Sem f a -> Sem f a
+forall a b c. (a -> b -> c) -> Sem f a -> Sem f b -> Sem f c
+forall (f :: * -> *) a b c.
+Applicative f =>
+(a -> b -> c) -> f a -> f b -> f c
+liftA2 a -> a -> a
+forall a. Semigroup a => a -> a -> a
+(<>)
+instance Monoid a => Monoid (Sem f a) where
+mempty :: Sem f a
+mempty = a -> Sem f a
+forall a. a -> Sem f a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure a
+forall a. Monoid a => a
+mempty
+instance Member (Embed IO) r => MonadIO (Sem r) where
+liftIO :: forall a. IO a -> Sem r a
+liftIO = IO a -> Sem r a
+forall (m :: * -> *) (r :: EffectRow) a.
+Member (Embed m) r =>
+m a -> Sem r a
+embed
+{-# INLINE liftIO #-}
+instance Member Fixpoint r => MonadFix (Sem r) where
+mfix :: forall a. (a -> Sem r a) -> Sem r a
+mfix a -> Sem r a
+f = Fixpoint (Sem r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+Member e r =>
+e (Sem r) a -> Sem r a
+send (Fixpoint (Sem r) a -> Sem r a) -> Fixpoint (Sem r) a -> Sem r a
+forall a b. (a -> b) -> a -> b
+$ (a -> Sem r a) -> Fixpoint (Sem r) a
+forall a (m :: * -> *). (a -> m a) -> Fixpoint m a
+Fixpoint a -> Sem r a
+f
+{-# INLINE mfix #-}
+liftSem :: Union r (Sem r) a -> Sem r a
+liftSem :: forall (r :: EffectRow) a. Union r (Sem r) a -> Sem r a
+liftSem Union r (Sem r) a
+u = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+forall (r :: EffectRow) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a)
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union r (Sem r) x -> m x
+k -> Union r (Sem r) a -> m a
+forall x. Union r (Sem r) x -> m x
+k Union r (Sem r) a
+u
+{-# INLINE liftSem #-}
+hoistSem
+:: (∀ x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a
+-> Sem r' a
+hoistSem :: forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+hoistSem forall x. Union r (Sem r) x -> Union r' (Sem r') x
+nat (Sem forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a
+m) = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r' (Sem r') x -> m x) -> m a)
+-> Sem r' a
+forall (r :: EffectRow) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union r' (Sem r') x -> m x) -> m a)
+-> Sem r' a)
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r' (Sem r') x -> m x) -> m a)
+-> Sem r' a
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union r' (Sem r') x -> m x
+k -> (forall x. Union r (Sem r) x -> m x) -> m a
+forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a
+m ((forall x. Union r (Sem r) x -> m x) -> m a)
+-> (forall x. Union r (Sem r) x -> m x) -> m a
+forall a b. (a -> b) -> a -> b
+$ \Union r (Sem r) x
+u -> Union r' (Sem r') x -> m x
+forall x. Union r' (Sem r') x -> m x
+k (Union r' (Sem r') x -> m x) -> Union r' (Sem r') x -> m x
+forall a b. (a -> b) -> a -> b
+$ Union r (Sem r) x -> Union r' (Sem r') x
+forall x. Union r (Sem r) x -> Union r' (Sem r') x
+nat Union r (Sem r) x
+u
+{-# INLINE hoistSem #-}
+restack :: (forall e. ElemOf e r -> ElemOf e r')
+-> Sem r a
+-> Sem r' a
+restack :: forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall (e :: Effect). ElemOf e r -> ElemOf e r')
+-> Sem r a -> Sem r' a
+restack forall (e :: Effect). ElemOf e r -> ElemOf e r'
+n = (forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+hoistSem ((forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a)
+-> (forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a
+-> Sem r' a
+forall a b. (a -> b) -> a -> b
+$ \(Union ElemOf e r
+pr Weaving e (Sem r) x
+wav) -> (forall x. Sem r x -> Sem r' x)
+-> Union r' (Sem r) x -> Union r' (Sem r') x
+forall (m :: * -> *) (n :: * -> *) (r :: EffectRow) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist ((forall (e :: Effect). ElemOf e r -> ElemOf e r')
+-> Sem r x -> Sem r' x
+forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall (e :: Effect). ElemOf e r -> ElemOf e r')
+-> Sem r a -> Sem r' a
+restack ElemOf e r -> ElemOf e r'
+forall (e :: Effect). ElemOf e r -> ElemOf e r'
+n) (Union r' (Sem r) x -> Union r' (Sem r') x)
+-> Union r' (Sem r) x -> Union r' (Sem r') x
+forall a b. (a -> b) -> a -> b
+$ ElemOf e r' -> Weaving e (Sem r) x -> Union r' (Sem r) x
+forall (e :: Effect) (r :: EffectRow) (mWoven :: * -> *) a.
+ElemOf e r -> Weaving e mWoven a -> Union r mWoven a
+Union (ElemOf e r -> ElemOf e r'
+forall (e :: Effect). ElemOf e r -> ElemOf e r'
+n ElemOf e r
+pr) Weaving e (Sem r) x
+wav
+{-# INLINE restack #-}
+raise_ :: ∀ r r' a. Raise r r' => Sem r a -> Sem r' a
+raise_ :: forall (r :: EffectRow) (r' :: EffectRow) a.
+Raise r r' =>
+Sem r a -> Sem r' a
+raise_ = (forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+hoistSem ((forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a)
+-> (forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a
+-> Sem r' a
+forall a b. (a -> b) -> a -> b
+$ (forall x. Sem r x -> Sem r' x)
+-> Union r' (Sem r) x -> Union r' (Sem r') x
+forall (m :: * -> *) (n :: * -> *) (r :: EffectRow) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist Sem r x -> Sem r' x
+forall (r :: EffectRow) (r' :: EffectRow) a.
+Raise r r' =>
+Sem r a -> Sem r' a
+forall x. Sem r x -> Sem r' x
+raise_ (Union r' (Sem r) x -> Union r' (Sem r') x)
+-> (Union r (Sem r) x -> Union r' (Sem r) x)
+-> Union r (Sem r) x
+-> Union r' (Sem r') x
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Union r (Sem r) x -> Union r' (Sem r) x
+forall (r :: EffectRow) (r' :: EffectRow) (m :: * -> *) a.
+Raise r r' =>
+Union r m a -> Union r' m a
+forall (m :: * -> *) a. Union r m a -> Union r' m a
+raiseUnion
+{-# INLINE raise_ #-}
+class Raise (r :: EffectRow) (r' :: EffectRow) where
+raiseUnion :: Union r m a -> Union r' m a
+instance {-# overlapping #-} Raise r r where
+raiseUnion :: forall (m :: * -> *) a. Union r m a -> Union r m a
+raiseUnion = Union r m a -> Union r m a
+forall a. a -> a
+id
+{-# INLINE raiseUnion #-}
+instance (r' ~ (_0 ': r''), Raise r r'') => Raise r r' where
+raiseUnion :: forall (m :: * -> *) a. Union r m a -> Union r' m a
+raiseUnion = (\(Union ElemOf e r''
+n Weaving e m a
+w) -> ElemOf e r' -> Weaving e m a -> Union r' m a
+forall (e :: Effect) (r :: EffectRow) (mWoven :: * -> *) a.
+ElemOf e r -> Weaving e mWoven a -> Union r mWoven a
+Union (ElemOf e r'' -> ElemOf e r'
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There ElemOf e r''
+n) Weaving e m a
+w) (Union r'' m a -> Union r' m a)
+-> (Union r m a -> Union r'' m a) -> Union r m a -> Union r' m a
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Union r m a -> Union r'' m a
+forall (r :: EffectRow) (r' :: EffectRow) (m :: * -> *) a.
+Raise r r' =>
+Union r m a -> Union r' m a
+forall (m :: * -> *) a. Union r m a -> Union r'' m a
+raiseUnion
+{-# INLINE raiseUnion #-}
+raise :: ∀ e r a. Sem r a -> Sem (e ': r) a
+raise :: forall (e :: Effect) (r :: EffectRow) a. Sem r a -> Sem (e : r) a
+raise = Sem r a -> Sem (e : r) a
+forall (r :: EffectRow) (r' :: EffectRow) a.
+Raise r r' =>
+Sem r a -> Sem r' a
+raise_
+{-# INLINE raise #-}
+raiseUnder :: ∀ e2 e1 r a. Sem (e1 ': r) a -> Sem (e1 ': e2 ': r) a
+raiseUnder :: forall (e2 :: Effect) (e1 :: Effect) (r :: EffectRow) a.
+Sem (e1 : r) a -> Sem (e1 : e2 : r) a
+raiseUnder = Sem (e1 : r) a -> Sem (e1 : e2 : r) a
+forall (r :: EffectRow) (r' :: EffectRow) a.
+Subsume r r' =>
+Sem r a -> Sem r' a
+subsume_
+{-# INLINE raiseUnder #-}
+raiseUnder2 :: ∀ e2 e3 e1 r a. Sem (e1 ': r) a -> Sem (e1 ': e2 ': e3 ': r) a
+raiseUnder2 :: forall (e2 :: Effect) (e3 :: Effect) (e1 :: Effect)
+(r :: EffectRow) a.
+Sem (e1 : r) a -> Sem (e1 : e2 : e3 : r) a
+raiseUnder2 = Sem (e1 : r) a -> Sem (e1 : e2 : e3 : r) a
+forall (r :: EffectRow) (r' :: EffectRow) a.
+Subsume r r' =>
+Sem r a -> Sem r' a
+subsume_
+{-# INLINE raiseUnder2 #-}
+raiseUnder3 :: ∀ e2 e3 e4 e1 r a. Sem (e1 ': r) a -> Sem (e1 ': e2 ': e3 ': e4 ': r) a
+raiseUnder3 :: forall (e2 :: Effect) (e3 :: Effect) (e4 :: Effect) (e1 :: Effect)
+(r :: EffectRow) a.
+Sem (e1 : r) a -> Sem (e1 : e2 : e3 : e4 : r) a
+raiseUnder3 = Sem (e1 : r) a -> Sem (e1 : e2 : e3 : e4 : r) a
+forall (r :: EffectRow) (r' :: EffectRow) a.
+Subsume r r' =>
+Sem r a -> Sem r' a
+subsume_
+{-# INLINE raiseUnder3 #-}
+raise2Under :: ∀ e3 e1 e2 r a. Sem (e1 : e2 : r) a -> Sem (e1 : e2 : e3 : r) a
+raise2Under :: forall (e3 :: Effect) (e1 :: Effect) (e2 :: Effect)
+(r :: EffectRow) a.
+Sem (e1 : e2 : r) a -> Sem (e1 : e2 : e3 : r) a
+raise2Under = (forall x.
+Union (e1 : e2 : r) (Sem (e1 : e2 : r)) x
+-> Union (e1 : e2 : e3 : r) (Sem (e1 : e2 : e3 : r)) x)
+-> Sem (e1 : e2 : r) a -> Sem (e1 : e2 : e3 : r) a
+forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+hoistSem ((forall x.
+Union (e1 : e2 : r) (Sem (e1 : e2 : r)) x
+-> Union (e1 : e2 : e3 : r) (Sem (e1 : e2 : e3 : r)) x)
+-> Sem (e1 : e2 : r) a -> Sem (e1 : e2 : e3 : r) a)
+-> (forall x.
+Union (e1 : e2 : r) (Sem (e1 : e2 : r)) x
+-> Union (e1 : e2 : e3 : r) (Sem (e1 : e2 : e3 : r)) x)
+-> Sem (e1 : e2 : r) a
+-> Sem (e1 : e2 : e3 : r) a
+forall a b. (a -> b) -> a -> b
+$ (forall x. Sem (e1 : e2 : r) x -> Sem (e1 : e2 : e3 : r) x)
+-> Union (e1 : e2 : e3 : r) (Sem (e1 : e2 : r)) x
+-> Union (e1 : e2 : e3 : r) (Sem (e1 : e2 : e3 : r)) x
+forall (m :: * -> *) (n :: * -> *) (r :: EffectRow) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist Sem (e1 : e2 : r) x -> Sem (e1 : e2 : e3 : r) x
+forall x. Sem (e1 : e2 : r) x -> Sem (e1 : e2 : e3 : r) x
+forall (e3 :: Effect) (e1 :: Effect) (e2 :: Effect)
+(r :: EffectRow) a.
+Sem (e1 : e2 : r) a -> Sem (e1 : e2 : e3 : r) a
+raise2Under (Union (e1 : e2 : e3 : r) (Sem (e1 : e2 : r)) x
+-> Union (e1 : e2 : e3 : r) (Sem (e1 : e2 : e3 : r)) x)
+-> (Union (e1 : e2 : r) (Sem (e1 : e2 : r)) x
+-> Union (e1 : e2 : e3 : r) (Sem (e1 : e2 : r)) x)
+-> Union (e1 : e2 : r) (Sem (e1 : e2 : r)) x
+-> Union (e1 : e2 : e3 : r) (Sem (e1 : e2 : e3 : r)) x
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Union (e1 : e2 : r) (Sem (e1 : e2 : r)) x
+-> Union (e1 : e2 : e3 : r) (Sem (e1 : e2 : r)) x
+forall (m :: * -> *) x.
+Union (e1 : e2 : r) m x -> Union (e1 : e2 : e3 : r) m x
+weaken2Under
+where
+weaken2Under :: ∀ m x. Union (e1 : e2 : r) m x -> Union (e1 : e2 : e3 : r) m x
+weaken2Under :: forall (m :: * -> *) x.
+Union (e1 : e2 : r) m x -> Union (e1 : e2 : e3 : r) m x
+weaken2Under (Union ElemOf e (e1 : e2 : r)
+Here Weaving e m x
+a) = ElemOf e (e1 : e2 : e3 : r)
+-> Weaving e m x -> Union (e1 : e2 : e3 : r) m x
+forall (e :: Effect) (r :: EffectRow) (mWoven :: * -> *) a.
+ElemOf e r -> Weaving e mWoven a -> Union r mWoven a
+Union ElemOf e (e1 : e2 : e3 : r)
+forall {k} (r :: [k]) (e :: k) (r' :: [k]).
+(r ~ (e : r')) =>
+ElemOf e r
+Here Weaving e m x
+a
+weaken2Under (Union (There ElemOf e r
+Here) Weaving e m x
+a) = ElemOf e (e1 : e2 : e3 : r)
+-> Weaving e m x -> Union (e1 : e2 : e3 : r) m x
+forall (e :: Effect) (r :: EffectRow) (mWoven :: * -> *) a.
+ElemOf e r -> Weaving e mWoven a -> Union r mWoven a
+Union (ElemOf e (e2 : e3 : r) -> ElemOf e (e1 : e2 : e3 : r)
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There ElemOf e (e2 : e3 : r)
+forall {k} (r :: [k]) (e :: k) (r' :: [k]).
+(r ~ (e : r')) =>
+ElemOf e r
+Here) Weaving e m x
+a
+weaken2Under (Union (There (There ElemOf e r
+n)) Weaving e m x
+a) = ElemOf e (e1 : e2 : e3 : r)
+-> Weaving e m x -> Union (e1 : e2 : e3 : r) m x
+forall (e :: Effect) (r :: EffectRow) (mWoven :: * -> *) a.
+ElemOf e r -> Weaving e mWoven a -> Union r mWoven a
+Union (ElemOf e (e2 : e3 : r) -> ElemOf e (e1 : e2 : e3 : r)
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There (ElemOf e (e3 : r) -> ElemOf e (e2 : e3 : r)
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There (ElemOf e r -> ElemOf e (e3 : r)
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There ElemOf e r
+n))) Weaving e m x
+a
+{-# INLINE weaken2Under #-}
+{-# INLINE raise2Under #-}
+raise3Under :: ∀ e4 e1 e2 e3 r a. Sem (e1 : e2 : e3 : r) a -> Sem (e1 : e2 : e3 : e4 : r) a
+raise3Under :: forall (e4 :: Effect) (e1 :: Effect) (e2 :: Effect) (e3 :: Effect)
+(r :: EffectRow) a.
+Sem (e1 : e2 : e3 : r) a -> Sem (e1 : e2 : e3 : e4 : r) a
+raise3Under = (forall x.
+Union (e1 : e2 : e3 : r) (Sem (e1 : e2 : e3 : r)) x
+-> Union (e1 : e2 : e3 : e4 : r) (Sem (e1 : e2 : e3 : e4 : r)) x)
+-> Sem (e1 : e2 : e3 : r) a -> Sem (e1 : e2 : e3 : e4 : r) a
+forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+hoistSem ((forall x.
+Union (e1 : e2 : e3 : r) (Sem (e1 : e2 : e3 : r)) x
+-> Union (e1 : e2 : e3 : e4 : r) (Sem (e1 : e2 : e3 : e4 : r)) x)
+-> Sem (e1 : e2 : e3 : r) a -> Sem (e1 : e2 : e3 : e4 : r) a)
+-> (forall x.
+Union (e1 : e2 : e3 : r) (Sem (e1 : e2 : e3 : r)) x
+-> Union (e1 : e2 : e3 : e4 : r) (Sem (e1 : e2 : e3 : e4 : r)) x)
+-> Sem (e1 : e2 : e3 : r) a
+-> Sem (e1 : e2 : e3 : e4 : r) a
+forall a b. (a -> b) -> a -> b
+$ (forall x.
+Sem (e1 : e2 : e3 : r) x -> Sem (e1 : e2 : e3 : e4 : r) x)
+-> Union (e1 : e2 : e3 : e4 : r) (Sem (e1 : e2 : e3 : r)) x
+-> Union (e1 : e2 : e3 : e4 : r) (Sem (e1 : e2 : e3 : e4 : r)) x
+forall (m :: * -> *) (n :: * -> *) (r :: EffectRow) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist Sem (e1 : e2 : e3 : r) x -> Sem (e1 : e2 : e3 : e4 : r) x
+forall x. Sem (e1 : e2 : e3 : r) x -> Sem (e1 : e2 : e3 : e4 : r) x
+forall (e4 :: Effect) (e1 :: Effect) (e2 :: Effect) (e3 :: Effect)
+(r :: EffectRow) a.
+Sem (e1 : e2 : e3 : r) a -> Sem (e1 : e2 : e3 : e4 : r) a
+raise3Under (Union (e1 : e2 : e3 : e4 : r) (Sem (e1 : e2 : e3 : r)) x
+-> Union (e1 : e2 : e3 : e4 : r) (Sem (e1 : e2 : e3 : e4 : r)) x)
+-> (Union (e1 : e2 : e3 : r) (Sem (e1 : e2 : e3 : r)) x
+-> Union (e1 : e2 : e3 : e4 : r) (Sem (e1 : e2 : e3 : r)) x)
+-> Union (e1 : e2 : e3 : r) (Sem (e1 : e2 : e3 : r)) x
+-> Union (e1 : e2 : e3 : e4 : r) (Sem (e1 : e2 : e3 : e4 : r)) x
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Union (e1 : e2 : e3 : r) (Sem (e1 : e2 : e3 : r)) x
+-> Union (e1 : e2 : e3 : e4 : r) (Sem (e1 : e2 : e3 : r)) x
+forall (m :: * -> *) x.
+Union (e1 : e2 : e3 : r) m x -> Union (e1 : e2 : e3 : e4 : r) m x
+weaken3Under
+where
+weaken3Under :: ∀ m x. Union (e1 : e2 : e3 : r) m x -> Union (e1 : e2 : e3 : e4 : r) m x
+weaken3Under :: forall (m :: * -> *) x.
+Union (e1 : e2 : e3 : r) m x -> Union (e1 : e2 : e3 : e4 : r) m x
+weaken3Under (Union ElemOf e (e1 : e2 : e3 : r)
+Here Weaving e m x
+a) = ElemOf e (e1 : e2 : e3 : e4 : r)
+-> Weaving e m x -> Union (e1 : e2 : e3 : e4 : r) m x
+forall (e :: Effect) (r :: EffectRow) (mWoven :: * -> *) a.
+ElemOf e r -> Weaving e mWoven a -> Union r mWoven a
+Union ElemOf e (e1 : e2 : e3 : e4 : r)
+forall {k} (r :: [k]) (e :: k) (r' :: [k]).
+(r ~ (e : r')) =>
+ElemOf e r
+Here Weaving e m x
+a
+weaken3Under (Union (There ElemOf e r
+Here) Weaving e m x
+a) = ElemOf e (e1 : e2 : e3 : e4 : r)
+-> Weaving e m x -> Union (e1 : e2 : e3 : e4 : r) m x
+forall (e :: Effect) (r :: EffectRow) (mWoven :: * -> *) a.
+ElemOf e r -> Weaving e mWoven a -> Union r mWoven a
+Union (ElemOf e (e2 : e3 : e4 : r) -> ElemOf e (e1 : e2 : e3 : e4 : r)
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There ElemOf e (e2 : e3 : e4 : r)
+forall {k} (r :: [k]) (e :: k) (r' :: [k]).
+(r ~ (e : r')) =>
+ElemOf e r
+Here) Weaving e m x
+a
+weaken3Under (Union (There (There ElemOf e r
+Here)) Weaving e m x
+a) = ElemOf e (e1 : e2 : e3 : e4 : r)
+-> Weaving e m x -> Union (e1 : e2 : e3 : e4 : r) m x
+forall (e :: Effect) (r :: EffectRow) (mWoven :: * -> *) a.
+ElemOf e r -> Weaving e mWoven a -> Union r mWoven a
+Union (ElemOf e (e2 : e3 : e4 : r) -> ElemOf e (e1 : e2 : e3 : e4 : r)
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There (ElemOf e (e3 : e4 : r) -> ElemOf e (e2 : e3 : e4 : r)
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There ElemOf e (e3 : e4 : r)
+forall {k} (r :: [k]) (e :: k) (r' :: [k]).
+(r ~ (e : r')) =>
+ElemOf e r
+Here)) Weaving e m x
+a
+weaken3Under (Union (There (There (There ElemOf e r
+n))) Weaving e m x
+a) = ElemOf e (e1 : e2 : e3 : e4 : r)
+-> Weaving e m x -> Union (e1 : e2 : e3 : e4 : r) m x
+forall (e :: Effect) (r :: EffectRow) (mWoven :: * -> *) a.
+ElemOf e r -> Weaving e mWoven a -> Union r mWoven a
+Union (ElemOf e (e2 : e3 : e4 : r) -> ElemOf e (e1 : e2 : e3 : e4 : r)
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There (ElemOf e (e3 : e4 : r) -> ElemOf e (e2 : e3 : e4 : r)
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There (ElemOf e (e4 : r) -> ElemOf e (e3 : e4 : r)
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There (ElemOf e r -> ElemOf e (e4 : r)
+forall {k} (r' :: [k]) (e :: k) (e' :: k) (r :: [k]).
+(r' ~ (e' : r)) =>
+ElemOf e r -> ElemOf e r'
+There ElemOf e r
+n)))) Weaving e m x
+a
+{-# INLINE weaken3Under #-}
+{-# INLINE raise3Under #-}
+subsume_ :: ∀ r r' a. Subsume r r' => Sem r a -> Sem r' a
+subsume_ :: forall (r :: EffectRow) (r' :: EffectRow) a.
+Subsume r r' =>
+Sem r a -> Sem r' a
+subsume_ = (forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+hoistSem ((forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a)
+-> (forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a
+-> Sem r' a
+forall a b. (a -> b) -> a -> b
+$ (forall x. Sem r x -> Sem r' x)
+-> Union r' (Sem r) x -> Union r' (Sem r') x
+forall (m :: * -> *) (n :: * -> *) (r :: EffectRow) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist Sem r x -> Sem r' x
+forall (r :: EffectRow) (r' :: EffectRow) a.
+Subsume r r' =>
+Sem r a -> Sem r' a
+forall x. Sem r x -> Sem r' x
+subsume_ (Union r' (Sem r) x -> Union r' (Sem r') x)
+-> (Union r (Sem r) x -> Union r' (Sem r) x)
+-> Union r (Sem r) x
+-> Union r' (Sem r') x
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Union r (Sem r) x -> Union r' (Sem r) x
+forall (r :: EffectRow) (r' :: EffectRow) (m :: * -> *) a.
+Subsume r r' =>
+Union r m a -> Union r' m a
+forall (m :: * -> *) a. Union r m a -> Union r' m a
+subsumeUnion
+{-# INLINE subsume_ #-}
+class Subsume (r :: EffectRow) (r' :: EffectRow) where
+subsumeUnion :: Union r m a -> Union r' m a
+instance {-# incoherent #-} Raise r r' => Subsume r r' where
+subsumeUnion :: forall (m :: * -> *) a. Union r m a -> Union r' m a
+subsumeUnion = Union r m a -> Union r' m a
+forall (r :: EffectRow) (r' :: EffectRow) (m :: * -> *) a.
+Raise r r' =>
+Union r m a -> Union r' m a
+forall (m :: * -> *) a. Union r m a -> Union r' m a
+raiseUnion
+{-# INLINE subsumeUnion #-}
+instance (Member e r', Subsume r r') => Subsume (e ': r) r' where
+subsumeUnion :: forall (m :: * -> *) a. Union (e : r) m a -> Union r' m a
+subsumeUnion = (Union r m a -> Union r' m a)
+-> (Weaving e m a -> Union r' m a)
+-> Either (Union r m a) (Weaving e m a)
+-> Union r' m a
+forall a c b. (a -> c) -> (b -> c) -> Either a b -> c
+either Union r m a -> Union r' m a
+forall (r :: EffectRow) (r' :: EffectRow) (m :: * -> *) a.
+Subsume r r' =>
+Union r m a -> Union r' m a
+forall (m :: * -> *) a. Union r m a -> Union r' m a
+subsumeUnion Weaving e m a -> Union r' m a
+forall (e :: Effect) (r :: EffectRow) (m :: * -> *) a.
+Member e r =>
+Weaving e m a -> Union r m a
+injWeaving (Either (Union r m a) (Weaving e m a) -> Union r' m a)
+-> (Union (e : r) m a -> Either (Union r m a) (Weaving e m a))
+-> Union (e : r) m a
+-> Union r' m a
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+forall (e :: Effect) (r :: EffectRow) (m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp
+{-# INLINE subsumeUnion #-}
+instance Subsume '[] r where
+subsumeUnion :: forall (m :: * -> *) a. Union '[] m a -> Union r m a
+subsumeUnion = Union '[] m a -> Union r m a
+forall (m :: * -> *) a b. Union '[] m a -> b
+absurdU
+{-# INLINE subsumeUnion #-}
+subsume :: ∀ e r a. Member e r => Sem (e ': r) a -> Sem r a
+subsume :: forall (e :: Effect) (r :: EffectRow) a.
+Member e r =>
+Sem (e : r) a -> Sem r a
+subsume = Sem (e : r) a -> Sem r a
+forall (r :: EffectRow) (r' :: EffectRow) a.
+Subsume r r' =>
+Sem r a -> Sem r' a
+subsume_
+{-# INLINE subsume #-}
+subsumeUsing :: ∀ e r a. ElemOf e r -> Sem (e ': r) a -> Sem r a
+subsumeUsing :: forall (e :: Effect) (r :: EffectRow) a.
+ElemOf e r -> Sem (e : r) a -> Sem r a
+subsumeUsing ElemOf e r
+pr =
+let
+go :: ∀ x. Sem (e ': r) x -> Sem r x
+go :: forall x. Sem (e : r) x -> Sem r x
+go = (forall x. Union (e : r) (Sem (e : r)) x -> Union r (Sem r) x)
+-> Sem (e : r) x -> Sem r x
+forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+hoistSem ((forall x. Union (e : r) (Sem (e : r)) x -> Union r (Sem r) x)
+-> Sem (e : r) x -> Sem r x)
+-> (forall x. Union (e : r) (Sem (e : r)) x -> Union r (Sem r) x)
+-> Sem (e : r) x
+-> Sem r x
+forall a b. (a -> b) -> a -> b
+$ \Union (e : r) (Sem (e : r)) x
+u -> (forall x. Sem (e : r) x -> Sem r x)
+-> Union r (Sem (e : r)) x -> Union r (Sem r) x
+forall (m :: * -> *) (n :: * -> *) (r :: EffectRow) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist Sem (e : r) x -> Sem r x
+forall x. Sem (e : r) x -> Sem r x
+go (Union r (Sem (e : r)) x -> Union r (Sem r) x)
+-> Union r (Sem (e : r)) x -> Union r (Sem r) x
+forall a b. (a -> b) -> a -> b
+$ case Union (e : r) (Sem (e : r)) x
+-> Either (Union r (Sem (e : r)) x) (Weaving e (Sem (e : r)) x)
+forall (e :: Effect) (r :: EffectRow) (m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp Union (e : r) (Sem (e : r)) x
+u of
+Right Weaving e (Sem (e : r)) x
+w -> ElemOf e r -> Weaving e (Sem (e : r)) x -> Union r (Sem (e : r)) x
+forall (e :: Effect) (r :: EffectRow) (mWoven :: * -> *) a.
+ElemOf e r -> Weaving e mWoven a -> Union r mWoven a
+Union ElemOf e r
+pr Weaving e (Sem (e : r)) x
+w
+Left Union r (Sem (e : r)) x
+g -> Union r (Sem (e : r)) x
+g
+{-# INLINE go #-}
+in
+Sem (e : r) a -> Sem r a
+forall x. Sem (e : r) x -> Sem r x
+go
+{-# INLINE subsumeUsing #-}
+insertAt
+:: forall index inserted head oldTail tail old full a
+. ( ListOfLength index head
+, WhenStuck index InsertAtUnprovidedIndex
+, old ~ Append head oldTail
+, tail ~ Append inserted oldTail
+, full ~ Append head tail
+, InsertAtIndex index head tail oldTail full inserted)
+=> Sem old a
+-> Sem full a
+insertAt :: forall (index :: Nat) (inserted :: EffectRow) (head :: EffectRow)
+(oldTail :: EffectRow) (tail :: EffectRow) (old :: EffectRow)
+(full :: EffectRow) a.
+(ListOfLength index head, WhenStuck index InsertAtUnprovidedIndex,
+old ~ Append head oldTail, tail ~ Append inserted oldTail,
+full ~ Append head tail,
+InsertAtIndex index head tail oldTail full inserted) =>
+Sem old a -> Sem full a
+insertAt = (forall x. Union old (Sem old) x -> Union full (Sem full) x)
+-> Sem old a -> Sem full a
+forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+hoistSem ((forall x. Union old (Sem old) x -> Union full (Sem full) x)
+-> Sem old a -> Sem full a)
+-> (forall x. Union old (Sem old) x -> Union full (Sem full) x)
+-> Sem old a
+-> Sem full a
+forall a b. (a -> b) -> a -> b
+$ \Union old (Sem old) x
+u -> (forall x. Sem old x -> Sem full x)
+-> Union full (Sem old) x -> Union full (Sem full) x
+forall (m :: * -> *) (n :: * -> *) (r :: EffectRow) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist (forall (index :: Nat) (inserted :: EffectRow) (head :: EffectRow)
+(oldTail :: EffectRow) (tail :: EffectRow) (old :: EffectRow)
+(full :: EffectRow) a.
+(ListOfLength index head, WhenStuck index InsertAtUnprovidedIndex,
+old ~ Append head oldTail, tail ~ Append inserted oldTail,
+full ~ Append head tail,
+InsertAtIndex index head tail oldTail full inserted) =>
+Sem old a -> Sem full a
+insertAt @index @inserted @head @oldTail) (Union full (Sem old) x -> Union full (Sem full) x)
+-> Union full (Sem old) x -> Union full (Sem full) x
+forall a b. (a -> b) -> a -> b
+$
+forall (right :: EffectRow) (m :: * -> *) a (left :: EffectRow)
+(mid :: EffectRow).
+SList left
+-> SList mid
+-> Union (Append left right) m a
+-> Union (Append left (Append mid right)) m a
+weakenMid @oldTail (forall (n :: Nat) (l :: EffectRow). ListOfLength n l => SList l
+listOfLength @index @head) (forall k (index :: Nat) (head :: [k]) (tail :: [k])
+(oldTail :: [k]) (full :: [k]) (inserted :: [k]).
+InsertAtIndex index head tail oldTail full inserted =>
+SList inserted
+insertAtIndex @Effect @index @head @tail @oldTail @full @inserted) Union old (Sem old) x
+Union (Append head oldTail) (Sem old) x
+u
+{-# INLINE insertAt #-}
+send :: Member e r => e (Sem r) a -> Sem r a
+send :: forall (e :: Effect) (r :: EffectRow) a.
+Member e r =>
+e (Sem r) a -> Sem r a
+send = Union r (Sem r) a -> Sem r a
+forall (r :: EffectRow) a. Union r (Sem r) a -> Sem r a
+liftSem (Union r (Sem r) a -> Sem r a)
+-> (e (Sem r) a -> Union r (Sem r) a) -> e (Sem r) a -> Sem r a
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. e (Sem r) a -> Union r (Sem r) a
+forall (e :: Effect) (r :: EffectRow) (rInitial :: EffectRow) a.
+Member e r =>
+e (Sem rInitial) a -> Union r (Sem rInitial) a
+inj
+{-# INLINE[3] send #-}
+sendUsing :: ElemOf e r -> e (Sem r) a -> Sem r a
+sendUsing :: forall (e :: Effect) (r :: EffectRow) a.
+ElemOf e r -> e (Sem r) a -> Sem r a
+sendUsing ElemOf e r
+pr = Union r (Sem r) a -> Sem r a
+forall (r :: EffectRow) a. Union r (Sem r) a -> Sem r a
+liftSem (Union r (Sem r) a -> Sem r a)
+-> (e (Sem r) a -> Union r (Sem r) a) -> e (Sem r) a -> Sem r a
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. ElemOf e r -> e (Sem r) a -> Union r (Sem r) a
+forall (e :: Effect) (r :: EffectRow) (rInitial :: EffectRow) a.
+ElemOf e r -> e (Sem rInitial) a -> Union r (Sem rInitial) a
+injUsing ElemOf e r
+pr
+{-# INLINE[3] sendUsing #-}
+embed :: Member (Embed m) r => m a -> Sem r a
+embed :: forall (m :: * -> *) (r :: EffectRow) a.
+Member (Embed m) r =>
+m a -> Sem r a
+embed = Embed m (Sem r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+Member e r =>
+e (Sem r) a -> Sem r a
+send (Embed m (Sem r) a -> Sem r a)
+-> (m a -> Embed m (Sem r) a) -> m a -> Sem r a
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. m a -> Embed m (Sem r) a
+forall (m :: * -> *) a (z :: * -> *). m a -> Embed m z a
+Embed
+{-# INLINE embed #-}
+run :: Sem '[] a -> a
+run :: forall a. Sem '[] a -> a
+run (Sem forall (m :: * -> *).
+Monad m =>
+(forall x. Union '[] (Sem '[]) x -> m x) -> m a
+m) = Identity a -> a
+forall a. Identity a -> a
+runIdentity (Identity a -> a) -> Identity a -> a
+forall a b. (a -> b) -> a -> b
+$ (forall x. Union '[] (Sem '[]) x -> Identity x) -> Identity a
+forall (m :: * -> *).
+Monad m =>
+(forall x. Union '[] (Sem '[]) x -> m x) -> m a
+m Union '[] (Sem '[]) x -> Identity x
+forall x. Union '[] (Sem '[]) x -> Identity x
+forall (m :: * -> *) a b. Union '[] m a -> b
+absurdU
+{-# INLINE run #-}
+runM :: Monad m => Sem '[Embed m] a -> m a
+runM :: forall (m :: * -> *) a. Monad m => Sem '[Embed m] a -> m a
+runM (Sem forall (m :: * -> *).
+Monad m =>
+(forall x. Union '[Embed m] (Sem '[Embed m]) x -> m x) -> m a
+m) = (forall x. Union '[Embed m] (Sem '[Embed m]) x -> m x) -> m a
+forall (m :: * -> *).
+Monad m =>
+(forall x. Union '[Embed m] (Sem '[Embed m]) x -> m x) -> m a
+m ((forall x. Union '[Embed m] (Sem '[Embed m]) x -> m x) -> m a)
+-> (forall x. Union '[Embed m] (Sem '[Embed m]) x -> m x) -> m a
+forall a b. (a -> b) -> a -> b
+$ \Union '[Embed m] (Sem '[Embed m]) x
+z ->
+case Union '[Embed m] (Sem '[Embed m]) x
+-> Weaving (Embed m) (Sem '[Embed m]) x
+forall (e :: Effect) (m :: * -> *) a.
+Union '[e] m a -> Weaving e m a
+extract Union '[Embed m] (Sem '[Embed m]) x
+z of
+Weaving Embed m (Sem rInitial) a
+e f ()
+s forall x. f (Sem rInitial x) -> Sem '[Embed m] (f x)
+_ f a -> x
+f forall x. f x -> Maybe x
+_ -> do
+a
+a <- Embed m (Sem rInitial) a -> m a
+forall (m :: * -> *) a (z :: * -> *). Embed m z a -> m a
+unEmbed Embed m (Sem rInitial) a
+e
+x -> m x
+forall a. a -> m a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (x -> m x) -> x -> m x
+forall a b. (a -> b) -> a -> b
+$ f a -> x
+f (f a -> x) -> f a -> x
+forall a b. (a -> b) -> a -> b
+$ a
+a a -> f () -> f a
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s
+{-# INLINE runM #-}
+type InterpreterFor e r = ∀ a. Sem (e ': r) a -> Sem r a
+type InterpretersFor es r = ∀ a. Sem (Append es r) a -> Sem r a

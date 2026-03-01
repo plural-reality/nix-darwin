@@ -1,0 +1,665 @@
+{-# LANGUAGE TupleSections #-}
+module Polysemy.Writer
+(
+Writer (..)
+, tell
+, listen
+, pass
+, censor
+, runWriter
+, runLazyWriter
+, runWriterAssocR
+, runLazyWriterAssocR
+, runWriterTVar
+, writerToIOFinal
+, writerToIOAssocRFinal
+, writerToEndoWriter
+, outputToWriter
+) where
+import Control.Concurrent.STM
+import qualified Control.Monad.Trans.Writer.Lazy as Lazy
+import Data.Bifunctor (first)
+import Data.Semigroup
+import Polysemy
+import Polysemy.Output
+import Polysemy.State
+import Polysemy.Internal.Union
+import Polysemy.Internal.Writer
+censor :: Member (Writer o) r
+=> (o -> o)
+-> Sem r a
+-> Sem r a
+censor :: forall o (r :: EffectRow) a.
+Member (Writer o) r =>
+(o -> o) -> Sem r a -> Sem r a
+censor o -> o
+f Sem r a
+m = Sem r (o -> o, a) -> Sem r a
+forall o (r :: EffectRow) a.
+Member (Writer o) r =>
+Sem r (o -> o, a) -> Sem r a
+pass (Sem r (o -> o, a) -> Sem r a) -> Sem r (o -> o, a) -> Sem r a
+forall a b. (a -> b) -> a -> b
+$ (o -> o
+f ,) (a -> (o -> o, a)) -> Sem r a -> Sem r (o -> o, a)
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> Sem r a
+m
+{-# INLINE censor #-}
+outputToWriter :: Member (Writer o) r => Sem (Output o ': r) a -> Sem r a
+outputToWriter :: forall o (r :: EffectRow) a.
+Member (Writer o) r =>
+Sem (Output o : r) a -> Sem r a
+outputToWriter = (forall (rInitial :: EffectRow) x.
+Output o (Sem rInitial) x -> Sem r x)
+-> Sem (Output o : r) a -> Sem r a
+forall (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: EffectRow) x. e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: EffectRow) x.
+Output o (Sem rInitial) x -> Sem r x)
+-> Sem (Output o : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+Output o (Sem rInitial) x -> Sem r x)
+-> Sem (Output o : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+Output o
+o -> o -> Sem r ()
+forall o (r :: EffectRow). Member (Writer o) r => o -> Sem r ()
+tell o
+o
+{-# INLINE outputToWriter #-}
+runWriter
+:: Monoid o
+=> Sem (Writer o ': r) a
+-> Sem r (o, a)
+runWriter :: forall o (r :: EffectRow) a.
+Monoid o =>
+Sem (Writer o : r) a -> Sem r (o, a)
+runWriter = o -> Sem (State o : r) a -> Sem r (o, a)
+forall s (r :: EffectRow) a.
+s -> Sem (State s : r) a -> Sem r (s, a)
+runState o
+forall a. Monoid a => a
+mempty (Sem (State o : r) a -> Sem r (o, a))
+-> (Sem (Writer o : r) a -> Sem (State o : r) a)
+-> Sem (Writer o : r) a
+-> Sem r (o, a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (forall (rInitial :: EffectRow) x.
+Writer o (Sem rInitial) x
+-> Tactical (Writer o) (Sem rInitial) (State o : r) x)
+-> Sem (Writer o : r) a -> Sem (State o : r) a
+forall (e1 :: (* -> *) -> * -> *) (e2 :: (* -> *) -> * -> *)
+(r :: EffectRow) a.
+(forall (rInitial :: EffectRow) x.
+e1 (Sem rInitial) x -> Tactical e1 (Sem rInitial) (e2 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : r) a
+reinterpretH
+(\case
+Tell o
+o -> do
+(o -> o)
+-> Sem (WithTactics (Writer o) f (Sem rInitial) (State o : r)) ()
+forall s (r :: EffectRow).
+Member (State s) r =>
+(s -> s) -> Sem r ()
+modify' (o -> o -> o
+forall a. Semigroup a => a -> a -> a
+<> o
+o) Sem (WithTactics (Writer o) f (Sem rInitial) (State o : r)) ()
+-> (()
+-> Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r)) (f x))
+-> Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r)) (f x)
+forall a b.
+Sem (WithTactics (Writer o) f (Sem rInitial) (State o : r)) a
+-> (a
+-> Sem (WithTactics (Writer o) f (Sem rInitial) (State o : r)) b)
+-> Sem (WithTactics (Writer o) f (Sem rInitial) (State o : r)) b
+forall (m :: * -> *) a b. Monad m => m a -> (a -> m b) -> m b
+>>= ()
+-> Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r)) (f x)
+()
+-> Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r)) (f ())
+forall (f :: * -> *) a (e :: (* -> *) -> * -> *) (m :: * -> *)
+(r :: EffectRow).
+Functor f =>
+a -> Sem (WithTactics e f m r) (f a)
+pureT
+Listen Sem rInitial a1
+m -> do
+Sem (Writer o : State o : r) (f a1)
+mm <- Sem rInitial a1
+-> Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r))
+(Sem (Writer o : State o : r) (f a1))
+forall (m :: * -> *) a (e :: (* -> *) -> * -> *) (f :: * -> *)
+(r :: EffectRow).
+m a -> Sem (WithTactics e f m r) (Sem (e : r) (f a))
+runT Sem rInitial a1
+m
+(o
+o, f a1
+fa) <- Sem (State o : r) (o, f a1)
+-> Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r)) (o, f a1)
+forall (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Sem r a -> Sem (e : r) a
+raise (Sem (State o : r) (o, f a1)
+-> Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r)) (o, f a1))
+-> Sem (State o : r) (o, f a1)
+-> Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r)) (o, f a1)
+forall a b. (a -> b) -> a -> b
+$ Sem (Writer o : State o : r) (f a1) -> Sem (State o : r) (o, f a1)
+forall o (r :: EffectRow) a.
+Monoid o =>
+Sem (Writer o : r) a -> Sem r (o, a)
+runWriter Sem (Writer o : State o : r) (f a1)
+mm
+(o -> o)
+-> Sem (WithTactics (Writer o) f (Sem rInitial) (State o : r)) ()
+forall s (r :: EffectRow).
+Member (State s) r =>
+(s -> s) -> Sem r ()
+modify' (o -> o -> o
+forall a. Semigroup a => a -> a -> a
+<> o
+o)
+f x
+-> Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r)) (f x)
+forall a.
+a -> Sem (WithTactics (Writer o) f (Sem rInitial) (State o : r)) a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (f x
+-> Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r)) (f x))
+-> f x
+-> Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r)) (f x)
+forall a b. (a -> b) -> a -> b
+$ (o
+o, ) (a1 -> x) -> f a1 -> f x
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> f a1
+fa
+Pass Sem rInitial (o -> o, x)
+m -> do
+Sem (Writer o : State o : r) (f (o -> o, x))
+mm <- Sem rInitial (o -> o, x)
+-> Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r))
+(Sem (Writer o : State o : r) (f (o -> o, x)))
+forall (m :: * -> *) a (e :: (* -> *) -> * -> *) (f :: * -> *)
+(r :: EffectRow).
+m a -> Sem (WithTactics e f m r) (Sem (e : r) (f a))
+runT Sem rInitial (o -> o, x)
+m
+(o
+o, f (o -> o, x)
+t) <- Sem (State o : r) (o, f (o -> o, x))
+-> Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r))
+(o, f (o -> o, x))
+forall (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Sem r a -> Sem (e : r) a
+raise (Sem (State o : r) (o, f (o -> o, x))
+-> Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r))
+(o, f (o -> o, x)))
+-> Sem (State o : r) (o, f (o -> o, x))
+-> Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r))
+(o, f (o -> o, x))
+forall a b. (a -> b) -> a -> b
+$ Sem (Writer o : State o : r) (f (o -> o, x))
+-> Sem (State o : r) (o, f (o -> o, x))
+forall o (r :: EffectRow) a.
+Monoid o =>
+Sem (Writer o : r) a -> Sem r (o, a)
+runWriter Sem (Writer o : State o : r) (f (o -> o, x))
+mm
+Inspector f
+ins <- Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r))
+(Inspector f)
+forall (e :: (* -> *) -> * -> *) (f :: * -> *) (m :: * -> *)
+(r :: EffectRow).
+Sem (WithTactics e f m r) (Inspector f)
+getInspectorT
+let f :: o -> o
+f = (o -> o) -> ((o -> o, x) -> o -> o) -> Maybe (o -> o, x) -> o -> o
+forall b a. b -> (a -> b) -> Maybe a -> b
+maybe o -> o
+forall a. a -> a
+id (o -> o, x) -> o -> o
+forall a b. (a, b) -> a
+fst (Inspector f -> forall x. f x -> Maybe x
+forall (f :: * -> *). Inspector f -> forall x. f x -> Maybe x
+inspect Inspector f
+ins f (o -> o, x)
+t)
+(o -> o)
+-> Sem (WithTactics (Writer o) f (Sem rInitial) (State o : r)) ()
+forall s (r :: EffectRow).
+Member (State s) r =>
+(s -> s) -> Sem r ()
+modify' (o -> o -> o
+forall a. Semigroup a => a -> a -> a
+<> o -> o
+f o
+o)
+f x
+-> Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r)) (f x)
+forall a.
+a -> Sem (WithTactics (Writer o) f (Sem rInitial) (State o : r)) a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (f x
+-> Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r)) (f x))
+-> f x
+-> Sem
+(WithTactics (Writer o) f (Sem rInitial) (State o : r)) (f x)
+forall a b. (a -> b) -> a -> b
+$ (o -> o, x) -> x
+forall a b. (a, b) -> b
+snd ((o -> o, x) -> x) -> f (o -> o, x) -> f x
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> f (o -> o, x)
+t
+)
+{-# INLINE runWriter #-}
+runLazyWriter
+:: forall o r a
+. Monoid o
+=> Sem (Writer o ': r) a
+-> Sem r (o, a)
+runLazyWriter :: forall o (r :: EffectRow) a.
+Monoid o =>
+Sem (Writer o : r) a -> Sem r (o, a)
+runLazyWriter = (forall (m :: * -> *) x.
+Monad m =>
+Weaving (Writer o) (WriterT o m) x -> WriterT o m x)
+-> Sem (Writer o : r) a -> Sem r (o, a)
+forall o (e :: (* -> *) -> * -> *) (r :: EffectRow) a.
+Monoid o =>
+(forall (m :: * -> *) x.
+Monad m =>
+Weaving e (WriterT o m) x -> WriterT o m x)
+-> Sem (e : r) a -> Sem r (o, a)
+interpretViaLazyWriter ((forall (m :: * -> *) x.
+Monad m =>
+Weaving (Writer o) (WriterT o m) x -> WriterT o m x)
+-> Sem (Writer o : r) a -> Sem r (o, a))
+-> (forall (m :: * -> *) x.
+Monad m =>
+Weaving (Writer o) (WriterT o m) x -> WriterT o m x)
+-> Sem (Writer o : r) a
+-> Sem r (o, a)
+forall a b. (a -> b) -> a -> b
+$ \(Weaving Writer o (Sem rInitial) a
+e f ()
+s forall x. f (Sem rInitial x) -> WriterT o m (f x)
+wv f a -> x
+ex forall x. f x -> Maybe x
+ins) ->
+case Writer o (Sem rInitial) a
+e of
+Tell o
+o -> f a -> x
+ex f a
+f ()
+s x -> WriterT o m () -> WriterT o m x
+forall a b. a -> WriterT o m b -> WriterT o m a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ o -> WriterT o m ()
+forall (m :: * -> *) w. Monad m => w -> WriterT w m ()
+Lazy.tell o
+o
+Listen Sem rInitial a1
+m -> do
+let m' :: WriterT o m (f a1)
+m' = f (Sem rInitial a1) -> WriterT o m (f a1)
+forall x. f (Sem rInitial x) -> WriterT o m (f x)
+wv (Sem rInitial a1
+m Sem rInitial a1 -> f () -> f (Sem rInitial a1)
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s)
+~(f a1
+fa, o
+o) <- WriterT o m (f a1) -> WriterT o m (f a1, o)
+forall (m :: * -> *) w a.
+Monad m =>
+WriterT w m a -> WriterT w m (a, w)
+Lazy.listen WriterT o m (f a1)
+m'
+x -> WriterT o m x
+forall a. a -> WriterT o m a
+forall (m :: * -> *) a. Monad m => a -> m a
+return (x -> WriterT o m x) -> x -> WriterT o m x
+forall a b. (a -> b) -> a -> b
+$ f a -> x
+ex (f a -> x) -> f a -> x
+forall a b. (a -> b) -> a -> b
+$ (,) o
+o (a1 -> a) -> f a1 -> f a
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> f a1
+fa
+Pass Sem rInitial (o -> o, a)
+m -> do
+let m' :: WriterT o m (f (o -> o, a))
+m' = f (Sem rInitial (o -> o, a)) -> WriterT o m (f (o -> o, a))
+forall x. f (Sem rInitial x) -> WriterT o m (f x)
+wv (Sem rInitial (o -> o, a)
+m Sem rInitial (o -> o, a) -> f () -> f (Sem rInitial (o -> o, a))
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s)
+WriterT o m (x, o -> o) -> WriterT o m x
+forall (m :: * -> *) w a.
+Monad m =>
+WriterT w m (a, w -> w) -> WriterT w m a
+Lazy.pass (WriterT o m (x, o -> o) -> WriterT o m x)
+-> WriterT o m (x, o -> o) -> WriterT o m x
+forall a b. (a -> b) -> a -> b
+$ do
+f (o -> o, a)
+ft <- WriterT o m (f (o -> o, a))
+m'
+let f :: o -> o
+f = (o -> o) -> ((o -> o, a) -> o -> o) -> Maybe (o -> o, a) -> o -> o
+forall b a. b -> (a -> b) -> Maybe a -> b
+maybe o -> o
+forall a. a -> a
+id (o -> o, a) -> o -> o
+forall a b. (a, b) -> a
+fst (f (o -> o, a) -> Maybe (o -> o, a)
+forall x. f x -> Maybe x
+ins f (o -> o, a)
+ft)
+(x, o -> o) -> WriterT o m (x, o -> o)
+forall a. a -> WriterT o m a
+forall (m :: * -> *) a. Monad m => a -> m a
+return (f a -> x
+ex (f a -> x) -> f a -> x
+forall a b. (a -> b) -> a -> b
+$ (o -> o, a) -> a
+forall a b. (a, b) -> b
+snd ((o -> o, a) -> a) -> f (o -> o, a) -> f a
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> f (o -> o, a)
+ft, o -> o
+f)
+{-# INLINE runLazyWriter #-}
+runWriterAssocR
+:: Monoid o
+=> Sem (Writer o ': r) a
+-> Sem r (o, a)
+runWriterAssocR :: forall o (r :: EffectRow) a.
+Monoid o =>
+Sem (Writer o : r) a -> Sem r (o, a)
+runWriterAssocR =
+(((Endo o, a) -> (o, a)) -> Sem r (Endo o, a) -> Sem r (o, a)
+forall a b. (a -> b) -> Sem r a -> Sem r b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap (((Endo o, a) -> (o, a)) -> Sem r (Endo o, a) -> Sem r (o, a))
+-> ((Endo o -> o) -> (Endo o, a) -> (o, a))
+-> (Endo o -> o)
+-> Sem r (Endo o, a)
+-> Sem r (o, a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (Endo o -> o) -> (Endo o, a) -> (o, a)
+forall a b c. (a -> b) -> (a, c) -> (b, c)
+forall (p :: * -> * -> *) a b c.
+Bifunctor p =>
+(a -> b) -> p a c -> p b c
+first) (Endo o -> o -> o
+forall a. Endo a -> a -> a
+`appEndo` o
+forall a. Monoid a => a
+mempty)
+(Sem r (Endo o, a) -> Sem r (o, a))
+-> (Sem (Writer o : r) a -> Sem r (Endo o, a))
+-> Sem (Writer o : r) a
+-> Sem r (o, a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Sem (Writer (Endo o) : r) a -> Sem r (Endo o, a)
+forall o (r :: EffectRow) a.
+Monoid o =>
+Sem (Writer o : r) a -> Sem r (o, a)
+runWriter
+(Sem (Writer (Endo o) : r) a -> Sem r (Endo o, a))
+-> (Sem (Writer o : r) a -> Sem (Writer (Endo o) : r) a)
+-> Sem (Writer o : r) a
+-> Sem r (Endo o, a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Sem (Writer o : Writer (Endo o) : r) a
+-> Sem (Writer (Endo o) : r) a
+forall o (r :: EffectRow) a.
+(Monoid o, Member (Writer (Endo o)) r) =>
+Sem (Writer o : r) a -> Sem r a
+writerToEndoWriter
+(Sem (Writer o : Writer (Endo o) : r) a
+-> Sem (Writer (Endo o) : r) a)
+-> (Sem (Writer o : r) a -> Sem (Writer o : Writer (Endo o) : r) a)
+-> Sem (Writer o : r) a
+-> Sem (Writer (Endo o) : r) a
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Sem (Writer o : r) a -> Sem (Writer o : Writer (Endo o) : r) a
+forall (e2 :: (* -> *) -> * -> *) (e1 :: (* -> *) -> * -> *)
+(r :: EffectRow) a.
+Sem (e1 : r) a -> Sem (e1 : e2 : r) a
+raiseUnder
+{-# INLINE runWriterAssocR #-}
+runLazyWriterAssocR
+:: Monoid o
+=> Sem (Writer o ': r) a
+-> Sem r (o, a)
+runLazyWriterAssocR :: forall o (r :: EffectRow) a.
+Monoid o =>
+Sem (Writer o : r) a -> Sem r (o, a)
+runLazyWriterAssocR =
+(((Endo o, a) -> (o, a)) -> Sem r (Endo o, a) -> Sem r (o, a)
+forall a b. (a -> b) -> Sem r a -> Sem r b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap (((Endo o, a) -> (o, a)) -> Sem r (Endo o, a) -> Sem r (o, a))
+-> ((Endo o -> o) -> (Endo o, a) -> (o, a))
+-> (Endo o -> o)
+-> Sem r (Endo o, a)
+-> Sem r (o, a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (Endo o -> o) -> (Endo o, a) -> (o, a)
+forall a b c. (a -> b) -> (a, c) -> (b, c)
+forall (p :: * -> * -> *) a b c.
+Bifunctor p =>
+(a -> b) -> p a c -> p b c
+first) (Endo o -> o -> o
+forall a. Endo a -> a -> a
+`appEndo` o
+forall a. Monoid a => a
+mempty)
+(Sem r (Endo o, a) -> Sem r (o, a))
+-> (Sem (Writer o : r) a -> Sem r (Endo o, a))
+-> Sem (Writer o : r) a
+-> Sem r (o, a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Sem (Writer (Endo o) : r) a -> Sem r (Endo o, a)
+forall o (r :: EffectRow) a.
+Monoid o =>
+Sem (Writer o : r) a -> Sem r (o, a)
+runLazyWriter
+(Sem (Writer (Endo o) : r) a -> Sem r (Endo o, a))
+-> (Sem (Writer o : r) a -> Sem (Writer (Endo o) : r) a)
+-> Sem (Writer o : r) a
+-> Sem r (Endo o, a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Sem (Writer o : Writer (Endo o) : r) a
+-> Sem (Writer (Endo o) : r) a
+forall o (r :: EffectRow) a.
+(Monoid o, Member (Writer (Endo o)) r) =>
+Sem (Writer o : r) a -> Sem r a
+writerToEndoWriter
+(Sem (Writer o : Writer (Endo o) : r) a
+-> Sem (Writer (Endo o) : r) a)
+-> (Sem (Writer o : r) a -> Sem (Writer o : Writer (Endo o) : r) a)
+-> Sem (Writer o : r) a
+-> Sem (Writer (Endo o) : r) a
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Sem (Writer o : r) a -> Sem (Writer o : Writer (Endo o) : r) a
+forall (e2 :: (* -> *) -> * -> *) (e1 :: (* -> *) -> * -> *)
+(r :: EffectRow) a.
+Sem (e1 : r) a -> Sem (e1 : e2 : r) a
+raiseUnder
+{-# INLINE runLazyWriterAssocR #-}
+runWriterTVar :: (Monoid o, Member (Final IO) r)
+=> TVar o
+-> Sem (Writer o ': r) a
+-> Sem r a
+runWriterTVar :: forall o (r :: EffectRow) a.
+(Monoid o, Member (Final IO) r) =>
+TVar o -> Sem (Writer o : r) a -> Sem r a
+runWriterTVar TVar o
+tvar = (o -> STM ()) -> Sem (Writer o : r) a -> Sem r a
+forall o (r :: EffectRow) a.
+(Member (Final IO) r, Monoid o) =>
+(o -> STM ()) -> Sem (Writer o : r) a -> Sem r a
+runWriterSTMAction ((o -> STM ()) -> Sem (Writer o : r) a -> Sem r a)
+-> (o -> STM ()) -> Sem (Writer o : r) a -> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \o
+o -> do
+o
+s <- TVar o -> STM o
+forall a. TVar a -> STM a
+readTVar TVar o
+tvar
+TVar o -> o -> STM ()
+forall a. TVar a -> a -> STM ()
+writeTVar TVar o
+tvar (o -> STM ()) -> o -> STM ()
+forall a b. (a -> b) -> a -> b
+$! o
+s o -> o -> o
+forall a. Semigroup a => a -> a -> a
+<> o
+o
+{-# INLINE runWriterTVar #-}
+writerToIOFinal :: (Monoid o, Member (Final IO) r)
+=> Sem (Writer o ': r) a
+-> Sem r (o, a)
+writerToIOFinal :: forall o (r :: EffectRow) a.
+(Monoid o, Member (Final IO) r) =>
+Sem (Writer o : r) a -> Sem r (o, a)
+writerToIOFinal Sem (Writer o : r) a
+sem = do
+TVar o
+tvar <- IO (TVar o) -> Sem r (TVar o)
+forall (m :: * -> *) (r :: EffectRow) a.
+(Member (Final m) r, Functor m) =>
+m a -> Sem r a
+embedFinal (IO (TVar o) -> Sem r (TVar o)) -> IO (TVar o) -> Sem r (TVar o)
+forall a b. (a -> b) -> a -> b
+$ o -> IO (TVar o)
+forall a. a -> IO (TVar a)
+newTVarIO o
+forall a. Monoid a => a
+mempty
+a
+res <- TVar o -> Sem (Writer o : r) a -> Sem r a
+forall o (r :: EffectRow) a.
+(Monoid o, Member (Final IO) r) =>
+TVar o -> Sem (Writer o : r) a -> Sem r a
+runWriterTVar TVar o
+tvar Sem (Writer o : r) a
+sem
+o
+end <- IO o -> Sem r o
+forall (m :: * -> *) (r :: EffectRow) a.
+(Member (Final m) r, Functor m) =>
+m a -> Sem r a
+embedFinal (IO o -> Sem r o) -> IO o -> Sem r o
+forall a b. (a -> b) -> a -> b
+$ TVar o -> IO o
+forall a. TVar a -> IO a
+readTVarIO TVar o
+tvar
+(o, a) -> Sem r (o, a)
+forall a. a -> Sem r a
+forall (m :: * -> *) a. Monad m => a -> m a
+return (o
+end, a
+res)
+{-# INLINE writerToIOFinal #-}
+writerToIOAssocRFinal :: (Monoid o, Member (Final IO) r)
+=> Sem (Writer o ': r) a
+-> Sem r (o, a)
+writerToIOAssocRFinal :: forall o (r :: EffectRow) a.
+(Monoid o, Member (Final IO) r) =>
+Sem (Writer o : r) a -> Sem r (o, a)
+writerToIOAssocRFinal =
+(((Endo o, a) -> (o, a)) -> Sem r (Endo o, a) -> Sem r (o, a)
+forall a b. (a -> b) -> Sem r a -> Sem r b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap (((Endo o, a) -> (o, a)) -> Sem r (Endo o, a) -> Sem r (o, a))
+-> ((Endo o -> o) -> (Endo o, a) -> (o, a))
+-> (Endo o -> o)
+-> Sem r (Endo o, a)
+-> Sem r (o, a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (Endo o -> o) -> (Endo o, a) -> (o, a)
+forall a b c. (a -> b) -> (a, c) -> (b, c)
+forall (p :: * -> * -> *) a b c.
+Bifunctor p =>
+(a -> b) -> p a c -> p b c
+first) (Endo o -> o -> o
+forall a. Endo a -> a -> a
+`appEndo` o
+forall a. Monoid a => a
+mempty)
+(Sem r (Endo o, a) -> Sem r (o, a))
+-> (Sem (Writer o : r) a -> Sem r (Endo o, a))
+-> Sem (Writer o : r) a
+-> Sem r (o, a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Sem (Writer (Endo o) : r) a -> Sem r (Endo o, a)
+forall o (r :: EffectRow) a.
+(Monoid o, Member (Final IO) r) =>
+Sem (Writer o : r) a -> Sem r (o, a)
+writerToIOFinal
+(Sem (Writer (Endo o) : r) a -> Sem r (Endo o, a))
+-> (Sem (Writer o : r) a -> Sem (Writer (Endo o) : r) a)
+-> Sem (Writer o : r) a
+-> Sem r (Endo o, a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Sem (Writer o : Writer (Endo o) : r) a
+-> Sem (Writer (Endo o) : r) a
+forall o (r :: EffectRow) a.
+(Monoid o, Member (Writer (Endo o)) r) =>
+Sem (Writer o : r) a -> Sem r a
+writerToEndoWriter
+(Sem (Writer o : Writer (Endo o) : r) a
+-> Sem (Writer (Endo o) : r) a)
+-> (Sem (Writer o : r) a -> Sem (Writer o : Writer (Endo o) : r) a)
+-> Sem (Writer o : r) a
+-> Sem (Writer (Endo o) : r) a
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Sem (Writer o : r) a -> Sem (Writer o : Writer (Endo o) : r) a
+forall (e2 :: (* -> *) -> * -> *) (e1 :: (* -> *) -> * -> *)
+(r :: EffectRow) a.
+Sem (e1 : r) a -> Sem (e1 : e2 : r) a
+raiseUnder
+{-# INLINE writerToIOAssocRFinal #-}

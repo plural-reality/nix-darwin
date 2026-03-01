@@ -1,0 +1,157 @@
+{-# LANGUAGE TemplateHaskell #-}
+module Polysemy.Input
+(
+Input (..)
+, input
+, inputs
+, runInputConst
+, runInputList
+, runInputSem
+) where
+import Data.Foldable (for_)
+import Data.List (uncons)
+import Polysemy
+import Polysemy.State
+data Input i m a where
+Input :: Input i m i
+makeSem ''Input
+inputs :: forall i j r. Member (Input i) r => (i -> j) -> Sem r j
+inputs :: forall i j (r :: EffectRow).
+Member (Input i) r =>
+(i -> j) -> Sem r j
+inputs i -> j
+f = i -> j
+f (i -> j) -> Sem r i -> Sem r j
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> Sem r i
+forall i (r :: EffectRow). Member (Input i) r => Sem r i
+input
+{-# INLINABLE inputs #-}
+runInputConst :: i -> Sem (Input i ': r) a -> Sem r a
+runInputConst :: forall i (r :: EffectRow) a. i -> Sem (Input i : r) a -> Sem r a
+runInputConst i
+c = (forall (rInitial :: EffectRow) x.
+Input i (Sem rInitial) x -> Sem r x)
+-> Sem (Input i : r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: EffectRow) x. e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: EffectRow) x.
+Input i (Sem rInitial) x -> Sem r x)
+-> Sem (Input i : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+Input i (Sem rInitial) x -> Sem r x)
+-> Sem (Input i : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+Input i (Sem rInitial) x
+Input -> x -> Sem r x
+forall a. a -> Sem r a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure i
+x
+c
+{-# INLINE runInputConst #-}
+runInputList
+:: [i]
+-> Sem (Input (Maybe i) ': r) a
+-> Sem r a
+runInputList :: forall i (r :: EffectRow) a.
+[i] -> Sem (Input (Maybe i) : r) a -> Sem r a
+runInputList [i]
+is = (([i], a) -> a) -> Sem r ([i], a) -> Sem r a
+forall a b. (a -> b) -> Sem r a -> Sem r b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap ([i], a) -> a
+forall a b. (a, b) -> b
+snd (Sem r ([i], a) -> Sem r a)
+-> (Sem (Input (Maybe i) : r) a -> Sem r ([i], a))
+-> Sem (Input (Maybe i) : r) a
+-> Sem r a
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. [i] -> Sem (State [i] : r) a -> Sem r ([i], a)
+forall s (r :: EffectRow) a.
+s -> Sem (State s : r) a -> Sem r (s, a)
+runState [i]
+is (Sem (State [i] : r) a -> Sem r ([i], a))
+-> (Sem (Input (Maybe i) : r) a -> Sem (State [i] : r) a)
+-> Sem (Input (Maybe i) : r) a
+-> Sem r ([i], a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (forall (rInitial :: EffectRow) x.
+Input (Maybe i) (Sem rInitial) x -> Sem (State [i] : r) x)
+-> Sem (Input (Maybe i) : r) a -> Sem (State [i] : r) a
+forall (e1 :: Effect) (e2 :: Effect) (r :: EffectRow) a.
+FirstOrder e1 "reinterpret" =>
+(forall (rInitial :: EffectRow) x.
+e1 (Sem rInitial) x -> Sem (e2 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : r) a
+reinterpret
+(\case
+Input (Maybe i) (Sem rInitial) x
+Input -> do
+Maybe (i, [i])
+s <- ([i] -> Maybe (i, [i])) -> Sem (State [i] : r) (Maybe (i, [i]))
+forall s a (r :: EffectRow).
+Member (State s) r =>
+(s -> a) -> Sem r a
+gets [i] -> Maybe (i, [i])
+forall a. [a] -> Maybe (a, [a])
+uncons
+Maybe (i, [i])
+-> ((i, [i]) -> Sem (State [i] : r) ()) -> Sem (State [i] : r) ()
+forall (t :: * -> *) (f :: * -> *) a b.
+(Foldable t, Applicative f) =>
+t a -> (a -> f b) -> f ()
+for_ Maybe (i, [i])
+s (((i, [i]) -> Sem (State [i] : r) ()) -> Sem (State [i] : r) ())
+-> ((i, [i]) -> Sem (State [i] : r) ()) -> Sem (State [i] : r) ()
+forall a b. (a -> b) -> a -> b
+$ [i] -> Sem (State [i] : r) ()
+forall s (r :: EffectRow). Member (State s) r => s -> Sem r ()
+put ([i] -> Sem (State [i] : r) ())
+-> ((i, [i]) -> [i]) -> (i, [i]) -> Sem (State [i] : r) ()
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (i, [i]) -> [i]
+forall a b. (a, b) -> b
+snd
+x -> Sem (State [i] : r) x
+forall a. a -> Sem (State [i] : r) a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (x -> Sem (State [i] : r) x) -> x -> Sem (State [i] : r) x
+forall a b. (a -> b) -> a -> b
+$ (i, [i]) -> i
+forall a b. (a, b) -> a
+fst ((i, [i]) -> i) -> Maybe (i, [i]) -> Maybe i
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> Maybe (i, [i])
+s
+)
+{-# INLINE runInputList #-}
+runInputSem :: forall i r a. Sem r i -> Sem (Input i ': r) a -> Sem r a
+runInputSem :: forall i (r :: EffectRow) a.
+Sem r i -> Sem (Input i : r) a -> Sem r a
+runInputSem Sem r i
+m = (forall (rInitial :: EffectRow) x.
+Input i (Sem rInitial) x -> Sem r x)
+-> Sem (Input i : r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: EffectRow) x. e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: EffectRow) x.
+Input i (Sem rInitial) x -> Sem r x)
+-> Sem (Input i : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+Input i (Sem rInitial) x -> Sem r x)
+-> Sem (Input i : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+Input i (Sem rInitial) x
+Input -> Sem r i
+Sem r x
+m
+{-# INLINE runInputSem #-}

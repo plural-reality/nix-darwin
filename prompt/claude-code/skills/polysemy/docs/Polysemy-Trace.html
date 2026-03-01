@@ -1,0 +1,30 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- data Trace m a where
+- trace :: forall r. Member Trace r => String -> Sem r ()
+- traceToHandle :: Member (Embed IO) r => Handle -> Sem (Trace ': r) a -> Sem r a
+- traceToStdout :: Member (Embed IO) r => Sem (Trace ': r) a -> Sem r a
+- traceToStderr :: Member (Embed IO) r => Sem (Trace ': r) a -> Sem r a
+- traceToIO :: Member (Embed IO) r => Sem (Trace ': r) a -> Sem r a
+- runTraceList :: Sem (Trace ': r) a -> Sem r ([String], a)
+- ignoreTrace :: Sem (Trace ': r) a -> Sem r a
+- traceToOutput :: Member (Output String) r => Sem (Trace ': r) a -> Sem r a
+- outputToTrace :: forall w r a. Member Trace r => (w -> String) -> Sem (Output w ': r) a -> Sem r a
+Effect
+An effect for logging strings.
+Actions
+Interpretations
+traceToStdout :: Member (Embed IO) r => Sem (Trace ': r) a -> Sem r a Source #
+Run a Trace
+effect by printing the messages to stdout.
+Since: 1.6.0.0
+traceToStderr :: Member (Embed IO) r => Sem (Trace ': r) a -> Sem r a Source #
+Run a Trace
+effect by printing the messages to stderr.
+Since: 1.6.0.0
+ignoreTrace :: Sem (Trace ': r) a -> Sem r a Source #
+Run a Trace
+effect by ignoring all of its messages.
+Since: 1.0.0.0

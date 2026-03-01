@@ -1,0 +1,202 @@
+{-# LANGUAGE TemplateHaskell #-}
+module Polysemy.Trace
+(
+Trace (..)
+, trace
+, traceToHandle
+, traceToStdout
+, traceToStderr
+, traceToIO
+, runTraceList
+, ignoreTrace
+, traceToOutput
+, outputToTrace
+) where
+import Polysemy
+import Polysemy.Output
+import System.IO (stdout, stderr, hPutStrLn, Handle)
+data Trace m a where
+Trace :: String -> Trace m ()
+makeSem ''Trace
+traceToHandle :: Member (Embed IO) r => Handle -> Sem (Trace ': r) a -> Sem r a
+traceToHandle :: forall (r :: EffectRow) a.
+Member (Embed IO) r =>
+Handle -> Sem (Trace : r) a -> Sem r a
+traceToHandle Handle
+handle = (forall (rInitial :: EffectRow) x.
+Trace (Sem rInitial) x -> Sem r x)
+-> Sem (Trace : r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: EffectRow) x. e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: EffectRow) x.
+Trace (Sem rInitial) x -> Sem r x)
+-> Sem (Trace : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+Trace (Sem rInitial) x -> Sem r x)
+-> Sem (Trace : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+Trace String
+m -> IO () -> Sem r ()
+forall (m :: * -> *) (r :: EffectRow) a.
+Member (Embed m) r =>
+m a -> Sem r a
+embed (IO () -> Sem r ()) -> IO () -> Sem r ()
+forall a b. (a -> b) -> a -> b
+$ Handle -> String -> IO ()
+hPutStrLn Handle
+handle String
+m
+{-# INLINE traceToHandle #-}
+traceToStdout :: Member (Embed IO) r => Sem (Trace ': r) a -> Sem r a
+traceToStdout :: forall (r :: EffectRow) a.
+Member (Embed IO) r =>
+Sem (Trace : r) a -> Sem r a
+traceToStdout = Handle -> Sem (Trace : r) a -> Sem r a
+forall (r :: EffectRow) a.
+Member (Embed IO) r =>
+Handle -> Sem (Trace : r) a -> Sem r a
+traceToHandle Handle
+stdout
+{-# INLINE traceToStdout #-}
+traceToStderr :: Member (Embed IO) r => Sem (Trace ': r) a -> Sem r a
+traceToStderr :: forall (r :: EffectRow) a.
+Member (Embed IO) r =>
+Sem (Trace : r) a -> Sem r a
+traceToStderr = Handle -> Sem (Trace : r) a -> Sem r a
+forall (r :: EffectRow) a.
+Member (Embed IO) r =>
+Handle -> Sem (Trace : r) a -> Sem r a
+traceToHandle Handle
+stderr
+{-# INLINE traceToStderr #-}
+traceToIO :: Member (Embed IO) r => Sem (Trace ': r) a -> Sem r a
+traceToIO :: forall (r :: EffectRow) a.
+Member (Embed IO) r =>
+Sem (Trace : r) a -> Sem r a
+traceToIO = Sem (Trace : r) a -> Sem r a
+forall (r :: EffectRow) a.
+Member (Embed IO) r =>
+Sem (Trace : r) a -> Sem r a
+traceToStdout
+{-# INLINE traceToIO #-}
+{-# deprecated traceToIO "Use traceToStdout" #-}
+ignoreTrace :: Sem (Trace ': r) a -> Sem r a
+ignoreTrace :: forall (r :: EffectRow) a. Sem (Trace : r) a -> Sem r a
+ignoreTrace = (forall (rInitial :: EffectRow) x.
+Trace (Sem rInitial) x -> Sem r x)
+-> Sem (Trace : r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: EffectRow) x. e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: EffectRow) x.
+Trace (Sem rInitial) x -> Sem r x)
+-> Sem (Trace : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+Trace (Sem rInitial) x -> Sem r x)
+-> Sem (Trace : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+Trace String
+_ -> x -> Sem r x
+forall a. a -> Sem r a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure ()
+{-# INLINE ignoreTrace #-}
+traceToOutput
+:: Member (Output String) r
+=> Sem (Trace ': r) a
+-> Sem r a
+traceToOutput :: forall (r :: EffectRow) a.
+Member (Output String) r =>
+Sem (Trace : r) a -> Sem r a
+traceToOutput = (forall (rInitial :: EffectRow) x.
+Trace (Sem rInitial) x -> Sem r x)
+-> Sem (Trace : r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: EffectRow) x. e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: EffectRow) x.
+Trace (Sem rInitial) x -> Sem r x)
+-> Sem (Trace : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+Trace (Sem rInitial) x -> Sem r x)
+-> Sem (Trace : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+Trace String
+m -> String -> Sem r ()
+forall o (r :: EffectRow). Member (Output o) r => o -> Sem r ()
+output String
+m
+{-# INLINE traceToOutput #-}
+runTraceList
+:: Sem (Trace ': r) a
+-> Sem r ([String], a)
+runTraceList :: forall (r :: EffectRow) a. Sem (Trace : r) a -> Sem r ([String], a)
+runTraceList = Sem (Output String : r) a -> Sem r ([String], a)
+forall o (r :: EffectRow) a. Sem (Output o : r) a -> Sem r ([o], a)
+runOutputList (Sem (Output String : r) a -> Sem r ([String], a))
+-> (Sem (Trace : r) a -> Sem (Output String : r) a)
+-> Sem (Trace : r) a
+-> Sem r ([String], a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (forall (rInitial :: EffectRow) x.
+Trace (Sem rInitial) x -> Sem (Output String : r) x)
+-> Sem (Trace : r) a -> Sem (Output String : r) a
+forall (e1 :: Effect) (e2 :: Effect) (r :: EffectRow) a.
+FirstOrder e1 "reinterpret" =>
+(forall (rInitial :: EffectRow) x.
+e1 (Sem rInitial) x -> Sem (e2 : r) x)
+-> Sem (e1 : r) a -> Sem (e2 : r) a
+reinterpret (
+\case
+Trace String
+m -> String -> Sem (Output String : r) ()
+forall o (r :: EffectRow). Member (Output o) r => o -> Sem r ()
+output String
+m
+)
+{-# INLINE runTraceList #-}
+outputToTrace
+:: forall w r a
+. Member Trace r
+=> (w -> String)
+-> Sem (Output w ': r) a
+-> Sem r a
+outputToTrace :: forall w (r :: EffectRow) a.
+Member Trace r =>
+(w -> String) -> Sem (Output w : r) a -> Sem r a
+outputToTrace w -> String
+show' = (forall (rInitial :: EffectRow) x.
+Output w (Sem rInitial) x -> Sem r x)
+-> Sem (Output w : r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: EffectRow) x. e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: EffectRow) x.
+Output w (Sem rInitial) x -> Sem r x)
+-> Sem (Output w : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+Output w (Sem rInitial) x -> Sem r x)
+-> Sem (Output w : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+Output w
+m -> String -> Sem r ()
+forall (r :: EffectRow). Member Trace r => String -> Sem r ()
+trace (String -> Sem r ()) -> String -> Sem r ()
+forall a b. (a -> b) -> a -> b
+$ w -> String
+show' w
+m
+{-# INLINE outputToTrace #-}

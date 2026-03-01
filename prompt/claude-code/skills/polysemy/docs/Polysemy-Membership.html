@@ -1,0 +1,105 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- data ElemOf (e :: k) (r :: [k]) where
+- membership :: Member e r => ElemOf e r
+- sameMember :: forall e e' r. ElemOf e r -> ElemOf e' r -> Maybe (e :~: e')
+- class KnownRow r
+- tryMembership :: forall e r. (Typeable e, KnownRow r) => Maybe (ElemOf e r)
+- subsumeUsing :: forall e r a. ElemOf e r -> Sem (e ': r) a -> Sem r a
+- interceptUsing :: FirstOrder e "interceptUsing" => ElemOf e r -> (forall x rInitial. e (Sem rInitial) x -> Sem r x) -> Sem r a -> Sem r a
+- interceptUsingH :: ElemOf e r -> (forall x rInitial. e (Sem rInitial) x -> Tactical e (Sem rInitial) r x) -> Sem r a -> Sem r a
+Witnesses
+data ElemOf (e :: k) (r :: [k]) where Source #
+A proof that e
+is an element of r
+.
+Due to technical reasons,
+is not powerful enough to
+prove ElemOf
+e r
+; however, it can still be used send actions of Member
+e re
+into r
+by using subsumeUsing
+.
+Since: 1.3.0.0
+membership :: Member e r => ElemOf e r Source #
+Given
+, extract a proof that Member
+e re
+is an element of r
+.
+sameMember :: forall e e' r. ElemOf e r -> ElemOf e' r -> Maybe (e :~: e') Source #
+Checks if two membership proofs are equal. If they are, then that means that the effects for which membership is proven must also be equal.
+Checking membership
+A class for effect rows whose elements are inspectable.
+This constraint is eventually satisfied as r
+is instantied to a
+monomorphic list.
+(E.g when r
+becomes something like
+'[
+)State
+Int, Output
+String, Embed
+IO]
+tryMembership'
+Instances
+| KnownRow ('[] :: [k]) Source # | |
+Defined in Polysemy.Internal.Union tryMembership' :: forall (e :: k0). Typeable e => Maybe (ElemOf e '[]) | |
+| (Typeable e, KnownRow r) => KnownRow (e ': r :: [k]) Source # | |
+Defined in Polysemy.Internal.Union tryMembership' :: forall (e0 :: k0). Typeable e0 => Maybe (ElemOf e0 (e ': r)) |
+tryMembership :: forall e r. (Typeable e, KnownRow r) => Maybe (ElemOf e r) Source #
+Extracts a proof that e
+is an element of r
+if that
+is indeed the case; otherwise returns Nothing
+.
+Using membership
+subsumeUsing :: forall e r a. ElemOf e r -> Sem (e ': r) a -> Sem r a Source #
+Interprets an effect in terms of another identical effect, given an
+explicit proof that the effect exists in r
+.
+This is useful in conjunction with tryMembership
+in order to conditionally make use of effects. For example:
+tryListen ::KnownRow
+r =>Sem
+r a -> Maybe (Sem
+r ([Int], a)) tryListen m = casetryMembership
+@(Writer
+[Int]) of Just pr -> Just $subsumeUsing
+pr (listen
+(raise
+m)) _ -> Nothing
+Since: 1.3.0.0
+| :: FirstOrder e "interceptUsing" | |
+| => ElemOf e r | A proof that the handled effect exists in |
+| -> (forall x rInitial. e (Sem rInitial) x -> Sem r x) | A natural transformation from the handled effect to other effects
+already in |
+| -> Sem r a | |
+| -> Sem r a |
+A variant of intercept
+that accepts an explicit proof that the effect
+is in the effect stack rather then requiring a Member
+constraint.
+This is useful in conjunction with tryMembership
+in order to conditionally perform intercept
+.
+Since: 1.3.0.0
+| :: ElemOf e r | A proof that the handled effect exists in |
+| -> (forall x rInitial. e (Sem rInitial) x -> Tactical e (Sem rInitial) r x) | A natural transformation from the handled effect to other effects
+already in |
+| -> Sem r a | Unlike |
+| -> Sem r a |
+A variant of interceptH
+that accepts an explicit proof that the effect
+is in the effect stack rather then requiring a Member
+constraint.
+This is useful in conjunction with tryMembership
+in order to conditionally perform interceptH
+.
+See the notes on Tactical
+for how to use this function.
+Since: 1.3.0.0

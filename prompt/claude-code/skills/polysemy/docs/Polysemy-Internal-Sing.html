@@ -1,0 +1,13 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Documentation
+A singleton type used as a witness for type-level lists.
+class ListOfLength (n :: Nat) (l :: [Effect]) where Source #
+A utility class for constructing a type-level list of a given length.
+listOfLength :: SList l Source #
+Instances
+| (ListOfLength (n - 1) xs, l ~ (x ': xs)) => ListOfLength n l Source # | |
+Defined in Polysemy.Internal.Sing listOfLength :: SList l Source # | |
+| l ~ ('[] :: [Effect]) => ListOfLength 0 l Source # | |
+Defined in Polysemy.Internal.Sing listOfLength :: SList l Source # |

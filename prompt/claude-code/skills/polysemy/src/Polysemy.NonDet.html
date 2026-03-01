@@ -1,0 +1,577 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE TemplateHaskell #-}
+module Polysemy.NonDet
+(
+NonDet (..)
+, runNonDet
+, runNonDetMaybe
+, nonDetToError
+) where
+import Control.Applicative
+import Control.Monad.Trans.Maybe
+import Data.Maybe
+import Polysemy
+import Polysemy.Error
+import Polysemy.Internal
+import Polysemy.Internal.NonDet
+import Polysemy.Internal.Union
+runNonDet :: Alternative f => Sem (NonDet ': r) a -> Sem r (f a)
+runNonDet :: forall (f :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+Alternative f =>
+Sem (NonDet : r) a -> Sem r (f a)
+runNonDet = NonDetC (Sem r) a -> Sem r (f a)
+forall (f :: * -> *) (m :: * -> *) a.
+(Alternative f, Applicative m) =>
+NonDetC m a -> m (f a)
+runNonDetC (NonDetC (Sem r) a -> Sem r (f a))
+-> (Sem (NonDet : r) a -> NonDetC (Sem r) a)
+-> Sem (NonDet : r) a
+-> Sem r (f a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. Sem (NonDet : r) a -> NonDetC (Sem r) a
+forall (r :: [(* -> *) -> * -> *]) a.
+Sem (NonDet : r) a -> NonDetC (Sem r) a
+runNonDetInC
+{-# INLINE runNonDet #-}
+runNonDetMaybe :: Sem (NonDet ': r) a -> Sem r (Maybe a)
+runNonDetMaybe :: forall (r :: [(* -> *) -> * -> *]) a.
+Sem (NonDet : r) a -> Sem r (Maybe a)
+runNonDetMaybe (Sem forall (m :: * -> *).
+Monad m =>
+(forall x. Union (NonDet : r) (Sem (NonDet : r)) x -> m x) -> m a
+sem) = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m (Maybe a))
+-> Sem r (Maybe a)
+forall (r :: [(* -> *) -> * -> *]) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m (Maybe a))
+-> Sem r (Maybe a))
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m (Maybe a))
+-> Sem r (Maybe a)
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union r (Sem r) x -> m x
+k -> MaybeT m a -> m (Maybe a)
+forall (m :: * -> *) a. MaybeT m a -> m (Maybe a)
+runMaybeT (MaybeT m a -> m (Maybe a)) -> MaybeT m a -> m (Maybe a)
+forall a b. (a -> b) -> a -> b
+$ (forall x. Union (NonDet : r) (Sem (NonDet : r)) x -> MaybeT m x)
+-> MaybeT m a
+forall (m :: * -> *).
+Monad m =>
+(forall x. Union (NonDet : r) (Sem (NonDet : r)) x -> m x) -> m a
+sem ((forall x. Union (NonDet : r) (Sem (NonDet : r)) x -> MaybeT m x)
+-> MaybeT m a)
+-> (forall x.
+Union (NonDet : r) (Sem (NonDet : r)) x -> MaybeT m x)
+-> MaybeT m a
+forall a b. (a -> b) -> a -> b
+$ \Union (NonDet : r) (Sem (NonDet : r)) x
+u ->
+case Union (NonDet : r) (Sem (NonDet : r)) x
+-> Either
+(Union r (Sem (NonDet : r)) x)
+(Weaving NonDet (Sem (NonDet : r)) x)
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *])
+(m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp Union (NonDet : r) (Sem (NonDet : r)) x
+u of
+Right (Weaving NonDet (Sem rInitial) a
+e f ()
+s forall x. f (Sem rInitial x) -> Sem (NonDet : r) (f x)
+wv f a -> x
+ex forall x. f x -> Maybe x
+_) ->
+case NonDet (Sem rInitial) a
+e of
+NonDet (Sem rInitial) a
+Empty -> MaybeT m x
+forall a. MaybeT m a
+forall (f :: * -> *) a. Alternative f => f a
+empty
+Choose Sem rInitial a
+left Sem rInitial a
+right ->
+m (Maybe x) -> MaybeT m x
+forall (m :: * -> *) a. m (Maybe a) -> MaybeT m a
+MaybeT (m (Maybe x) -> MaybeT m x) -> m (Maybe x) -> MaybeT m x
+forall a b. (a -> b) -> a -> b
+$ (forall x. Union r (Sem r) x -> m x)
+-> Sem r (Maybe x) -> m (Maybe x)
+forall (m :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> Sem r a -> m a
+usingSem Union r (Sem r) x -> m x
+forall x. Union r (Sem r) x -> m x
+k (Sem r (Maybe x) -> m (Maybe x)) -> Sem r (Maybe x) -> m (Maybe x)
+forall a b. (a -> b) -> a -> b
+$ MaybeT (Sem r) x -> Sem r (Maybe x)
+forall (m :: * -> *) a. MaybeT m a -> m (Maybe a)
+runMaybeT (MaybeT (Sem r) x -> Sem r (Maybe x))
+-> MaybeT (Sem r) x -> Sem r (Maybe x)
+forall a b. (a -> b) -> a -> b
+$ (f a -> x) -> MaybeT (Sem r) (f a) -> MaybeT (Sem r) x
+forall a b. (a -> b) -> MaybeT (Sem r) a -> MaybeT (Sem r) b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap f a -> x
+ex (MaybeT (Sem r) (f a) -> MaybeT (Sem r) x)
+-> MaybeT (Sem r) (f a) -> MaybeT (Sem r) x
+forall a b. (a -> b) -> a -> b
+$
+Sem r (Maybe (f a)) -> MaybeT (Sem r) (f a)
+forall (m :: * -> *) a. m (Maybe a) -> MaybeT m a
+MaybeT (Sem (NonDet : r) (f a) -> Sem r (Maybe (f a))
+forall (r :: [(* -> *) -> * -> *]) a.
+Sem (NonDet : r) a -> Sem r (Maybe a)
+runNonDetMaybe (f (Sem rInitial a) -> Sem (NonDet : r) (f a)
+forall x. f (Sem rInitial x) -> Sem (NonDet : r) (f x)
+wv (Sem rInitial a
+left Sem rInitial a -> f () -> f (Sem rInitial a)
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s)))
+MaybeT (Sem r) (f a)
+-> MaybeT (Sem r) (f a) -> MaybeT (Sem r) (f a)
+forall a. MaybeT (Sem r) a -> MaybeT (Sem r) a -> MaybeT (Sem r) a
+forall (f :: * -> *) a. Alternative f => f a -> f a -> f a
+<|> Sem r (Maybe (f a)) -> MaybeT (Sem r) (f a)
+forall (m :: * -> *) a. m (Maybe a) -> MaybeT m a
+MaybeT (Sem (NonDet : r) (f a) -> Sem r (Maybe (f a))
+forall (r :: [(* -> *) -> * -> *]) a.
+Sem (NonDet : r) a -> Sem r (Maybe a)
+runNonDetMaybe (f (Sem rInitial a) -> Sem (NonDet : r) (f a)
+forall x. f (Sem rInitial x) -> Sem (NonDet : r) (f x)
+wv (Sem rInitial a
+right Sem rInitial a -> f () -> f (Sem rInitial a)
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s)))
+Left Union r (Sem (NonDet : r)) x
+x -> m (Maybe x) -> MaybeT m x
+forall (m :: * -> *) a. m (Maybe a) -> MaybeT m a
+MaybeT (m (Maybe x) -> MaybeT m x) -> m (Maybe x) -> MaybeT m x
+forall a b. (a -> b) -> a -> b
+$
+Union r (Sem r) (Maybe x) -> m (Maybe x)
+forall x. Union r (Sem r) x -> m x
+k (Union r (Sem r) (Maybe x) -> m (Maybe x))
+-> Union r (Sem r) (Maybe x) -> m (Maybe x)
+forall a b. (a -> b) -> a -> b
+$ Maybe ()
+-> (forall x. Maybe (Sem (NonDet : r) x) -> Sem r (Maybe x))
+-> (forall x. Maybe x -> Maybe x)
+-> Union r (Sem (NonDet : r)) x
+-> Union r (Sem r) (Maybe x)
+forall (s :: * -> *) (n :: * -> *) (m :: * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+(Functor s, Functor n) =>
+s ()
+-> (forall x. s (m x) -> n (s x))
+-> (forall x. s x -> Maybe x)
+-> Union r m a
+-> Union r n (s a)
+weave (() -> Maybe ()
+forall a. a -> Maybe a
+Just ())
+(Sem r (Maybe x)
+-> (Sem (NonDet : r) x -> Sem r (Maybe x))
+-> Maybe (Sem (NonDet : r) x)
+-> Sem r (Maybe x)
+forall b a. b -> (a -> b) -> Maybe a -> b
+maybe (Maybe x -> Sem r (Maybe x)
+forall a. a -> Sem r a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure Maybe x
+forall a. Maybe a
+Nothing) Sem (NonDet : r) x -> Sem r (Maybe x)
+forall (r :: [(* -> *) -> * -> *]) a.
+Sem (NonDet : r) a -> Sem r (Maybe a)
+runNonDetMaybe)
+Maybe x -> Maybe x
+forall a. a -> a
+forall x. Maybe x -> Maybe x
+id
+Union r (Sem (NonDet : r)) x
+x
+{-# INLINE runNonDetMaybe #-}
+nonDetToError :: Member (Error e) r
+=> e
+-> Sem (NonDet ': r) a
+-> Sem r a
+nonDetToError :: forall e (r :: [(* -> *) -> * -> *]) a.
+Member (Error e) r =>
+e -> Sem (NonDet : r) a -> Sem r a
+nonDetToError (e
+e :: e) = (forall (rInitial :: [(* -> *) -> * -> *]) x.
+NonDet (Sem rInitial) x -> Tactical NonDet (Sem rInitial) r x)
+-> Sem (NonDet : r) a -> Sem r a
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+(forall (rInitial :: [(* -> *) -> * -> *]) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem (e : r) a -> Sem r a
+interpretH ((forall (rInitial :: [(* -> *) -> * -> *]) x.
+NonDet (Sem rInitial) x -> Tactical NonDet (Sem rInitial) r x)
+-> Sem (NonDet : r) a -> Sem r a)
+-> (forall (rInitial :: [(* -> *) -> * -> *]) x.
+NonDet (Sem rInitial) x -> Tactical NonDet (Sem rInitial) r x)
+-> Sem (NonDet : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+NonDet (Sem rInitial) x
+Empty -> e -> Sem (WithTactics NonDet f (Sem rInitial) r) (f x)
+forall e (r :: [(* -> *) -> * -> *]) a.
+Member (Error e) r =>
+e -> Sem r a
+throw e
+e
+Choose Sem rInitial x
+left Sem rInitial x
+right -> do
+Sem r (f x)
+left' <- e -> Sem (NonDet : r) (f x) -> Sem r (f x)
+forall e (r :: [(* -> *) -> * -> *]) a.
+Member (Error e) r =>
+e -> Sem (NonDet : r) a -> Sem r a
+nonDetToError e
+e (Sem (NonDet : r) (f x) -> Sem r (f x))
+-> Sem
+(WithTactics NonDet f (Sem rInitial) r) (Sem (NonDet : r) (f x))
+-> Sem (WithTactics NonDet f (Sem rInitial) r) (Sem r (f x))
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> Sem rInitial x
+-> Sem
+(WithTactics NonDet f (Sem rInitial) r) (Sem (NonDet : r) (f x))
+forall (m :: * -> *) a (e :: (* -> *) -> * -> *) (f :: * -> *)
+(r :: [(* -> *) -> * -> *]).
+m a -> Sem (WithTactics e f m r) (Sem (e : r) (f a))
+runT Sem rInitial x
+left
+Sem r (f x)
+right' <- e -> Sem (NonDet : r) (f x) -> Sem r (f x)
+forall e (r :: [(* -> *) -> * -> *]) a.
+Member (Error e) r =>
+e -> Sem (NonDet : r) a -> Sem r a
+nonDetToError e
+e (Sem (NonDet : r) (f x) -> Sem r (f x))
+-> Sem
+(WithTactics NonDet f (Sem rInitial) r) (Sem (NonDet : r) (f x))
+-> Sem (WithTactics NonDet f (Sem rInitial) r) (Sem r (f x))
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> Sem rInitial x
+-> Sem
+(WithTactics NonDet f (Sem rInitial) r) (Sem (NonDet : r) (f x))
+forall (m :: * -> *) a (e :: (* -> *) -> * -> *) (f :: * -> *)
+(r :: [(* -> *) -> * -> *]).
+m a -> Sem (WithTactics e f m r) (Sem (e : r) (f a))
+runT Sem rInitial x
+right
+Sem r (f x) -> Sem (WithTactics NonDet f (Sem rInitial) r) (f x)
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *]) a.
+Sem r a -> Sem (e : r) a
+raise (Sem r (f x)
+left' Sem r (f x) -> (e -> Sem r (f x)) -> Sem r (f x)
+forall e (r :: [(* -> *) -> * -> *]) a.
+Member (Error e) r =>
+Sem r a -> (e -> Sem r a) -> Sem r a
+`catch` \(e
+_ :: e) -> Sem r (f x)
+right')
+{-# INLINE nonDetToError #-}
+runNonDetC :: (Alternative f, Applicative m) => NonDetC m a -> m (f a)
+runNonDetC :: forall (f :: * -> *) (m :: * -> *) a.
+(Alternative f, Applicative m) =>
+NonDetC m a -> m (f a)
+runNonDetC (NonDetC forall b. (a -> m b -> m b) -> m b -> m b
+m) = (a -> m (f a) -> m (f a)) -> m (f a) -> m (f a)
+forall b. (a -> m b -> m b) -> m b -> m b
+m ((f a -> f a) -> m (f a) -> m (f a)
+forall a b. (a -> b) -> m a -> m b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap ((f a -> f a) -> m (f a) -> m (f a))
+-> (a -> f a -> f a) -> a -> m (f a) -> m (f a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f a -> f a -> f a
+forall a. f a -> f a -> f a
+forall (f :: * -> *) a. Alternative f => f a -> f a -> f a
+(<|>) (f a -> f a -> f a) -> (a -> f a) -> a -> f a -> f a
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. a -> f a
+forall a. a -> f a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure) (f a -> m (f a)
+forall a. a -> m a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure f a
+forall a. f a
+forall (f :: * -> *) a. Alternative f => f a
+empty)
+{-# INLINE runNonDetC #-}
+newtype NonDetC m a = NonDetC
+{
+forall {k} (m :: k -> *) a.
+NonDetC m a -> forall (b :: k). (a -> m b -> m b) -> m b -> m b
+unNonDetC :: forall b . (a -> m b -> m b) -> m b -> m b
+}
+deriving ((forall a b. (a -> b) -> NonDetC m a -> NonDetC m b)
+-> (forall a b. a -> NonDetC m b -> NonDetC m a)
+-> Functor (NonDetC m)
+forall a b. a -> NonDetC m b -> NonDetC m a
+forall a b. (a -> b) -> NonDetC m a -> NonDetC m b
+forall k (m :: k -> *) a b. a -> NonDetC m b -> NonDetC m a
+forall k (m :: k -> *) a b. (a -> b) -> NonDetC m a -> NonDetC m b
+forall (f :: * -> *).
+(forall a b. (a -> b) -> f a -> f b)
+-> (forall a b. a -> f b -> f a) -> Functor f
+$cfmap :: forall k (m :: k -> *) a b. (a -> b) -> NonDetC m a -> NonDetC m b
+fmap :: forall a b. (a -> b) -> NonDetC m a -> NonDetC m b
+$c<$ :: forall k (m :: k -> *) a b. a -> NonDetC m b -> NonDetC m a
+<$ :: forall a b. a -> NonDetC m b -> NonDetC m a
+Functor)
+instance Applicative (NonDetC m) where
+pure :: forall a. a -> NonDetC m a
+pure a
+a = (forall (b :: k). (a -> m b -> m b) -> m b -> m b) -> NonDetC m a
+forall {k} (m :: k -> *) a.
+(forall (b :: k). (a -> m b -> m b) -> m b -> m b) -> NonDetC m a
+NonDetC (\ a -> m b -> m b
+cons -> a -> m b -> m b
+cons a
+a)
+{-# INLINE pure #-}
+NonDetC forall (b :: k). ((a -> b) -> m b -> m b) -> m b -> m b
+f <*> :: forall a b. NonDetC m (a -> b) -> NonDetC m a -> NonDetC m b
+<*> NonDetC forall (b :: k). (a -> m b -> m b) -> m b -> m b
+a = (forall (b :: k). (b -> m b -> m b) -> m b -> m b) -> NonDetC m b
+forall {k} (m :: k -> *) a.
+(forall (b :: k). (a -> m b -> m b) -> m b -> m b) -> NonDetC m a
+NonDetC ((forall (b :: k). (b -> m b -> m b) -> m b -> m b) -> NonDetC m b)
+-> (forall (b :: k). (b -> m b -> m b) -> m b -> m b)
+-> NonDetC m b
+forall a b. (a -> b) -> a -> b
+$ \ b -> m b -> m b
+cons ->
+((a -> b) -> m b -> m b) -> m b -> m b
+forall (b :: k). ((a -> b) -> m b -> m b) -> m b -> m b
+f (\ a -> b
+f' -> (a -> m b -> m b) -> m b -> m b
+forall (b :: k). (a -> m b -> m b) -> m b -> m b
+a (b -> m b -> m b
+cons (b -> m b -> m b) -> (a -> b) -> a -> m b -> m b
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. a -> b
+f'))
+{-# INLINE (<*>) #-}
+instance Alternative (NonDetC m) where
+empty :: forall a. NonDetC m a
+empty = (forall (b :: k). (a -> m b -> m b) -> m b -> m b) -> NonDetC m a
+forall {k} (m :: k -> *) a.
+(forall (b :: k). (a -> m b -> m b) -> m b -> m b) -> NonDetC m a
+NonDetC (\ a -> m b -> m b
+_ m b
+nil -> m b
+nil)
+{-# INLINE empty #-}
+NonDetC forall (b :: k). (a -> m b -> m b) -> m b -> m b
+l <|> :: forall a. NonDetC m a -> NonDetC m a -> NonDetC m a
+<|> NonDetC forall (b :: k). (a -> m b -> m b) -> m b -> m b
+r = (forall (b :: k). (a -> m b -> m b) -> m b -> m b) -> NonDetC m a
+forall {k} (m :: k -> *) a.
+(forall (b :: k). (a -> m b -> m b) -> m b -> m b) -> NonDetC m a
+NonDetC ((forall (b :: k). (a -> m b -> m b) -> m b -> m b) -> NonDetC m a)
+-> (forall (b :: k). (a -> m b -> m b) -> m b -> m b)
+-> NonDetC m a
+forall a b. (a -> b) -> a -> b
+$ \ a -> m b -> m b
+cons -> (a -> m b -> m b) -> m b -> m b
+forall (b :: k). (a -> m b -> m b) -> m b -> m b
+l a -> m b -> m b
+cons (m b -> m b) -> (m b -> m b) -> m b -> m b
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (a -> m b -> m b) -> m b -> m b
+forall (b :: k). (a -> m b -> m b) -> m b -> m b
+r a -> m b -> m b
+cons
+{-# INLINE (<|>) #-}
+instance Monad (NonDetC m) where
+NonDetC forall (b :: k). (a -> m b -> m b) -> m b -> m b
+a >>= :: forall a b. NonDetC m a -> (a -> NonDetC m b) -> NonDetC m b
+>>= a -> NonDetC m b
+f = (forall (b :: k). (b -> m b -> m b) -> m b -> m b) -> NonDetC m b
+forall {k} (m :: k -> *) a.
+(forall (b :: k). (a -> m b -> m b) -> m b -> m b) -> NonDetC m a
+NonDetC ((forall (b :: k). (b -> m b -> m b) -> m b -> m b) -> NonDetC m b)
+-> (forall (b :: k). (b -> m b -> m b) -> m b -> m b)
+-> NonDetC m b
+forall a b. (a -> b) -> a -> b
+$ \ b -> m b -> m b
+cons ->
+(a -> m b -> m b) -> m b -> m b
+forall (b :: k). (a -> m b -> m b) -> m b -> m b
+a (\ a
+a' -> NonDetC m b -> forall (b :: k). (b -> m b -> m b) -> m b -> m b
+forall {k} (m :: k -> *) a.
+NonDetC m a -> forall (b :: k). (a -> m b -> m b) -> m b -> m b
+unNonDetC (a -> NonDetC m b
+f a
+a') b -> m b -> m b
+cons)
+{-# INLINE (>>=) #-}
+runNonDetInC :: Sem (NonDet ': r) a -> NonDetC (Sem r) a
+runNonDetInC :: forall (r :: [(* -> *) -> * -> *]) a.
+Sem (NonDet : r) a -> NonDetC (Sem r) a
+runNonDetInC = (forall x.
+Union (NonDet : r) (Sem (NonDet : r)) x -> NonDetC (Sem r) x)
+-> Sem (NonDet : r) a -> NonDetC (Sem r) a
+forall (m :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> Sem r a -> m a
+usingSem ((forall x.
+Union (NonDet : r) (Sem (NonDet : r)) x -> NonDetC (Sem r) x)
+-> Sem (NonDet : r) a -> NonDetC (Sem r) a)
+-> (forall x.
+Union (NonDet : r) (Sem (NonDet : r)) x -> NonDetC (Sem r) x)
+-> Sem (NonDet : r) a
+-> NonDetC (Sem r) a
+forall a b. (a -> b) -> a -> b
+$ \Union (NonDet : r) (Sem (NonDet : r)) x
+u ->
+case Union (NonDet : r) (Sem (NonDet : r)) x
+-> Either
+(Union r (Sem (NonDet : r)) x)
+(Weaving NonDet (Sem (NonDet : r)) x)
+forall (e :: (* -> *) -> * -> *) (r :: [(* -> *) -> * -> *])
+(m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp Union (NonDet : r) (Sem (NonDet : r)) x
+u of
+Left Union r (Sem (NonDet : r)) x
+x -> (forall b. (x -> Sem r b -> Sem r b) -> Sem r b -> Sem r b)
+-> NonDetC (Sem r) x
+forall {k} (m :: k -> *) a.
+(forall (b :: k). (a -> m b -> m b) -> m b -> m b) -> NonDetC m a
+NonDetC ((forall b. (x -> Sem r b -> Sem r b) -> Sem r b -> Sem r b)
+-> NonDetC (Sem r) x)
+-> (forall b. (x -> Sem r b -> Sem r b) -> Sem r b -> Sem r b)
+-> NonDetC (Sem r) x
+forall a b. (a -> b) -> a -> b
+$ \x -> Sem r b -> Sem r b
+c Sem r b
+b -> do
+[x]
+l <- Union r (Sem r) [x] -> Sem r [x]
+forall (r :: [(* -> *) -> * -> *]) a. Union r (Sem r) a -> Sem r a
+liftSem (Union r (Sem r) [x] -> Sem r [x])
+-> Union r (Sem r) [x] -> Sem r [x]
+forall a b. (a -> b) -> a -> b
+$ [()]
+-> (forall x. [Sem (NonDet : r) x] -> Sem r [x])
+-> (forall x. [x] -> Maybe x)
+-> Union r (Sem (NonDet : r)) x
+-> Union r (Sem r) [x]
+forall (s :: * -> *) (n :: * -> *) (m :: * -> *)
+(r :: [(* -> *) -> * -> *]) a.
+(Functor s, Functor n) =>
+s ()
+-> (forall x. s (m x) -> n (s x))
+-> (forall x. s x -> Maybe x)
+-> Union r m a
+-> Union r n (s a)
+weave [()]
+(([[x]] -> [x]) -> Sem r [[x]] -> Sem r [x]
+forall a b. (a -> b) -> Sem r a -> Sem r b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap [[x]] -> [x]
+forall (t :: * -> *) a. Foldable t => t [a] -> [a]
+concat (Sem r [[x]] -> Sem r [x])
+-> ([Sem (NonDet : r) x] -> Sem r [[x]])
+-> [Sem (NonDet : r) x]
+-> Sem r [x]
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (Sem (NonDet : r) x -> Sem r [x])
+-> [Sem (NonDet : r) x] -> Sem r [[x]]
+forall (t :: * -> *) (f :: * -> *) a b.
+(Traversable t, Applicative f) =>
+(a -> f b) -> t a -> f (t b)
+forall (f :: * -> *) a b.
+Applicative f =>
+(a -> f b) -> [a] -> f [b]
+traverse Sem (NonDet : r) x -> Sem r [x]
+forall (f :: * -> *) (r :: [(* -> *) -> * -> *]) a.
+Alternative f =>
+Sem (NonDet : r) a -> Sem r (f a)
+runNonDet)
+[x] -> Maybe x
+forall x. [x] -> Maybe x
+listToMaybe
+Union r (Sem (NonDet : r)) x
+x
+(x -> Sem r b -> Sem r b) -> Sem r b -> [x] -> Sem r b
+forall a b. (a -> b -> b) -> b -> [a] -> b
+forall (t :: * -> *) a b.
+Foldable t =>
+(a -> b -> b) -> b -> t a -> b
+foldr x -> Sem r b -> Sem r b
+c Sem r b
+b [x]
+l
+Right (Weaving NonDet (Sem rInitial) a
+Empty f ()
+_ forall x. f (Sem rInitial x) -> Sem (NonDet : r) (f x)
+_ f a -> x
+_ forall x. f x -> Maybe x
+_) -> NonDetC (Sem r) x
+forall a. NonDetC (Sem r) a
+forall (f :: * -> *) a. Alternative f => f a
+empty
+Right (Weaving (Choose Sem rInitial a
+left Sem rInitial a
+right) f ()
+s forall x. f (Sem rInitial x) -> Sem (NonDet : r) (f x)
+wv f a -> x
+ex forall x. f x -> Maybe x
+_) -> (f a -> x) -> NonDetC (Sem r) (f a) -> NonDetC (Sem r) x
+forall a b. (a -> b) -> NonDetC (Sem r) a -> NonDetC (Sem r) b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap f a -> x
+ex (NonDetC (Sem r) (f a) -> NonDetC (Sem r) x)
+-> NonDetC (Sem r) (f a) -> NonDetC (Sem r) x
+forall a b. (a -> b) -> a -> b
+$
+Sem (NonDet : r) (f a) -> NonDetC (Sem r) (f a)
+forall (r :: [(* -> *) -> * -> *]) a.
+Sem (NonDet : r) a -> NonDetC (Sem r) a
+runNonDetInC (f (Sem rInitial a) -> Sem (NonDet : r) (f a)
+forall x. f (Sem rInitial x) -> Sem (NonDet : r) (f x)
+wv (Sem rInitial a
+left Sem rInitial a -> f () -> f (Sem rInitial a)
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s)) NonDetC (Sem r) (f a)
+-> NonDetC (Sem r) (f a) -> NonDetC (Sem r) (f a)
+forall a.
+NonDetC (Sem r) a -> NonDetC (Sem r) a -> NonDetC (Sem r) a
+forall (f :: * -> *) a. Alternative f => f a -> f a -> f a
+<|> Sem (NonDet : r) (f a) -> NonDetC (Sem r) (f a)
+forall (r :: [(* -> *) -> * -> *]) a.
+Sem (NonDet : r) a -> NonDetC (Sem r) a
+runNonDetInC (f (Sem rInitial a) -> Sem (NonDet : r) (f a)
+forall x. f (Sem rInitial x) -> Sem (NonDet : r) (f x)
+wv (Sem rInitial a
+right Sem rInitial a -> f () -> f (Sem rInitial a)
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s))
+{-# INLINE runNonDetInC #-}

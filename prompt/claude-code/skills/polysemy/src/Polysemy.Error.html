@@ -1,0 +1,978 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_HADDOCK prune #-}
+module Polysemy.Error
+(
+Error (..)
+, throw
+, catch
+, fromEither
+, fromEitherM
+, fromException
+, fromExceptionVia
+, fromExceptionSem
+, fromExceptionSemVia
+, note
+, try
+, tryJust
+, catchJust
+, runError
+, mapError
+, errorToIOFinal
+) where
+import qualified Control.Exception as X
+import Control.Monad
+import qualified Control.Monad.Trans.Except as E
+import Data.Unique (Unique, hashUnique, newUnique)
+import GHC.Exts (Any)
+import Polysemy
+import Polysemy.Final
+import Polysemy.Internal
+import Polysemy.Internal.Union
+import Unsafe.Coerce (unsafeCoerce)
+data Error e m a where
+Throw :: e -> Error e m a
+Catch :: ∀ e m a. m a -> (e -> m a) -> Error e m a
+makeSem ''Error
+hush :: Either e a -> Maybe a
+hush :: forall e a. Either e a -> Maybe a
+hush (Right a
+a) = a -> Maybe a
+forall a. a -> Maybe a
+Just a
+a
+hush (Left e
+_) = Maybe a
+forall a. Maybe a
+Nothing
+fromEither
+:: Member (Error e) r
+=> Either e a
+-> Sem r a
+fromEither :: forall e (r :: EffectRow) a.
+Member (Error e) r =>
+Either e a -> Sem r a
+fromEither (Left e
+e) = e -> Sem r a
+forall e (r :: EffectRow) a. Member (Error e) r => e -> Sem r a
+throw e
+e
+fromEither (Right a
+a) = a -> Sem r a
+forall a. a -> Sem r a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure a
+a
+{-# INLINABLE fromEither #-}
+fromEitherM
+:: forall e m r a
+. ( Member (Error e) r
+, Member (Embed m) r
+)
+=> m (Either e a)
+-> Sem r a
+fromEitherM :: forall e (m :: * -> *) (r :: EffectRow) a.
+(Member (Error e) r, Member (Embed m) r) =>
+m (Either e a) -> Sem r a
+fromEitherM = Either e a -> Sem r a
+forall e (r :: EffectRow) a.
+Member (Error e) r =>
+Either e a -> Sem r a
+fromEither (Either e a -> Sem r a)
+-> (m (Either e a) -> Sem r (Either e a))
+-> m (Either e a)
+-> Sem r a
+forall (m :: * -> *) b c a.
+Monad m =>
+(b -> m c) -> (a -> m b) -> a -> m c
+<=< m (Either e a) -> Sem r (Either e a)
+forall (m :: * -> *) (r :: EffectRow) a.
+Member (Embed m) r =>
+m a -> Sem r a
+embed
+{-# INLINABLE fromEitherM #-}
+fromException
+:: forall e r a
+. ( X.Exception e
+, Member (Error e) r
+, Member (Embed IO) r
+)
+=> IO a
+-> Sem r a
+fromException :: forall e (r :: EffectRow) a.
+(Exception e, Member (Error e) r, Member (Embed IO) r) =>
+IO a -> Sem r a
+fromException = forall exc err (r :: EffectRow) a.
+(Exception exc, Member (Error err) r, Member (Embed IO) r) =>
+(exc -> err) -> IO a -> Sem r a
+fromExceptionVia @e e -> e
+forall a. a -> a
+id
+{-# INLINABLE fromException #-}
+fromExceptionVia
+:: ( X.Exception exc
+, Member (Error err) r
+, Member (Embed IO) r
+)
+=> (exc -> err)
+-> IO a
+-> Sem r a
+fromExceptionVia :: forall exc err (r :: EffectRow) a.
+(Exception exc, Member (Error err) r, Member (Embed IO) r) =>
+(exc -> err) -> IO a -> Sem r a
+fromExceptionVia exc -> err
+f IO a
+m = do
+Either exc a
+r <- IO (Either exc a) -> Sem r (Either exc a)
+forall (m :: * -> *) (r :: EffectRow) a.
+Member (Embed m) r =>
+m a -> Sem r a
+embed (IO (Either exc a) -> Sem r (Either exc a))
+-> IO (Either exc a) -> Sem r (Either exc a)
+forall a b. (a -> b) -> a -> b
+$ IO a -> IO (Either exc a)
+forall e a. Exception e => IO a -> IO (Either e a)
+X.try IO a
+m
+case Either exc a
+r of
+Left exc
+e -> err -> Sem r a
+forall e (r :: EffectRow) a. Member (Error e) r => e -> Sem r a
+throw (err -> Sem r a) -> err -> Sem r a
+forall a b. (a -> b) -> a -> b
+$ exc -> err
+f exc
+e
+Right a
+a -> a -> Sem r a
+forall a. a -> Sem r a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure a
+a
+{-# INLINABLE fromExceptionVia #-}
+fromExceptionSem
+:: forall e r a
+. ( X.Exception e
+, Member (Error e) r
+, Member (Final IO) r
+)
+=> Sem r a
+-> Sem r a
+fromExceptionSem :: forall e (r :: EffectRow) a.
+(Exception e, Member (Error e) r, Member (Final IO) r) =>
+Sem r a -> Sem r a
+fromExceptionSem = forall exc err (r :: EffectRow) a.
+(Exception exc, Member (Error err) r, Member (Final IO) r) =>
+(exc -> err) -> Sem r a -> Sem r a
+fromExceptionSemVia @e e -> e
+forall a. a -> a
+id
+{-# INLINABLE fromExceptionSem #-}
+fromExceptionSemVia
+:: ( X.Exception exc
+, Member (Error err) r
+, Member (Final IO) r
+)
+=> (exc -> err)
+-> Sem r a
+-> Sem r a
+fromExceptionSemVia :: forall exc err (r :: EffectRow) a.
+(Exception exc, Member (Error err) r, Member (Final IO) r) =>
+(exc -> err) -> Sem r a -> Sem r a
+fromExceptionSemVia exc -> err
+f Sem r a
+m = do
+Either exc a
+r <- Strategic IO (Sem r) (Either exc a) -> Sem r (Either exc a)
+forall (m :: * -> *) (r :: EffectRow) a.
+Member (Final m) r =>
+Strategic m (Sem r) a -> Sem r a
+withStrategicToFinal (Strategic IO (Sem r) (Either exc a) -> Sem r (Either exc a))
+-> Strategic IO (Sem r) (Either exc a) -> Sem r (Either exc a)
+forall a b. (a -> b) -> a -> b
+$ do
+IO (f a)
+m' <- Sem r a -> Sem (WithStrategy IO f (Sem r)) (IO (f a))
+forall (n :: * -> *) a (m :: * -> *) (f :: * -> *).
+n a -> Sem (WithStrategy m f n) (m (f a))
+runS Sem r a
+m
+f ()
+s <- Sem (WithStrategy IO f (Sem r)) (f ())
+forall (m :: * -> *) (f :: * -> *) (n :: * -> *).
+Sem (WithStrategy m f n) (f ())
+getInitialStateS
+IO (f (Either exc a))
+-> Sem (WithStrategy IO f (Sem r)) (IO (f (Either exc a)))
+forall a. a -> Sem (WithStrategy IO f (Sem r)) a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (IO (f (Either exc a))
+-> Sem (WithStrategy IO f (Sem r)) (IO (f (Either exc a))))
+-> IO (f (Either exc a))
+-> Sem (WithStrategy IO f (Sem r)) (IO (f (Either exc a)))
+forall a b. (a -> b) -> a -> b
+$ ((f a -> f (Either exc a)) -> IO (f a) -> IO (f (Either exc a))
+forall a b. (a -> b) -> IO a -> IO b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap ((f a -> f (Either exc a)) -> IO (f a) -> IO (f (Either exc a)))
+-> ((a -> Either exc a) -> f a -> f (Either exc a))
+-> (a -> Either exc a)
+-> IO (f a)
+-> IO (f (Either exc a))
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (a -> Either exc a) -> f a -> f (Either exc a)
+forall a b. (a -> b) -> f a -> f b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap) a -> Either exc a
+forall a b. b -> Either a b
+Right IO (f a)
+m' IO (f (Either exc a))
+-> (exc -> IO (f (Either exc a))) -> IO (f (Either exc a))
+forall e a. Exception e => IO a -> (e -> IO a) -> IO a
+`X.catch` \exc
+e -> (f (Either exc a) -> IO (f (Either exc a))
+forall a. a -> IO a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (exc -> Either exc a
+forall a b. a -> Either a b
+Left exc
+e Either exc a -> f () -> f (Either exc a)
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s))
+case Either exc a
+r of
+Left exc
+e -> err -> Sem r a
+forall e (r :: EffectRow) a. Member (Error e) r => e -> Sem r a
+throw (err -> Sem r a) -> err -> Sem r a
+forall a b. (a -> b) -> a -> b
+$ exc -> err
+f exc
+e
+Right a
+a -> a -> Sem r a
+forall a. a -> Sem r a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure a
+a
+{-# INLINABLE fromExceptionSemVia #-}
+note :: Member (Error e) r => e -> Maybe a -> Sem r a
+note :: forall e (r :: EffectRow) a.
+Member (Error e) r =>
+e -> Maybe a -> Sem r a
+note e
+e Maybe a
+Nothing = e -> Sem r a
+forall e (r :: EffectRow) a. Member (Error e) r => e -> Sem r a
+throw e
+e
+note e
+_ (Just a
+a) = a -> Sem r a
+forall a. a -> Sem r a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure a
+a
+{-# INLINABLE note #-}
+try :: Member (Error e) r => Sem r a -> Sem r (Either e a)
+try :: forall e (r :: EffectRow) a.
+Member (Error e) r =>
+Sem r a -> Sem r (Either e a)
+try Sem r a
+m = Sem r (Either e a)
+-> (e -> Sem r (Either e a)) -> Sem r (Either e a)
+forall e (r :: EffectRow) a.
+Member (Error e) r =>
+Sem r a -> (e -> Sem r a) -> Sem r a
+catch (a -> Either e a
+forall a b. b -> Either a b
+Right (a -> Either e a) -> Sem r a -> Sem r (Either e a)
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> Sem r a
+m) (Either e a -> Sem r (Either e a)
+forall a. a -> Sem r a
+forall (m :: * -> *) a. Monad m => a -> m a
+return (Either e a -> Sem r (Either e a))
+-> (e -> Either e a) -> e -> Sem r (Either e a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. e -> Either e a
+forall a b. a -> Either a b
+Left)
+{-# INLINABLE try #-}
+tryJust :: Member (Error e) r => (e -> Maybe b) -> Sem r a -> Sem r (Either b a)
+tryJust :: forall e (r :: EffectRow) b a.
+Member (Error e) r =>
+(e -> Maybe b) -> Sem r a -> Sem r (Either b a)
+tryJust e -> Maybe b
+f Sem r a
+m = do
+Either e a
+r <- Sem r a -> Sem r (Either e a)
+forall e (r :: EffectRow) a.
+Member (Error e) r =>
+Sem r a -> Sem r (Either e a)
+try Sem r a
+m
+case Either e a
+r of
+Right a
+v -> Either b a -> Sem r (Either b a)
+forall a. a -> Sem r a
+forall (m :: * -> *) a. Monad m => a -> m a
+return (a -> Either b a
+forall a b. b -> Either a b
+Right a
+v)
+Left e
+e -> case e -> Maybe b
+f e
+e of
+Maybe b
+Nothing -> e -> Sem r (Either b a)
+forall e (r :: EffectRow) a. Member (Error e) r => e -> Sem r a
+throw e
+e
+Just b
+b -> Either b a -> Sem r (Either b a)
+forall a. a -> Sem r a
+forall (m :: * -> *) a. Monad m => a -> m a
+return (Either b a -> Sem r (Either b a))
+-> Either b a -> Sem r (Either b a)
+forall a b. (a -> b) -> a -> b
+$ b -> Either b a
+forall a b. a -> Either a b
+Left b
+b
+{-# INLINABLE tryJust #-}
+catchJust :: Member (Error e) r
+=> (e -> Maybe b)
+-> Sem r a
+-> (b -> Sem r a)
+-> Sem r a
+catchJust :: forall e (r :: EffectRow) b a.
+Member (Error e) r =>
+(e -> Maybe b) -> Sem r a -> (b -> Sem r a) -> Sem r a
+catchJust e -> Maybe b
+ef Sem r a
+m b -> Sem r a
+bf = Sem r a -> (e -> Sem r a) -> Sem r a
+forall e (r :: EffectRow) a.
+Member (Error e) r =>
+Sem r a -> (e -> Sem r a) -> Sem r a
+catch Sem r a
+m e -> Sem r a
+handler
+where
+handler :: e -> Sem r a
+handler e
+e = case e -> Maybe b
+ef e
+e of
+Maybe b
+Nothing -> e -> Sem r a
+forall e (r :: EffectRow) a. Member (Error e) r => e -> Sem r a
+throw e
+e
+Just b
+b -> b -> Sem r a
+bf b
+b
+{-# INLINABLE catchJust #-}
+runError
+:: Sem (Error e ': r) a
+-> Sem r (Either e a)
+runError :: forall e (r :: EffectRow) a.
+Sem (Error e : r) a -> Sem r (Either e a)
+runError (Sem forall (m :: * -> *).
+Monad m =>
+(forall x. Union (Error e : r) (Sem (Error e : r)) x -> m x) -> m a
+m) = (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m (Either e a))
+-> Sem r (Either e a)
+forall (r :: EffectRow) a.
+(forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m a)
+-> Sem r a
+Sem ((forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m (Either e a))
+-> Sem r (Either e a))
+-> (forall (m :: * -> *).
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> m (Either e a))
+-> Sem r (Either e a)
+forall a b. (a -> b) -> a -> b
+$ \forall x. Union r (Sem r) x -> m x
+k -> ExceptT e m a -> m (Either e a)
+forall e (m :: * -> *) a. ExceptT e m a -> m (Either e a)
+E.runExceptT (ExceptT e m a -> m (Either e a))
+-> ExceptT e m a -> m (Either e a)
+forall a b. (a -> b) -> a -> b
+$ (forall x.
+Union (Error e : r) (Sem (Error e : r)) x -> ExceptT e m x)
+-> ExceptT e m a
+forall (m :: * -> *).
+Monad m =>
+(forall x. Union (Error e : r) (Sem (Error e : r)) x -> m x) -> m a
+m ((forall x.
+Union (Error e : r) (Sem (Error e : r)) x -> ExceptT e m x)
+-> ExceptT e m a)
+-> (forall x.
+Union (Error e : r) (Sem (Error e : r)) x -> ExceptT e m x)
+-> ExceptT e m a
+forall a b. (a -> b) -> a -> b
+$ \Union (Error e : r) (Sem (Error e : r)) x
+u ->
+case Union (Error e : r) (Sem (Error e : r)) x
+-> Either
+(Union r (Sem (Error e : r)) x)
+(Weaving (Error e) (Sem (Error e : r)) x)
+forall (e :: Effect) (r :: EffectRow) (m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp Union (Error e : r) (Sem (Error e : r)) x
+u of
+Left Union r (Sem (Error e : r)) x
+x -> m (Either e x) -> ExceptT e m x
+forall e (m :: * -> *) a. m (Either e a) -> ExceptT e m a
+E.ExceptT (m (Either e x) -> ExceptT e m x)
+-> m (Either e x) -> ExceptT e m x
+forall a b. (a -> b) -> a -> b
+$ Union r (Sem r) (Either e x) -> m (Either e x)
+forall x. Union r (Sem r) x -> m x
+k (Union r (Sem r) (Either e x) -> m (Either e x))
+-> Union r (Sem r) (Either e x) -> m (Either e x)
+forall a b. (a -> b) -> a -> b
+$
+Either e ()
+-> (forall x. Either e (Sem (Error e : r) x) -> Sem r (Either e x))
+-> (forall x. Either e x -> Maybe x)
+-> Union r (Sem (Error e : r)) x
+-> Union r (Sem r) (Either e x)
+forall (s :: * -> *) (n :: * -> *) (m :: * -> *) (r :: EffectRow)
+a.
+(Functor s, Functor n) =>
+s ()
+-> (forall x. s (m x) -> n (s x))
+-> (forall x. s x -> Maybe x)
+-> Union r m a
+-> Union r n (s a)
+weave (() -> Either e ()
+forall a b. b -> Either a b
+Right ())
+((e -> Sem r (Either e x))
+-> (Sem (Error e : r) x -> Sem r (Either e x))
+-> Either e (Sem (Error e : r) x)
+-> Sem r (Either e x)
+forall a c b. (a -> c) -> (b -> c) -> Either a b -> c
+either (Either e x -> Sem r (Either e x)
+forall a. a -> Sem r a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (Either e x -> Sem r (Either e x))
+-> (e -> Either e x) -> e -> Sem r (Either e x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. e -> Either e x
+forall a b. a -> Either a b
+Left) Sem (Error e : r) x -> Sem r (Either e x)
+forall e (r :: EffectRow) a.
+Sem (Error e : r) a -> Sem r (Either e a)
+runError)
+Either e x -> Maybe x
+forall x. Either e x -> Maybe x
+forall e a. Either e a -> Maybe a
+hush
+Union r (Sem (Error e : r)) x
+x
+Right (Weaving (Throw e
+e) f ()
+_ forall x. f (Sem rInitial x) -> Sem (Error e : r) (f x)
+_ f a -> x
+_ forall x. f x -> Maybe x
+_) -> e -> ExceptT e m x
+forall (m :: * -> *) e a. Monad m => e -> ExceptT e m a
+E.throwE e
+e
+Right (Weaving (Catch Sem rInitial a
+main e -> Sem rInitial a
+handle) f ()
+s forall x. f (Sem rInitial x) -> Sem (Error e : r) (f x)
+d f a -> x
+y forall x. f x -> Maybe x
+_) ->
+m (Either e x) -> ExceptT e m x
+forall e (m :: * -> *) a. m (Either e a) -> ExceptT e m a
+E.ExceptT (m (Either e x) -> ExceptT e m x)
+-> m (Either e x) -> ExceptT e m x
+forall a b. (a -> b) -> a -> b
+$ (forall x. Union r (Sem r) x -> m x)
+-> Sem r (Either e x) -> m (Either e x)
+forall (m :: * -> *) (r :: EffectRow) a.
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> Sem r a -> m a
+usingSem Union r (Sem r) x -> m x
+forall x. Union r (Sem r) x -> m x
+k (Sem r (Either e x) -> m (Either e x))
+-> Sem r (Either e x) -> m (Either e x)
+forall a b. (a -> b) -> a -> b
+$ do
+Either e (f a)
+ma <- Sem (Error e : r) (f a) -> Sem r (Either e (f a))
+forall e (r :: EffectRow) a.
+Sem (Error e : r) a -> Sem r (Either e a)
+runError (Sem (Error e : r) (f a) -> Sem r (Either e (f a)))
+-> Sem (Error e : r) (f a) -> Sem r (Either e (f a))
+forall a b. (a -> b) -> a -> b
+$ f (Sem rInitial a) -> Sem (Error e : r) (f a)
+forall x. f (Sem rInitial x) -> Sem (Error e : r) (f x)
+d (f (Sem rInitial a) -> Sem (Error e : r) (f a))
+-> f (Sem rInitial a) -> Sem (Error e : r) (f a)
+forall a b. (a -> b) -> a -> b
+$ Sem rInitial a
+main Sem rInitial a -> f () -> f (Sem rInitial a)
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s
+case Either e (f a)
+ma of
+Right f a
+a -> Either e x -> Sem r (Either e x)
+forall a. a -> Sem r a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (Either e x -> Sem r (Either e x))
+-> (x -> Either e x) -> x -> Sem r (Either e x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. x -> Either e x
+forall a b. b -> Either a b
+Right (x -> Sem r (Either e x)) -> x -> Sem r (Either e x)
+forall a b. (a -> b) -> a -> b
+$ f a -> x
+y f a
+a
+Left e
+e -> do
+Either e (f a)
+ma' <- Sem (Error e : r) (f a) -> Sem r (Either e (f a))
+forall e (r :: EffectRow) a.
+Sem (Error e : r) a -> Sem r (Either e a)
+runError (Sem (Error e : r) (f a) -> Sem r (Either e (f a)))
+-> Sem (Error e : r) (f a) -> Sem r (Either e (f a))
+forall a b. (a -> b) -> a -> b
+$ f (Sem rInitial a) -> Sem (Error e : r) (f a)
+forall x. f (Sem rInitial x) -> Sem (Error e : r) (f x)
+d (f (Sem rInitial a) -> Sem (Error e : r) (f a))
+-> f (Sem rInitial a) -> Sem (Error e : r) (f a)
+forall a b. (a -> b) -> a -> b
+$ (Sem rInitial a -> f () -> f (Sem rInitial a)
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s) (Sem rInitial a -> f (Sem rInitial a))
+-> Sem rInitial a -> f (Sem rInitial a)
+forall a b. (a -> b) -> a -> b
+$ e -> Sem rInitial a
+handle e
+e
+case Either e (f a)
+ma' of
+Left e
+e' -> Either e x -> Sem r (Either e x)
+forall a. a -> Sem r a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (Either e x -> Sem r (Either e x))
+-> Either e x -> Sem r (Either e x)
+forall a b. (a -> b) -> a -> b
+$ e -> Either e x
+forall a b. a -> Either a b
+Left e
+e'
+Right f a
+a -> Either e x -> Sem r (Either e x)
+forall a. a -> Sem r a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (Either e x -> Sem r (Either e x))
+-> (x -> Either e x) -> x -> Sem r (Either e x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. x -> Either e x
+forall a b. b -> Either a b
+Right (x -> Sem r (Either e x)) -> x -> Sem r (Either e x)
+forall a b. (a -> b) -> a -> b
+$ f a -> x
+y f a
+a
+{-# INLINE runError #-}
+mapError
+:: forall e1 e2 r a
+. Member (Error e2) r
+=> (e1 -> e2)
+-> Sem (Error e1 ': r) a
+-> Sem r a
+mapError :: forall e1 e2 (r :: EffectRow) a.
+Member (Error e2) r =>
+(e1 -> e2) -> Sem (Error e1 : r) a -> Sem r a
+mapError e1 -> e2
+f = (forall (rInitial :: EffectRow) x.
+Error e1 (Sem rInitial) x
+-> Tactical (Error e1) (Sem rInitial) r x)
+-> Sem (Error e1 : r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+(forall (rInitial :: EffectRow) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem (e : r) a -> Sem r a
+interpretH ((forall (rInitial :: EffectRow) x.
+Error e1 (Sem rInitial) x
+-> Tactical (Error e1) (Sem rInitial) r x)
+-> Sem (Error e1 : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+Error e1 (Sem rInitial) x
+-> Tactical (Error e1) (Sem rInitial) r x)
+-> Sem (Error e1 : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+Throw e1
+e -> e2 -> Sem (WithTactics (Error e1) f (Sem rInitial) r) (f x)
+forall e (r :: EffectRow) a. Member (Error e) r => e -> Sem r a
+throw (e2 -> Sem (WithTactics (Error e1) f (Sem rInitial) r) (f x))
+-> e2 -> Sem (WithTactics (Error e1) f (Sem rInitial) r) (f x)
+forall a b. (a -> b) -> a -> b
+$ e1 -> e2
+f e1
+e
+Catch Sem rInitial x
+action e1 -> Sem rInitial x
+handler -> do
+Sem (Error e1 : r) (f x)
+a <- Sem rInitial x
+-> Sem
+(WithTactics (Error e1) f (Sem rInitial) r)
+(Sem (Error e1 : r) (f x))
+forall (m :: * -> *) a (e :: Effect) (f :: * -> *)
+(r :: EffectRow).
+m a -> Sem (WithTactics e f m r) (Sem (e : r) (f a))
+runT Sem rInitial x
+action
+f e1 -> Sem (Error e1 : r) (f x)
+h <- (e1 -> Sem rInitial x)
+-> Sem
+(WithTactics (Error e1) f (Sem rInitial) r)
+(f e1 -> Sem (Error e1 : r) (f x))
+forall a (m :: * -> *) b (e :: Effect) (f :: * -> *)
+(r :: EffectRow).
+(a -> m b) -> Sem (WithTactics e f m r) (f a -> Sem (e : r) (f b))
+bindT e1 -> Sem rInitial x
+handler
+Either e1 (f x)
+mx <- Sem r (Either e1 (f x))
+-> Sem
+(WithTactics (Error e1) f (Sem rInitial) r) (Either e1 (f x))
+forall (e :: Effect) (r :: EffectRow) a. Sem r a -> Sem (e : r) a
+raise (Sem r (Either e1 (f x))
+-> Sem
+(WithTactics (Error e1) f (Sem rInitial) r) (Either e1 (f x)))
+-> Sem r (Either e1 (f x))
+-> Sem
+(WithTactics (Error e1) f (Sem rInitial) r) (Either e1 (f x))
+forall a b. (a -> b) -> a -> b
+$ Sem (Error e1 : r) (f x) -> Sem r (Either e1 (f x))
+forall e (r :: EffectRow) a.
+Sem (Error e : r) a -> Sem r (Either e a)
+runError Sem (Error e1 : r) (f x)
+a
+case Either e1 (f x)
+mx of
+Right f x
+x -> f x -> Sem (WithTactics (Error e1) f (Sem rInitial) r) (f x)
+forall a. a -> Sem (WithTactics (Error e1) f (Sem rInitial) r) a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure f x
+x
+Left e1
+e -> do
+f ()
+istate <- Sem (WithTactics (Error e1) f (Sem rInitial) r) (f ())
+forall (f :: * -> *) (m :: * -> *) (r :: EffectRow) (e :: Effect).
+Sem (WithTactics e f m r) (f ())
+getInitialStateT
+Either e1 (f x)
+mx' <- Sem r (Either e1 (f x))
+-> Sem
+(WithTactics (Error e1) f (Sem rInitial) r) (Either e1 (f x))
+forall (e :: Effect) (r :: EffectRow) a. Sem r a -> Sem (e : r) a
+raise (Sem r (Either e1 (f x))
+-> Sem
+(WithTactics (Error e1) f (Sem rInitial) r) (Either e1 (f x)))
+-> Sem r (Either e1 (f x))
+-> Sem
+(WithTactics (Error e1) f (Sem rInitial) r) (Either e1 (f x))
+forall a b. (a -> b) -> a -> b
+$ Sem (Error e1 : r) (f x) -> Sem r (Either e1 (f x))
+forall e (r :: EffectRow) a.
+Sem (Error e : r) a -> Sem r (Either e a)
+runError (Sem (Error e1 : r) (f x) -> Sem r (Either e1 (f x)))
+-> Sem (Error e1 : r) (f x) -> Sem r (Either e1 (f x))
+forall a b. (a -> b) -> a -> b
+$ f e1 -> Sem (Error e1 : r) (f x)
+h (f e1 -> Sem (Error e1 : r) (f x))
+-> f e1 -> Sem (Error e1 : r) (f x)
+forall a b. (a -> b) -> a -> b
+$ e1
+e e1 -> f () -> f e1
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+istate
+case Either e1 (f x)
+mx' of
+Right f x
+x -> f x -> Sem (WithTactics (Error e1) f (Sem rInitial) r) (f x)
+forall a. a -> Sem (WithTactics (Error e1) f (Sem rInitial) r) a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure f x
+x
+Left e1
+e' -> e2 -> Sem (WithTactics (Error e1) f (Sem rInitial) r) (f x)
+forall e (r :: EffectRow) a. Member (Error e) r => e -> Sem r a
+throw (e2 -> Sem (WithTactics (Error e1) f (Sem rInitial) r) (f x))
+-> e2 -> Sem (WithTactics (Error e1) f (Sem rInitial) r) (f x)
+forall a b. (a -> b) -> a -> b
+$ e1 -> e2
+f e1
+e'
+{-# INLINE mapError #-}
+data WrappedExc = WrappedExc !Unique Any
+instance Show WrappedExc where
+show :: WrappedExc -> String
+show (WrappedExc Unique
+uid Any
+_) =
+String
+"errorToIOFinal: Escaped opaque exception. Unique hash is: " String -> ShowS
+forall a. Semigroup a => a -> a -> a
+<>
+Int -> String
+forall a. Show a => a -> String
+show (Unique -> Int
+hashUnique Unique
+uid) String -> ShowS
+forall a. Semigroup a => a -> a -> a
+<> String
+"This should only happen if the computation that " String -> ShowS
+forall a. Semigroup a => a -> a -> a
+<>
+String
+"threw the exception was somehow invoked outside of the argument of 'errorToIOFinal'; " String -> ShowS
+forall a. Semigroup a => a -> a -> a
+<>
+String
+"for example, if you 'async' an exceptional computation inside of the argument " String -> ShowS
+forall a. Semigroup a => a -> a -> a
+<>
+String
+"provided to 'errorToIOFinal', and then 'await' on it *outside* of the argument " String -> ShowS
+forall a. Semigroup a => a -> a -> a
+<>
+String
+"provided to 'errorToIOFinal'. If that or any similar shenanigans seems unlikely, " String -> ShowS
+forall a. Semigroup a => a -> a -> a
+<>
+String
+"please open an issue on the GitHub repository."
+instance X.Exception WrappedExc
+catchWithUid :: forall e a. Unique -> IO a -> (e -> IO a) -> IO a
+catchWithUid :: forall e a. Unique -> IO a -> (e -> IO a) -> IO a
+catchWithUid Unique
+uid IO a
+m e -> IO a
+h = IO a -> (WrappedExc -> IO a) -> IO a
+forall e a. Exception e => IO a -> (e -> IO a) -> IO a
+X.catch IO a
+m ((WrappedExc -> IO a) -> IO a) -> (WrappedExc -> IO a) -> IO a
+forall a b. (a -> b) -> a -> b
+$ \exc :: WrappedExc
+exc@(WrappedExc Unique
+uid' Any
+e) ->
+if Unique
+uid Unique -> Unique -> Bool
+forall a. Eq a => a -> a -> Bool
+== Unique
+uid' then e -> IO a
+h (Any -> e
+forall a b. a -> b
+unsafeCoerce Any
+e) else WrappedExc -> IO a
+forall e a. Exception e => e -> IO a
+X.throwIO WrappedExc
+exc
+{-# INLINE catchWithUid #-}
+errorToIOFinal
+:: forall e r a
+. ( Member (Final IO) r
+)
+=> Sem (Error e ': r) a
+-> Sem r (Either e a)
+errorToIOFinal :: forall e (r :: EffectRow) a.
+Member (Final IO) r =>
+Sem (Error e : r) a -> Sem r (Either e a)
+errorToIOFinal Sem (Error e : r) a
+sem = forall (m :: * -> *) (r :: EffectRow) a.
+Member (Final m) r =>
+Strategic m (Sem r) a -> Sem r a
+withStrategicToFinal @IO (Strategic IO (Sem r) (Either e a) -> Sem r (Either e a))
+-> Strategic IO (Sem r) (Either e a) -> Sem r (Either e a)
+forall a b. (a -> b) -> a -> b
+$ do
+f Unique -> IO (f a)
+m' <- (Unique -> Sem r a)
+-> Sem (WithStrategy IO f (Sem r)) (f Unique -> IO (f a))
+forall a (n :: * -> *) b (m :: * -> *) (f :: * -> *).
+(a -> n b) -> Sem (WithStrategy m f n) (f a -> m (f b))
+bindS (Unique -> Sem (Error e : r) a -> Sem r a
+forall e (r :: EffectRow) a.
+Member (Final IO) r =>
+Unique -> Sem (Error e : r) a -> Sem r a
+`runErrorAsExcFinal` Sem (Error e : r) a
+sem)
+f ()
+s <- Sem (WithStrategy IO f (Sem r)) (f ())
+forall (m :: * -> *) (f :: * -> *) (n :: * -> *).
+Sem (WithStrategy m f n) (f ())
+getInitialStateS
+IO (f (Either e a))
+-> Sem (WithStrategy IO f (Sem r)) (IO (f (Either e a)))
+forall a. a -> Sem (WithStrategy IO f (Sem r)) a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (IO (f (Either e a))
+-> Sem (WithStrategy IO f (Sem r)) (IO (f (Either e a))))
+-> IO (f (Either e a))
+-> Sem (WithStrategy IO f (Sem r)) (IO (f (Either e a)))
+forall a b. (a -> b) -> a -> b
+$ do
+Unique
+uid <- IO Unique
+newUnique
+forall e a. Unique -> IO a -> (e -> IO a) -> IO a
+catchWithUid @e Unique
+uid ((a -> Either e a) -> f a -> f (Either e a)
+forall a b. (a -> b) -> f a -> f b
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+fmap a -> Either e a
+forall a b. b -> Either a b
+Right (f a -> f (Either e a)) -> IO (f a) -> IO (f (Either e a))
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> f Unique -> IO (f a)
+m' (Unique
+uid Unique -> f () -> f Unique
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s)) (f (Either e a) -> IO (f (Either e a))
+forall a. a -> IO a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (f (Either e a) -> IO (f (Either e a)))
+-> (e -> f (Either e a)) -> e -> IO (f (Either e a))
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. (Either e a -> f () -> f (Either e a)
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s) (Either e a -> f (Either e a))
+-> (e -> Either e a) -> e -> f (Either e a)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. e -> Either e a
+forall a b. a -> Either a b
+Left)
+{-# INLINE errorToIOFinal #-}
+runErrorAsExcFinal
+:: forall e r a
+. ( Member (Final IO) r
+)
+=> Unique
+-> Sem (Error e ': r) a
+-> Sem r a
+runErrorAsExcFinal :: forall e (r :: EffectRow) a.
+Member (Final IO) r =>
+Unique -> Sem (Error e : r) a -> Sem r a
+runErrorAsExcFinal Unique
+uid = (forall x (rInitial :: EffectRow).
+Error e (Sem rInitial) x -> Strategic IO (Sem rInitial) x)
+-> Sem (Error e : r) a -> Sem r a
+forall (m :: * -> *) (e :: Effect) (r :: EffectRow) a.
+Member (Final m) r =>
+(forall x (rInitial :: EffectRow).
+e (Sem rInitial) x -> Strategic m (Sem rInitial) x)
+-> Sem (e : r) a -> Sem r a
+interpretFinal ((forall x (rInitial :: EffectRow).
+Error e (Sem rInitial) x -> Strategic IO (Sem rInitial) x)
+-> Sem (Error e : r) a -> Sem r a)
+-> (forall x (rInitial :: EffectRow).
+Error e (Sem rInitial) x -> Strategic IO (Sem rInitial) x)
+-> Sem (Error e : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+Throw e
+e -> IO (f x) -> Sem (WithStrategy IO f (Sem rInitial)) (IO (f x))
+forall a. a -> Sem (WithStrategy IO f (Sem rInitial)) a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (IO (f x) -> Sem (WithStrategy IO f (Sem rInitial)) (IO (f x)))
+-> IO (f x) -> Sem (WithStrategy IO f (Sem rInitial)) (IO (f x))
+forall a b. (a -> b) -> a -> b
+$ WrappedExc -> IO (f x)
+forall e a. Exception e => e -> IO a
+X.throwIO (WrappedExc -> IO (f x)) -> WrappedExc -> IO (f x)
+forall a b. (a -> b) -> a -> b
+$ Unique -> Any -> WrappedExc
+WrappedExc Unique
+uid (e -> Any
+forall a b. a -> b
+unsafeCoerce e
+e)
+Catch Sem rInitial x
+m e -> Sem rInitial x
+h -> do
+IO (f x)
+m' <- Sem rInitial x -> Sem (WithStrategy IO f (Sem rInitial)) (IO (f x))
+forall (n :: * -> *) a (m :: * -> *) (f :: * -> *).
+n a -> Sem (WithStrategy m f n) (m (f a))
+runS Sem rInitial x
+m
+f e -> IO (f x)
+h' <- (e -> Sem rInitial x)
+-> Sem (WithStrategy IO f (Sem rInitial)) (f e -> IO (f x))
+forall a (n :: * -> *) b (m :: * -> *) (f :: * -> *).
+(a -> n b) -> Sem (WithStrategy m f n) (f a -> m (f b))
+bindS e -> Sem rInitial x
+h
+f ()
+s <- Sem (WithStrategy IO f (Sem rInitial)) (f ())
+forall (m :: * -> *) (f :: * -> *) (n :: * -> *).
+Sem (WithStrategy m f n) (f ())
+getInitialStateS
+IO (f x) -> Sem (WithStrategy IO f (Sem rInitial)) (IO (f x))
+forall a. a -> Sem (WithStrategy IO f (Sem rInitial)) a
+forall (f :: * -> *) a. Applicative f => a -> f a
+pure (IO (f x) -> Sem (WithStrategy IO f (Sem rInitial)) (IO (f x)))
+-> IO (f x) -> Sem (WithStrategy IO f (Sem rInitial)) (IO (f x))
+forall a b. (a -> b) -> a -> b
+$ Unique -> IO (f x) -> (e -> IO (f x)) -> IO (f x)
+forall e a. Unique -> IO a -> (e -> IO a) -> IO a
+catchWithUid Unique
+uid IO (f x)
+m' ((e -> IO (f x)) -> IO (f x)) -> (e -> IO (f x)) -> IO (f x)
+forall a b. (a -> b) -> a -> b
+$ \e
+e -> f e -> IO (f x)
+h' (e
+e e -> f () -> f e
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s)
+{-# INLINE runErrorAsExcFinal #-}

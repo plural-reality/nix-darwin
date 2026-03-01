@@ -1,0 +1,200 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- data Scoped (param :: Type) (effect :: Effect) :: Effect
+- type Scoped_ effect = Scoped () effect
+- scoped :: forall param effect r. Member (Scoped param effect) r => param -> InterpreterFor effect r
+- scoped_ :: forall effect r. Member (Scoped_ effect) r => InterpreterFor effect r
+- rescope :: forall param0 param1 effect r. Member (Scoped param1 effect) r => (param0 -> param1) -> InterpreterFor (Scoped param0 effect) r
+- runScopedNew :: forall param effect r. (forall q. param -> InterpreterFor effect (Opaque q ': r)) -> InterpreterFor (Scoped param effect) r
+- interpretScopedH :: forall resource param effect r. (forall q x. param -> (resource -> Sem (Opaque q ': r) x) -> Sem (Opaque q ': r) x) -> (forall q r0 x. resource -> effect (Sem r0) x -> Tactical effect (Sem r0) (Opaque q ': r) x) -> InterpreterFor (Scoped param effect) r
+- interpretScopedH' :: forall resource param effect r. (forall e r0 x. param -> (resource -> Tactical e (Sem r0) r x) -> Tactical e (Sem r0) r x) -> (forall r0 x. resource -> effect (Sem r0) x -> Tactical (Scoped param effect) (Sem r0) r x) -> InterpreterFor (Scoped param effect) r
+- interpretScoped :: forall resource param effect r. (forall q x. param -> (resource -> Sem (Opaque q ': r) x) -> Sem (Opaque q ': r) x) -> (forall m x. resource -> effect m x -> Sem r x) -> InterpreterFor (Scoped param effect) r
+- interpretScopedAs :: forall resource param effect r. (param -> Sem r resource) -> (forall m x. resource -> effect m x -> Sem r x) -> InterpreterFor (Scoped param effect) r
+- interpretScopedWithH :: forall extra resource param effect r. KnownList extra => (forall q x. param -> (resource -> Sem (Append extra (Opaque q ': r)) x) -> Sem (Opaque q ': r) x) -> (forall q r0 x. resource -> effect (Sem r0) x -> Tactical effect (Sem r0) (Append extra (Opaque q ': r)) x) -> InterpreterFor (Scoped param effect) r
+- interpretScopedWith :: forall extra param resource effect r. KnownList extra => (forall q x. param -> (resource -> Sem (Append extra (Opaque q ': r)) x) -> Sem (Opaque q ': r) x) -> (forall m x. resource -> effect m x -> Sem (Append extra r) x) -> InterpreterFor (Scoped param effect) r
+- interpretScopedWith_ :: forall extra param effect r. KnownList extra => (forall q x. param -> Sem (Append extra (Opaque q ': r)) x -> Sem (Opaque q ': r) x) -> (forall m x. effect m x -> Sem (Append extra r) x) -> InterpreterFor (Scoped param effect) r
+- runScoped :: forall resource param effect r. (forall q x. param -> (resource -> Sem (Opaque q ': r) x) -> Sem (Opaque q ': r) x) -> (forall q. resource -> InterpreterFor effect (Opaque q ': r)) -> InterpreterFor (Scoped param effect) r
+- runScopedAs :: forall resource param effect r. (param -> Sem r resource) -> (forall q. resource -> InterpreterFor effect (Opaque q ': r)) -> InterpreterFor (Scoped param effect) r
+Effect
+data Scoped (param :: Type) (effect :: Effect) :: Effect Source #
+Scoped
+transforms a program so that an interpreter for effect
+may
+perform arbitrary actions, like resource management, before and after the
+computation wrapped by a call to scoped
+is executed.
+An application for this is Polysemy.Conc.Events
+from
+https://hackage.haskell.org/package/polysemy-conc, in which each program
+using the effect Polysemy.Conc.Consume
+is interpreted with its own copy of
+the event channel; or a database transaction, in which a transaction handle
+is created for the wrapped program and passed to the interpreter for the
+database effect.
+For a longer exposition, see https://www.tweag.io/blog/2022-01-05-polysemy-scoped/.
+Note that the interface has changed since the blog post was published: The
+resource
+parameter no longer exists.
+Resource allocation is performed by a function passed to
+interpretScoped
+.
+The constructors are not intended to be used directly; the smart constructor
+scoped
+is used like a local interpreter for effect
+. scoped
+takes an
+argument of type param
+, which will be passed through to the interpreter, to
+be used by the resource allocation function.
+As an example, imagine an effect for writing lines to a file:
+data Write :: Effect where Write :: Text -> Write m () makeSem ''Write
+If we now have the following requirements:
+- The file should be opened and closed right before and after the part of the program in which we write lines
+- The file name should be specifiable at the point in the program where writing begins
+- We don't want to commit to IO, lines should be stored in memory when running tests
+Then we can take advantage of Scoped
+to write this program:
+prog :: Member (Scoped FilePath Write) r => Sem r () prog = do scoped "file1.txt" do write "line 1" write "line 2" scoped "file2.txt" do write "line 1" write "line 2"
+Here scoped
+creates a prompt for an interpreter to start allocating a
+resource for "file1.txt"
+and handling Write
+actions using that resource.
+When the scoped
+block ends, the resource should be freed.
+The interpreter may look like this:
+interpretWriteFile :: Members '[Resource, Embed IO] => InterpreterFor (Scoped FilePath Write) r interpretWriteFile = interpretScoped allocator handler where allocator name use = bracket (openFile name WriteMode) hClose use handler fileHandle (Write line) = embed (Text.hPutStrLn fileHandle line)
+Essentially, the bracket
+is executed at the point where scoped
+was
+called, wrapping the following block. When the second scoped
+is executed,
+another call to bracket
+is performed.
+The effect of this is that the operation that uses Embed IO
+was moved from
+the call site to the interpreter, while the interpreter may be executed at
+the outermost layer of the app.
+This makes it possible to use a pure interpreter for testing:
+interpretWriteOutput :: Member (Output (FilePath, Text)) r => InterpreterFor (Scoped FilePath Write) r interpretWriteOutput = interpretScoped (\ name use -> use name) \ name -> \case Write line -> output (name, line)
+Here we simply pass the name to the interpreter in the resource allocation function.
+Now imagine that we drop requirement 2 from the initial list – we still want
+the file to be opened and closed as late/early as possible, but the file name
+is globally fixed. For this case, the param
+type is unused, and the API
+provides some convenience aliases to make your code more concise:
+prog :: Member (Scoped_ Write) r => Sem r () prog = do scoped_ do write "line 1" write "line 2" scoped_ do write "line 1" write "line 2"
+The type Scoped_
+and the constructor scoped_
+simply fix param
+to ()
+.
+Constructors
+scoped :: forall param effect r. Member (Scoped param effect) r => param -> InterpreterFor effect r Source #
+rescope :: forall param0 param1 effect r. Member (Scoped param1 effect) r => (param0 -> param1) -> InterpreterFor (Scoped param0 effect) r Source #
+Transform the parameters of a Scoped
+program.
+This allows incremental additions to the data passed to the interpreter, for example to create an API that permits different ways of running an effect with some fundamental parameters being supplied at scope creation and some optional or specific parameters being selected by the user downstream.
+Interpreters
+runScopedNew :: forall param effect r. (forall q. param -> InterpreterFor effect (Opaque q ': r)) -> InterpreterFor (Scoped param effect) r Source #
+Run a Scoped
+effect by specifying the interpreter to be used at every
+use of scoped
+.
+This interpretation of Scoped
+is powerful enough to subsume all other
+interpretations of Scoped
+(except interpretScopedH'
+which works
+differently from all other interpretations) while also being much simpler.
+Consider this a sneak-peek of the future of Scoped
+. In the API rework
+planned for Scoped
+, the effect and its interpreters will be further
+expanded to make Scoped
+even more flexible.
+Since: 1.9.0.0
+| :: forall resource param effect r. (forall q x. param -> (resource -> Sem (Opaque q ': r) x) -> Sem (Opaque q ': r) x) | A callback function that allows the user to acquire a resource for each
+computation wrapped by |
+| -> (forall q r0 x. resource -> effect (Sem r0) x -> Tactical effect (Sem r0) (Opaque q ': r) x) | A handler like the one expected by |
+| -> InterpreterFor (Scoped param effect) r |
+Construct an interpreter for a higher-order effect wrapped in a Scoped
+,
+given a resource allocation function and a parameterized handler for the
+plain effect.
+This combinator is analogous to interpretH
+in that it allows the handler to
+use the Tactical
+environment and transforms the effect into other effects
+on the stack.
+interpretScopedH' :: forall resource param effect r. (forall e r0 x. param -> (resource -> Tactical e (Sem r0) r x) -> Tactical e (Sem r0) r x) -> (forall r0 x. resource -> effect (Sem r0) x -> Tactical (Scoped param effect) (Sem r0) r x) -> InterpreterFor (Scoped param effect) r Source #
+Variant of interpretScopedH
+that allows the resource acquisition function
+to use Tactical
+.
+interpretScoped :: forall resource param effect r. (forall q x. param -> (resource -> Sem (Opaque q ': r) x) -> Sem (Opaque q ': r) x) -> (forall m x. resource -> effect m x -> Sem r x) -> InterpreterFor (Scoped param effect) r Source #
+First-order variant of interpretScopedH
+.
+interpretScopedAs :: forall resource param effect r. (param -> Sem r resource) -> (forall m x. resource -> effect m x -> Sem r x) -> InterpreterFor (Scoped param effect) r Source #
+Variant of interpretScoped
+in which the resource allocator is a plain
+action.
+interpretScopedWithH :: forall extra resource param effect r. KnownList extra => (forall q x. param -> (resource -> Sem (Append extra (Opaque q ': r)) x) -> Sem (Opaque q ': r) x) -> (forall q r0 x. resource -> effect (Sem r0) x -> Tactical effect (Sem r0) (Append extra (Opaque q ': r)) x) -> InterpreterFor (Scoped param effect) r Source #
+Higher-order interpreter for Scoped
+that allows the handler to use
+additional effects that are interpreted by the resource allocator.
+Note: It is necessary to specify the list of local interpreters with a type
+application; GHC won't be able to figure them out from the type of
+withResource
+.
+As an example for a higher order effect, consider a mutexed concurrent state effect, where an effectful function may lock write access to the state while making it still possible to read it:
+data MState s :: Effect where MState :: (s -> m (s, a)) -> MState s m a MRead :: MState s m s makeSem ''MState
+We can now use an AtomicState
+to store the current
+value and lock write access with an MVar
+. Since the state callback is
+effectful, we need a higher order interpreter:
+withResource :: Member (Embed IO) r => s -> (MVar () -> Sem (AtomicState s : r) a) -> Sem r a withResource initial use = do tv <- embed (newTVarIO initial) lock <- embed (newMVar ()) runAtomicStateTVar tv $ use lock interpretMState :: ∀ s r . Members [Resource, Embed IO] r => InterpreterFor (Scoped s (MState s)) r interpretMState = interpretScopedWithH @'[AtomicState s] withResource \ lock -> \case MState f -> bracket_ (embed (takeMVar lock)) (embed (tryPutMVar lock ())) do s0 <- atomicGet res <- runTSimple (f s0) Inspector ins <- getInspectorT for_ (ins res) \ (s, _) -> atomicPut s pure (snd <$> res) MRead -> liftT atomicGet
+interpretScopedWith :: forall extra param resource effect r. KnownList extra => (forall q x. param -> (resource -> Sem (Append extra (Opaque q ': r)) x) -> Sem (Opaque q ': r) x) -> (forall m x. resource -> effect m x -> Sem (Append extra r) x) -> InterpreterFor (Scoped param effect) r Source #
+First-order variant of interpretScopedWithH
+.
+Note: It is necessary to specify the list of local interpreters with a type
+application; GHC won't be able to figure them out from the type of
+withResource
+:
+data SomeAction :: Effect where SomeAction :: SomeAction m () foo :: InterpreterFor (Scoped () SomeAction) r foo = interpretScopedWith @[Reader Int, State Bool] localEffects \ () -> \case SomeAction -> put . (> 0) =<< ask @Int where localEffects () use = evalState False (runReader 5 (use ()))
+interpretScopedWith_ :: forall extra param effect r. KnownList extra => (forall q x. param -> Sem (Append extra (Opaque q ': r)) x -> Sem (Opaque q ': r) x) -> (forall m x. effect m x -> Sem (Append extra r) x) -> InterpreterFor (Scoped param effect) r Source #
+Variant of interpretScopedWith
+in which no resource is used and the
+resource allocator is a plain interpreter.
+This is useful for scopes that only need local effects, but no resources in
+the handler.
+See the Note on interpretScopedWithH
+.
+runScoped :: forall resource param effect r. (forall q x. param -> (resource -> Sem (Opaque q ': r) x) -> Sem (Opaque q ': r) x) -> (forall q. resource -> InterpreterFor effect (Opaque q ': r)) -> InterpreterFor (Scoped param effect) r Source #
+Variant of interpretScoped
+that uses another interpreter instead of a
+handler.
+This is mostly useful if you want to reuse an interpreter that you cannot
+easily rewrite (like from another library). If you have full control over the
+implementation, interpretScoped
+should be preferred.
+Note: In previous versions of Polysemy, the wrapped interpreter was
+executed fully, including the initializing code surrounding its handler,
+for each action in the program. However, new and continuing discoveries
+regarding Scoped
+has allowed the improvement of having the interpreter be
+used only once per use of scoped
+, and have it cover the same scope of
+actions that the resource allocator does.
+This renders the resource allocator practically redundant; for the moment,
+the API surrounding Scoped
+remains the same, but work is in progress to
+revamp the entire API of Scoped
+.
+runScopedAs :: forall resource param effect r. (param -> Sem r resource) -> (forall q. resource -> InterpreterFor effect (Opaque q ': r)) -> InterpreterFor (Scoped param effect) r Source #
+Variant of runScoped
+in which the resource allocator returns the resource
+rather than calling a continuation.

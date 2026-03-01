@@ -1,0 +1,43 @@
+{-# LANGUAGE ConstraintKinds #-}
+{-# OPTIONS_HADDOCK prune #-}
+module Polysemy.Internal.CustomErrors.Redefined where
+import Type.Errors hiding (IfStuck, WhenStuck, UnlessStuck)
+type family IfStuck (expr :: k) (b :: k1) (c :: Exp k1) :: k1 where
+IfStuck (_ AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind AnythingOfAnyKind AnythingOfAnyKind
+AnythingOfAnyKind) b c = b
+IfStuck a b c = Eval c
+data AnythingOfAnyKind
+type WhenStuck expr b = IfStuck expr b NoErrorFcf
+type UnlessStuck expr c = IfStuck expr NoError c

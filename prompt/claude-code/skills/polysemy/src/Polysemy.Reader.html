@@ -1,0 +1,112 @@
+{-# LANGUAGE TemplateHaskell #-}
+module Polysemy.Reader
+(
+Reader (..)
+, ask
+, asks
+, local
+, runReader
+, inputToReader
+) where
+import Polysemy
+import Polysemy.Input
+data Reader i m a where
+Ask :: Reader i m i
+Local :: (i -> i) -> m a -> Reader i m a
+makeSem ''Reader
+asks :: forall i j r. Member (Reader i) r => (i -> j) -> Sem r j
+asks :: forall i j (r :: EffectRow).
+Member (Reader i) r =>
+(i -> j) -> Sem r j
+asks i -> j
+f = i -> j
+f (i -> j) -> Sem r i -> Sem r j
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> Sem r i
+forall i (r :: EffectRow). Member (Reader i) r => Sem r i
+ask
+{-# INLINABLE asks #-}
+runReader :: i -> Sem (Reader i ': r) a -> Sem r a
+runReader :: forall i (r :: EffectRow) a. i -> Sem (Reader i : r) a -> Sem r a
+runReader i
+i = (forall (rInitial :: EffectRow) x.
+Reader i (Sem rInitial) x
+-> Tactical (Reader i) (Sem rInitial) r x)
+-> Sem (Reader i : r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+(forall (rInitial :: EffectRow) x.
+e (Sem rInitial) x -> Tactical e (Sem rInitial) r x)
+-> Sem (e : r) a -> Sem r a
+interpretH ((forall (rInitial :: EffectRow) x.
+Reader i (Sem rInitial) x
+-> Tactical (Reader i) (Sem rInitial) r x)
+-> Sem (Reader i : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+Reader i (Sem rInitial) x
+-> Tactical (Reader i) (Sem rInitial) r x)
+-> Sem (Reader i : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+Reader i (Sem rInitial) x
+Ask -> x -> Sem (WithTactics (Reader i) f (Sem rInitial) r) (f x)
+forall (f :: * -> *) a (e :: Effect) (m :: * -> *)
+(r :: EffectRow).
+Functor f =>
+a -> Sem (WithTactics e f m r) (f a)
+pureT i
+x
+i
+Local i -> i
+f Sem rInitial x
+m -> do
+Sem (Reader i : r) (f x)
+mm <- Sem rInitial x
+-> Sem
+(WithTactics (Reader i) f (Sem rInitial) r)
+(Sem (Reader i : r) (f x))
+forall (m :: * -> *) a (e :: Effect) (f :: * -> *)
+(r :: EffectRow).
+m a -> Sem (WithTactics e f m r) (Sem (e : r) (f a))
+runT Sem rInitial x
+m
+Sem r (f x)
+-> Sem (WithTactics (Reader i) f (Sem rInitial) r) (f x)
+forall (e :: Effect) (r :: EffectRow) a. Sem r a -> Sem (e : r) a
+raise (Sem r (f x)
+-> Sem (WithTactics (Reader i) f (Sem rInitial) r) (f x))
+-> Sem r (f x)
+-> Sem (WithTactics (Reader i) f (Sem rInitial) r) (f x)
+forall a b. (a -> b) -> a -> b
+$ i -> Sem (Reader i : r) (f x) -> Sem r (f x)
+forall i (r :: EffectRow) a. i -> Sem (Reader i : r) a -> Sem r a
+runReader (i -> i
+f i
+i) Sem (Reader i : r) (f x)
+mm
+{-# INLINE runReader #-}
+inputToReader :: Member (Reader i) r => Sem (Input i ': r) a -> Sem r a
+inputToReader :: forall i (r :: EffectRow) a.
+Member (Reader i) r =>
+Sem (Input i : r) a -> Sem r a
+inputToReader = (forall (rInitial :: EffectRow) x.
+Input i (Sem rInitial) x -> Sem r x)
+-> Sem (Input i : r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: EffectRow) x. e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: EffectRow) x.
+Input i (Sem rInitial) x -> Sem r x)
+-> Sem (Input i : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+Input i (Sem rInitial) x -> Sem r x)
+-> Sem (Input i : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \case
+Input i (Sem rInitial) x
+Input -> Sem r x
+forall i (r :: EffectRow). Member (Reader i) r => Sem r i
+ask
+{-# INLINE inputToReader #-}

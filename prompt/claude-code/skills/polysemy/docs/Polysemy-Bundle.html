@@ -1,0 +1,35 @@
+| Safe Haskell | Safe-Inferred |
+|---|---|
+| Language | Haskell2010 |
+Synopsis
+- data Bundle r m a where
+- sendBundle :: forall e r' r a. (Member e r', Member (Bundle r') r) => Sem (e ': r) a -> Sem r a
+- injBundle :: forall e r m a. Member e r => e m a -> Bundle r m a
+- runBundle :: forall r' r a. KnownList r' => Sem (Bundle r' ': r) a -> Sem (Append r' r) a
+- subsumeBundle :: forall r' r a. Members r' r => Sem (Bundle r' ': r) a -> Sem r a
+Effect
+data Bundle r m a where Source #
+An effect for collecting multiple effects into one effect.
+Useful for effect newtypes -- effects defined through creating a newtype
+over an existing effect, and then defining actions and interpretations on
+the newtype by using rewrite
+and transform
+.
+By making a newtype of Bundle
+, it's possible to wrap multiple effects in
+one newtype.
+Actions
+sendBundle :: forall e r' r a. (Member e r', Member (Bundle r') r) => Sem (e ': r) a -> Sem r a Source #
+Send uses of an effect to a Bundle
+containing that effect.
+Interpretations
+runBundle :: forall r' r a. KnownList r' => Sem (Bundle r' ': r) a -> Sem (Append r' r) a Source #
+Run a
+by prepending Bundle
+rr
+to the effect stack.
+subsumeBundle :: forall r' r a. Members r' r => Sem (Bundle r' ': r) a -> Sem r a Source #
+Run a
+if the effect stack contains all effects of Bundle
+rr
+.

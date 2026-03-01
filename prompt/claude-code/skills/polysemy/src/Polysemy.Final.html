@@ -1,0 +1,426 @@
+{-# LANGUAGE TemplateHaskell #-}
+module Polysemy.Final
+(
+Final(..)
+, ThroughWeavingToFinal
+, withWeavingToFinal
+, withStrategicToFinal
+, embedFinal
+, interpretFinal
+, Strategic
+, WithStrategy
+, pureS
+, liftS
+, runS
+, bindS
+, getInspectorS
+, getInitialStateS
+, runFinal
+, finalToFinal
+, embedToFinal
+) where
+import Polysemy.Internal
+import Polysemy.Internal.Combinators
+import Polysemy.Internal.Union
+import Polysemy.Internal.Strategy
+import Polysemy.Internal.TH.Effect
+type ThroughWeavingToFinal m z a =
+forall f
+. Functor f
+=> f ()
+-> (forall x. f (z x) -> m (f x))
+-> (forall x. f x -> Maybe x)
+-> m (f a)
+newtype Final m z a where
+WithWeavingToFinal
+:: ThroughWeavingToFinal m z a
+-> Final m z a
+makeSem_ ''Final
+withWeavingToFinal
+:: forall m r a
+. Member (Final m) r
+=> ThroughWeavingToFinal m (Sem r) a
+-> Sem r a
+embedFinal :: (Member (Final m) r, Functor m) => m a -> Sem r a
+embedFinal :: forall (m :: * -> *) (r :: EffectRow) a.
+(Member (Final m) r, Functor m) =>
+m a -> Sem r a
+embedFinal m a
+m = ThroughWeavingToFinal m (Sem r) a -> Sem r a
+forall (m :: * -> *) (r :: EffectRow) a.
+Member (Final m) r =>
+ThroughWeavingToFinal m (Sem r) a -> Sem r a
+withWeavingToFinal (ThroughWeavingToFinal m (Sem r) a -> Sem r a)
+-> ThroughWeavingToFinal m (Sem r) a -> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \f ()
+s forall x. f (Sem r x) -> m (f x)
+_ forall x. f x -> Maybe x
+_ -> (a -> f () -> f a
+forall a b. a -> f b -> f a
+forall (f :: * -> *) a b. Functor f => a -> f b -> f a
+<$ f ()
+s) (a -> f a) -> m a -> m (f a)
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> m a
+m
+{-# INLINE embedFinal #-}
+withStrategicToFinal :: Member (Final m) r
+=> Strategic m (Sem r) a
+-> Sem r a
+withStrategicToFinal :: forall (m :: * -> *) (r :: EffectRow) a.
+Member (Final m) r =>
+Strategic m (Sem r) a -> Sem r a
+withStrategicToFinal Strategic m (Sem r) a
+strat = ThroughWeavingToFinal m (Sem r) a -> Sem r a
+forall (m :: * -> *) (r :: EffectRow) a.
+Member (Final m) r =>
+ThroughWeavingToFinal m (Sem r) a -> Sem r a
+withWeavingToFinal (Sem '[Strategy m f (Sem r)] (m (f a))
+-> f ()
+-> (forall x. f (Sem r x) -> m (f x))
+-> (forall x. f x -> Maybe x)
+-> m (f a)
+forall (f :: * -> *) (m :: * -> *) (n :: * -> *) a.
+Functor f =>
+Sem '[Strategy m f n] a
+-> f ()
+-> (forall x. f (n x) -> m (f x))
+-> (forall x. f x -> Maybe x)
+-> a
+runStrategy Sem '[Strategy m f (Sem r)] (m (f a))
+Strategic m (Sem r) a
+strat)
+{-# INLINE withStrategicToFinal #-}
+interpretFinal
+:: forall m e r a
+. Member (Final m) r
+=> (forall x rInitial. e (Sem rInitial) x -> Strategic m (Sem rInitial) x)
+-> Sem (e ': r) a
+-> Sem r a
+interpretFinal :: forall (m :: * -> *) (e :: Effect) (r :: EffectRow) a.
+Member (Final m) r =>
+(forall x (rInitial :: EffectRow).
+e (Sem rInitial) x -> Strategic m (Sem rInitial) x)
+-> Sem (e : r) a -> Sem r a
+interpretFinal forall x (rInitial :: EffectRow).
+e (Sem rInitial) x -> Strategic m (Sem rInitial) x
+n =
+let
+go :: Sem (e ': r) x -> Sem r x
+go :: forall x. Sem (e : r) x -> Sem r x
+go = (forall x. Union (e : r) (Sem (e : r)) x -> Union r (Sem r) x)
+-> Sem (e : r) x -> Sem r x
+forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+hoistSem ((forall x. Union (e : r) (Sem (e : r)) x -> Union r (Sem r) x)
+-> Sem (e : r) x -> Sem r x)
+-> (forall x. Union (e : r) (Sem (e : r)) x -> Union r (Sem r) x)
+-> Sem (e : r) x
+-> Sem r x
+forall a b. (a -> b) -> a -> b
+$ \Union (e : r) (Sem (e : r)) x
+u -> case Union (e : r) (Sem (e : r)) x
+-> Either (Union r (Sem (e : r)) x) (Weaving e (Sem (e : r)) x)
+forall (e :: Effect) (r :: EffectRow) (m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp Union (e : r) (Sem (e : r)) x
+u of
+Right (Weaving e (Sem rInitial) a
+e f ()
+s forall x. f (Sem rInitial x) -> Sem (e : r) (f x)
+wv f a -> x
+ex forall x. f x -> Maybe x
+ins) ->
+Weaving (Final m) (Sem r) x -> Union r (Sem r) x
+forall (e :: Effect) (r :: EffectRow) (m :: * -> *) a.
+Member e r =>
+Weaving e m a -> Union r m a
+injWeaving (Weaving (Final m) (Sem r) x -> Union r (Sem r) x)
+-> Weaving (Final m) (Sem r) x -> Union r (Sem r) x
+forall a b. (a -> b) -> a -> b
+$
+Final m (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> Sem r (f x))
+-> (f a -> x)
+-> (forall x. f x -> Maybe x)
+-> Weaving (Final m) (Sem r) x
+forall (f :: * -> *) (e :: Effect) (rInitial :: EffectRow) a
+resultType (mAfter :: * -> *).
+Functor f =>
+e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> mAfter (f x))
+-> (f a -> resultType)
+-> (forall x. f x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving
+(ThroughWeavingToFinal m (Sem rInitial) a
+-> Final m (Sem rInitial) a
+forall (m :: * -> *) (z :: * -> *) a.
+ThroughWeavingToFinal m z a -> Final m z a
+WithWeavingToFinal (Sem '[Strategy m f (Sem rInitial)] (m (f a))
+-> f ()
+-> (forall x. f (Sem rInitial x) -> m (f x))
+-> (forall x. f x -> Maybe x)
+-> m (f a)
+forall (f :: * -> *) (m :: * -> *) (n :: * -> *) a.
+Functor f =>
+Sem '[Strategy m f n] a
+-> f ()
+-> (forall x. f (n x) -> m (f x))
+-> (forall x. f x -> Maybe x)
+-> a
+runStrategy (e (Sem rInitial) a -> Strategic m (Sem rInitial) a
+forall x (rInitial :: EffectRow).
+e (Sem rInitial) x -> Strategic m (Sem rInitial) x
+n e (Sem rInitial) a
+e)))
+f ()
+s
+(Sem (e : r) (f x) -> Sem r (f x)
+forall x. Sem (e : r) x -> Sem r x
+go (Sem (e : r) (f x) -> Sem r (f x))
+-> (f (Sem rInitial x) -> Sem (e : r) (f x))
+-> f (Sem rInitial x)
+-> Sem r (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> Sem (e : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (e : r) (f x)
+wv)
+f a -> x
+ex
+f x -> Maybe x
+forall x. f x -> Maybe x
+ins
+Left Union r (Sem (e : r)) x
+g -> (forall x. Sem (e : r) x -> Sem r x)
+-> Union r (Sem (e : r)) x -> Union r (Sem r) x
+forall (m :: * -> *) (n :: * -> *) (r :: EffectRow) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist Sem (e : r) x -> Sem r x
+forall x. Sem (e : r) x -> Sem r x
+go Union r (Sem (e : r)) x
+g
+{-# INLINE go #-}
+in
+Sem (e : r) a -> Sem r a
+forall x. Sem (e : r) x -> Sem r x
+go
+{-# INLINE interpretFinal #-}
+runFinal :: Monad m => Sem '[Final m] a -> m a
+runFinal :: forall (m :: * -> *) a. Monad m => Sem '[Final m] a -> m a
+runFinal = (forall x. Union '[Final m] (Sem '[Final m]) x -> m x)
+-> Sem '[Final m] a -> m a
+forall (m :: * -> *) (r :: EffectRow) a.
+Monad m =>
+(forall x. Union r (Sem r) x -> m x) -> Sem r a -> m a
+usingSem ((forall x. Union '[Final m] (Sem '[Final m]) x -> m x)
+-> Sem '[Final m] a -> m a)
+-> (forall x. Union '[Final m] (Sem '[Final m]) x -> m x)
+-> Sem '[Final m] a
+-> m a
+forall a b. (a -> b) -> a -> b
+$ \Union '[Final m] (Sem '[Final m]) x
+u -> case Union '[Final m] (Sem '[Final m]) x
+-> Weaving (Final m) (Sem '[Final m]) x
+forall (e :: Effect) (m :: * -> *) a.
+Union '[e] m a -> Weaving e m a
+extract Union '[Final m] (Sem '[Final m]) x
+u of
+Weaving (WithWeavingToFinal ThroughWeavingToFinal m (Sem rInitial) a
+wav) f ()
+s forall x. f (Sem rInitial x) -> Sem '[Final m] (f x)
+wv f a -> x
+ex forall x. f x -> Maybe x
+ins ->
+f a -> x
+ex (f a -> x) -> m (f a) -> m x
+forall (f :: * -> *) a b. Functor f => (a -> b) -> f a -> f b
+<$> f ()
+-> (forall x. f (Sem rInitial x) -> m (f x))
+-> (forall x. f x -> Maybe x)
+-> m (f a)
+ThroughWeavingToFinal m (Sem rInitial) a
+wav f ()
+s (Sem '[Final m] (f x) -> m (f x)
+forall (m :: * -> *) a. Monad m => Sem '[Final m] a -> m a
+runFinal (Sem '[Final m] (f x) -> m (f x))
+-> (f (Sem rInitial x) -> Sem '[Final m] (f x))
+-> f (Sem rInitial x)
+-> m (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> Sem '[Final m] (f x)
+forall x. f (Sem rInitial x) -> Sem '[Final m] (f x)
+wv) f x -> Maybe x
+forall x. f x -> Maybe x
+ins
+{-# INLINE runFinal #-}
+finalToFinal :: forall m1 m2 r a
+. Member (Final m2) r
+=> (forall x. m1 x -> m2 x)
+-> (forall x. m2 x -> m1 x)
+-> Sem (Final m1 ': r) a
+-> Sem r a
+finalToFinal :: forall (m1 :: * -> *) (m2 :: * -> *) (r :: EffectRow) a.
+Member (Final m2) r =>
+(forall x. m1 x -> m2 x)
+-> (forall x. m2 x -> m1 x) -> Sem (Final m1 : r) a -> Sem r a
+finalToFinal forall x. m1 x -> m2 x
+to forall x. m2 x -> m1 x
+from =
+let
+go :: Sem (Final m1 ': r) x -> Sem r x
+go :: forall x. Sem (Final m1 : r) x -> Sem r x
+go = (forall x.
+Union (Final m1 : r) (Sem (Final m1 : r)) x -> Union r (Sem r) x)
+-> Sem (Final m1 : r) x -> Sem r x
+forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+hoistSem ((forall x.
+Union (Final m1 : r) (Sem (Final m1 : r)) x -> Union r (Sem r) x)
+-> Sem (Final m1 : r) x -> Sem r x)
+-> (forall x.
+Union (Final m1 : r) (Sem (Final m1 : r)) x -> Union r (Sem r) x)
+-> Sem (Final m1 : r) x
+-> Sem r x
+forall a b. (a -> b) -> a -> b
+$ \Union (Final m1 : r) (Sem (Final m1 : r)) x
+u -> case Union (Final m1 : r) (Sem (Final m1 : r)) x
+-> Either
+(Union r (Sem (Final m1 : r)) x)
+(Weaving (Final m1) (Sem (Final m1 : r)) x)
+forall (e :: Effect) (r :: EffectRow) (m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp Union (Final m1 : r) (Sem (Final m1 : r)) x
+u of
+Right (Weaving (WithWeavingToFinal ThroughWeavingToFinal m1 (Sem rInitial) a
+wav) f ()
+s forall x. f (Sem rInitial x) -> Sem (Final m1 : r) (f x)
+wv f a -> x
+ex forall x. f x -> Maybe x
+ins) ->
+Weaving (Final m2) (Sem r) x -> Union r (Sem r) x
+forall (e :: Effect) (r :: EffectRow) (m :: * -> *) a.
+Member e r =>
+Weaving e m a -> Union r m a
+injWeaving (Weaving (Final m2) (Sem r) x -> Union r (Sem r) x)
+-> Weaving (Final m2) (Sem r) x -> Union r (Sem r) x
+forall a b. (a -> b) -> a -> b
+$
+Final m2 (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> Sem r (f x))
+-> (f a -> x)
+-> (forall x. f x -> Maybe x)
+-> Weaving (Final m2) (Sem r) x
+forall (f :: * -> *) (e :: Effect) (rInitial :: EffectRow) a
+resultType (mAfter :: * -> *).
+Functor f =>
+e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> mAfter (f x))
+-> (f a -> resultType)
+-> (forall x. f x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving
+(ThroughWeavingToFinal m2 (Sem rInitial) a
+-> Final m2 (Sem rInitial) a
+forall (m :: * -> *) (z :: * -> *) a.
+ThroughWeavingToFinal m z a -> Final m z a
+WithWeavingToFinal (ThroughWeavingToFinal m2 (Sem rInitial) a
+-> Final m2 (Sem rInitial) a)
+-> ThroughWeavingToFinal m2 (Sem rInitial) a
+-> Final m2 (Sem rInitial) a
+forall a b. (a -> b) -> a -> b
+$ \f ()
+s' forall x. f (Sem rInitial x) -> m2 (f x)
+wv' forall x. f x -> Maybe x
+ins' ->
+m1 (f a) -> m2 (f a)
+forall x. m1 x -> m2 x
+to (m1 (f a) -> m2 (f a)) -> m1 (f a) -> m2 (f a)
+forall a b. (a -> b) -> a -> b
+$ f ()
+-> (forall x. f (Sem rInitial x) -> m1 (f x))
+-> (forall x. f x -> Maybe x)
+-> m1 (f a)
+ThroughWeavingToFinal m1 (Sem rInitial) a
+wav f ()
+s' (m2 (f x) -> m1 (f x)
+forall x. m2 x -> m1 x
+from (m2 (f x) -> m1 (f x))
+-> (f (Sem rInitial x) -> m2 (f x))
+-> f (Sem rInitial x)
+-> m1 (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> m2 (f x)
+forall x. f (Sem rInitial x) -> m2 (f x)
+wv') f x -> Maybe x
+forall x. f x -> Maybe x
+ins'
+)
+f ()
+s
+(Sem (Final m1 : r) (f x) -> Sem r (f x)
+forall x. Sem (Final m1 : r) x -> Sem r x
+go (Sem (Final m1 : r) (f x) -> Sem r (f x))
+-> (f (Sem rInitial x) -> Sem (Final m1 : r) (f x))
+-> f (Sem rInitial x)
+-> Sem r (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> Sem (Final m1 : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (Final m1 : r) (f x)
+wv)
+f a -> x
+ex
+f x -> Maybe x
+forall x. f x -> Maybe x
+ins
+Left Union r (Sem (Final m1 : r)) x
+g -> (forall x. Sem (Final m1 : r) x -> Sem r x)
+-> Union r (Sem (Final m1 : r)) x -> Union r (Sem r) x
+forall (m :: * -> *) (n :: * -> *) (r :: EffectRow) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist Sem (Final m1 : r) x -> Sem r x
+forall x. Sem (Final m1 : r) x -> Sem r x
+go Union r (Sem (Final m1 : r)) x
+g
+{-# INLINE go #-}
+in
+Sem (Final m1 : r) a -> Sem r a
+forall x. Sem (Final m1 : r) x -> Sem r x
+go
+{-# INLINE finalToFinal #-}
+embedToFinal :: (Member (Final m) r, Functor m)
+=> Sem (Embed m ': r) a
+-> Sem r a
+embedToFinal :: forall (m :: * -> *) (r :: EffectRow) a.
+(Member (Final m) r, Functor m) =>
+Sem (Embed m : r) a -> Sem r a
+embedToFinal = (forall (rInitial :: EffectRow) x.
+Embed m (Sem rInitial) x -> Sem r x)
+-> Sem (Embed m : r) a -> Sem r a
+forall (e :: Effect) (r :: EffectRow) a.
+FirstOrder e "interpret" =>
+(forall (rInitial :: EffectRow) x. e (Sem rInitial) x -> Sem r x)
+-> Sem (e : r) a -> Sem r a
+interpret ((forall (rInitial :: EffectRow) x.
+Embed m (Sem rInitial) x -> Sem r x)
+-> Sem (Embed m : r) a -> Sem r a)
+-> (forall (rInitial :: EffectRow) x.
+Embed m (Sem rInitial) x -> Sem r x)
+-> Sem (Embed m : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \(Embed m x
+m) -> m x -> Sem r x
+forall (m :: * -> *) (r :: EffectRow) a.
+(Member (Final m) r, Functor m) =>
+m a -> Sem r a
+embedFinal m x
+m
+{-# INLINE embedToFinal #-}

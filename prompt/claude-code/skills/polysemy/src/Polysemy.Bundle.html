@@ -1,0 +1,304 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+module Polysemy.Bundle
+(
+Bundle (..)
+, sendBundle
+, injBundle
+, runBundle
+, subsumeBundle
+) where
+import Polysemy
+import Polysemy.Internal
+import Polysemy.Internal.Union
+import Polysemy.Internal.Bundle (subsumeMembership)
+import Polysemy.Internal.Sing (KnownList (singList))
+data Bundle r m a where
+Bundle :: ElemOf e r -> e m a -> Bundle r m a
+injBundle :: forall e r m a. Member e r => e m a -> Bundle r m a
+injBundle :: forall (e :: Effect) (r :: EffectRow) (m :: * -> *) a.
+Member e r =>
+e m a -> Bundle r m a
+injBundle = ElemOf e r -> e m a -> Bundle r m a
+forall {k} {k} (e :: k -> k -> *) (r :: [k -> k -> *]) (m :: k)
+(a :: k).
+ElemOf e r -> e m a -> Bundle r m a
+Bundle ElemOf e r
+forall (e :: Effect) (r :: EffectRow). Member e r => ElemOf e r
+membership
+{-# INLINE injBundle #-}
+sendBundle
+:: forall e r' r a
+. (Member e r', Member (Bundle r') r)
+=> Sem (e ': r) a
+-> Sem r a
+sendBundle :: forall (e :: Effect) (r' :: EffectRow) (r :: EffectRow) a.
+(Member e r', Member (Bundle r') r) =>
+Sem (e : r) a -> Sem r a
+sendBundle = (forall x. Union (e : r) (Sem (e : r)) x -> Union r (Sem r) x)
+-> Sem (e : r) a -> Sem r a
+forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+hoistSem ((forall x. Union (e : r) (Sem (e : r)) x -> Union r (Sem r) x)
+-> Sem (e : r) a -> Sem r a)
+-> (forall x. Union (e : r) (Sem (e : r)) x -> Union r (Sem r) x)
+-> Sem (e : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \Union (e : r) (Sem (e : r)) x
+u -> case Union (e : r) (Sem (e : r)) x
+-> Either (Union r (Sem (e : r)) x) (Weaving e (Sem (e : r)) x)
+forall (e :: Effect) (r :: EffectRow) (m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp Union (e : r) (Sem (e : r)) x
+u of
+Right (Weaving e (Sem rInitial) a
+e f ()
+s forall x. f (Sem rInitial x) -> Sem (e : r) (f x)
+wv f a -> x
+ex forall x. f x -> Maybe x
+ins) ->
+Weaving (Bundle r') (Sem r) x -> Union r (Sem r) x
+forall (e :: Effect) (r :: EffectRow) (m :: * -> *) a.
+Member e r =>
+Weaving e m a -> Union r m a
+injWeaving (Weaving (Bundle r') (Sem r) x -> Union r (Sem r) x)
+-> Weaving (Bundle r') (Sem r) x -> Union r (Sem r) x
+forall a b. (a -> b) -> a -> b
+$
+Bundle r' (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> Sem r (f x))
+-> (f a -> x)
+-> (forall x. f x -> Maybe x)
+-> Weaving (Bundle r') (Sem r) x
+forall (f :: * -> *) (e :: Effect) (rInitial :: EffectRow) a
+resultType (mAfter :: * -> *).
+Functor f =>
+e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> mAfter (f x))
+-> (f a -> resultType)
+-> (forall x. f x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving (ElemOf e r' -> e (Sem rInitial) a -> Bundle r' (Sem rInitial) a
+forall {k} {k} (e :: k -> k -> *) (r :: [k -> k -> *]) (m :: k)
+(a :: k).
+ElemOf e r -> e m a -> Bundle r m a
+Bundle (forall (e :: Effect) (r :: EffectRow). Member e r => ElemOf e r
+membership @e @r') e (Sem rInitial) a
+e) f ()
+s (forall (e :: Effect) (r' :: EffectRow) (r :: EffectRow) a.
+(Member e r', Member (Bundle r') r) =>
+Sem (e : r) a -> Sem r a
+sendBundle @e @r' (Sem (e : r) (f x) -> Sem r (f x))
+-> (f (Sem rInitial x) -> Sem (e : r) (f x))
+-> f (Sem rInitial x)
+-> Sem r (f x)
+forall b c a. (b -> c) -> (a -> b) -> a -> c
+. f (Sem rInitial x) -> Sem (e : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (e : r) (f x)
+wv) f a -> x
+ex f x -> Maybe x
+forall x. f x -> Maybe x
+ins
+Left Union r (Sem (e : r)) x
+g -> (forall x. Sem (e : r) x -> Sem r x)
+-> Union r (Sem (e : r)) x -> Union r (Sem r) x
+forall (m :: * -> *) (n :: * -> *) (r :: EffectRow) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist (forall (e :: Effect) (r' :: EffectRow) (r :: EffectRow) a.
+(Member e r', Member (Bundle r') r) =>
+Sem (e : r) a -> Sem r a
+sendBundle @e @r') Union r (Sem (e : r)) x
+g
+{-# INLINE sendBundle #-}
+runBundle
+:: forall r' r a
+. KnownList r'
+=> Sem (Bundle r' ': r) a
+-> Sem (Append r' r) a
+runBundle :: forall (r' :: EffectRow) (r :: EffectRow) a.
+KnownList r' =>
+Sem (Bundle r' : r) a -> Sem (Append r' r) a
+runBundle = (forall x.
+Union (Bundle r' : r) (Sem (Bundle r' : r)) x
+-> Union (Append r' r) (Sem (Append r' r)) x)
+-> Sem (Bundle r' : r) a -> Sem (Append r' r) a
+forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+hoistSem ((forall x.
+Union (Bundle r' : r) (Sem (Bundle r' : r)) x
+-> Union (Append r' r) (Sem (Append r' r)) x)
+-> Sem (Bundle r' : r) a -> Sem (Append r' r) a)
+-> (forall x.
+Union (Bundle r' : r) (Sem (Bundle r' : r)) x
+-> Union (Append r' r) (Sem (Append r' r)) x)
+-> Sem (Bundle r' : r) a
+-> Sem (Append r' r) a
+forall a b. (a -> b) -> a -> b
+$ \Union (Bundle r' : r) (Sem (Bundle r' : r)) x
+u -> (forall x. Sem (Bundle r' : r) x -> Sem (Append r' r) x)
+-> Union (Append r' r) (Sem (Bundle r' : r)) x
+-> Union (Append r' r) (Sem (Append r' r)) x
+forall (m :: * -> *) (n :: * -> *) (r :: EffectRow) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist Sem (Bundle r' : r) x -> Sem (Append r' r) x
+forall (r' :: EffectRow) (r :: EffectRow) a.
+KnownList r' =>
+Sem (Bundle r' : r) a -> Sem (Append r' r) a
+forall x. Sem (Bundle r' : r) x -> Sem (Append r' r) x
+runBundle (Union (Append r' r) (Sem (Bundle r' : r)) x
+-> Union (Append r' r) (Sem (Append r' r)) x)
+-> Union (Append r' r) (Sem (Bundle r' : r)) x
+-> Union (Append r' r) (Sem (Append r' r)) x
+forall a b. (a -> b) -> a -> b
+$ case Union (Bundle r' : r) (Sem (Bundle r' : r)) x
+-> Either
+(Union r (Sem (Bundle r' : r)) x)
+(Weaving (Bundle r') (Sem (Bundle r' : r)) x)
+forall (e :: Effect) (r :: EffectRow) (m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp Union (Bundle r' : r) (Sem (Bundle r' : r)) x
+u of
+Right (Weaving (Bundle ElemOf e r'
+pr e (Sem rInitial) a
+e) f ()
+s forall x. f (Sem rInitial x) -> Sem (Bundle r' : r) (f x)
+wv f a -> x
+ex forall x. f x -> Maybe x
+ins) ->
+ElemOf e (Append r' r)
+-> Weaving e (Sem (Bundle r' : r)) x
+-> Union (Append r' r) (Sem (Bundle r' : r)) x
+forall (e :: Effect) (r :: EffectRow) (mWoven :: * -> *) a.
+ElemOf e r -> Weaving e mWoven a -> Union r mWoven a
+Union (forall (l :: EffectRow) (r :: EffectRow) (e :: Effect).
+ElemOf e l -> ElemOf e (Append l r)
+forall {a} (l :: [a]) (r :: [a]) (e :: a).
+ElemOf e l -> ElemOf e (Append l r)
+extendMembershipRight @r' @r ElemOf e r'
+pr) (Weaving e (Sem (Bundle r' : r)) x
+-> Union (Append r' r) (Sem (Bundle r' : r)) x)
+-> Weaving e (Sem (Bundle r' : r)) x
+-> Union (Append r' r) (Sem (Bundle r' : r)) x
+forall a b. (a -> b) -> a -> b
+$ e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> Sem (Bundle r' : r) (f x))
+-> (f a -> x)
+-> (forall x. f x -> Maybe x)
+-> Weaving e (Sem (Bundle r' : r)) x
+forall (f :: * -> *) (e :: Effect) (rInitial :: EffectRow) a
+resultType (mAfter :: * -> *).
+Functor f =>
+e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> mAfter (f x))
+-> (f a -> resultType)
+-> (forall x. f x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving e (Sem rInitial) a
+e f ()
+s f (Sem rInitial x) -> Sem (Bundle r' : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (Bundle r' : r) (f x)
+wv f a -> x
+ex f x -> Maybe x
+forall x. f x -> Maybe x
+ins
+Left Union r (Sem (Bundle r' : r)) x
+g -> forall (l :: EffectRow) (r :: EffectRow) (m :: * -> *) a.
+SList l -> Union r m a -> Union (Append l r) m a
+weakenList @r' @r (forall (l :: EffectRow). KnownList l => SList l
+forall {k} (l :: [k]). KnownList l => SList l
+singList @r') Union r (Sem (Bundle r' : r)) x
+g
+{-# INLINE runBundle #-}
+subsumeBundle
+:: forall r' r a
+. Members r' r
+=> Sem (Bundle r' ': r) a
+-> Sem r a
+subsumeBundle :: forall (r' :: EffectRow) (r :: EffectRow) a.
+Members r' r =>
+Sem (Bundle r' : r) a -> Sem r a
+subsumeBundle = (forall x.
+Union (Bundle r' : r) (Sem (Bundle r' : r)) x -> Union r (Sem r) x)
+-> Sem (Bundle r' : r) a -> Sem r a
+forall (r :: EffectRow) (r' :: EffectRow) a.
+(forall x. Union r (Sem r) x -> Union r' (Sem r') x)
+-> Sem r a -> Sem r' a
+hoistSem ((forall x.
+Union (Bundle r' : r) (Sem (Bundle r' : r)) x -> Union r (Sem r) x)
+-> Sem (Bundle r' : r) a -> Sem r a)
+-> (forall x.
+Union (Bundle r' : r) (Sem (Bundle r' : r)) x -> Union r (Sem r) x)
+-> Sem (Bundle r' : r) a
+-> Sem r a
+forall a b. (a -> b) -> a -> b
+$ \Union (Bundle r' : r) (Sem (Bundle r' : r)) x
+u -> (forall x. Sem (Bundle r' : r) x -> Sem r x)
+-> Union r (Sem (Bundle r' : r)) x -> Union r (Sem r) x
+forall (m :: * -> *) (n :: * -> *) (r :: EffectRow) a.
+(forall x. m x -> n x) -> Union r m a -> Union r n a
+hoist Sem (Bundle r' : r) x -> Sem r x
+forall (r' :: EffectRow) (r :: EffectRow) a.
+Members r' r =>
+Sem (Bundle r' : r) a -> Sem r a
+forall x. Sem (Bundle r' : r) x -> Sem r x
+subsumeBundle (Union r (Sem (Bundle r' : r)) x -> Union r (Sem r) x)
+-> Union r (Sem (Bundle r' : r)) x -> Union r (Sem r) x
+forall a b. (a -> b) -> a -> b
+$ case Union (Bundle r' : r) (Sem (Bundle r' : r)) x
+-> Either
+(Union r (Sem (Bundle r' : r)) x)
+(Weaving (Bundle r') (Sem (Bundle r' : r)) x)
+forall (e :: Effect) (r :: EffectRow) (m :: * -> *) a.
+Union (e : r) m a -> Either (Union r m a) (Weaving e m a)
+decomp Union (Bundle r' : r) (Sem (Bundle r' : r)) x
+u of
+Right (Weaving (Bundle ElemOf e r'
+pr e (Sem rInitial) a
+e) f ()
+s forall x. f (Sem rInitial x) -> Sem (Bundle r' : r) (f x)
+wv f a -> x
+ex forall x. f x -> Maybe x
+ins) ->
+ElemOf e r
+-> Weaving e (Sem (Bundle r' : r)) x
+-> Union r (Sem (Bundle r' : r)) x
+forall (e :: Effect) (r :: EffectRow) (mWoven :: * -> *) a.
+ElemOf e r -> Weaving e mWoven a -> Union r mWoven a
+Union (ElemOf e r' -> ElemOf e r
+forall (r :: EffectRow) (r' :: EffectRow) (e :: Effect).
+Members r r' =>
+ElemOf e r -> ElemOf e r'
+subsumeMembership ElemOf e r'
+pr) (e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> Sem (Bundle r' : r) (f x))
+-> (f a -> x)
+-> (forall x. f x -> Maybe x)
+-> Weaving e (Sem (Bundle r' : r)) x
+forall (f :: * -> *) (e :: Effect) (rInitial :: EffectRow) a
+resultType (mAfter :: * -> *).
+Functor f =>
+e (Sem rInitial) a
+-> f ()
+-> (forall x. f (Sem rInitial x) -> mAfter (f x))
+-> (f a -> resultType)
+-> (forall x. f x -> Maybe x)
+-> Weaving e mAfter resultType
+Weaving e (Sem rInitial) a
+e f ()
+s f (Sem rInitial x) -> Sem (Bundle r' : r) (f x)
+forall x. f (Sem rInitial x) -> Sem (Bundle r' : r) (f x)
+wv f a -> x
+ex f x -> Maybe x
+forall x. f x -> Maybe x
+ins)
+Left Union r (Sem (Bundle r' : r)) x
+g -> Union r (Sem (Bundle r' : r)) x
+g
+{-# INLINE subsumeBundle #-}
