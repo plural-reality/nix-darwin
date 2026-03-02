@@ -1,6 +1,6 @@
 {
   description = "@USERNAME@'s nix-darwin configuration";
-  inputs.nix-darwin-upstream.url = "github:yuidvg/nix-darwin";
+  inputs.nix-darwin-upstream.url = "github:plural-reality/nix-darwin";
   outputs = { nix-darwin-upstream, ... }: {
     darwinConfigurations."@HOSTNAME@" = nix-darwin-upstream.lib.mkSystem {
       userConfig = {
@@ -10,7 +10,11 @@
         gitEmail = "@GIT_EMAIL@";
       };
       secretsFile = ./secrets.yaml;
-      # extraHomeModules = [];
+      extraHomeModules = [
+        nix-darwin-upstream.homeManagerModules.claude-code
+        nix-darwin-upstream.homeManagerModules.shared-scripts
+        # nix-darwin-upstream.homeManagerModules.base  # already included via home.nix
+      ];
       # extraDarwinModules = [];
     };
   };

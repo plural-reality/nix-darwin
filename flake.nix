@@ -155,15 +155,6 @@
           ++ extraDarwinModules;
         };
 
-      # ==========================================
-      # Author's configuration
-      # ==========================================
-      userConfig = {
-        username = "yui";
-        hostname = "Yuis-MacBook-Pro";
-        gitName = "Yui Nishimura";
-        gitEmail = "nisshi.yui79@gmail.com";
-      };
     in
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [
@@ -210,7 +201,7 @@
           # Formatter for the flake itself
           formatter = pkgs.nixfmt;
 
-          # Team setup script: nix run github:yuidvg/nix-darwin#setup
+          # Team setup script: nix run github:plural-reality/nix-darwin#setup
           packages.setup = pkgs.writeShellApplication {
             name = "setup";
             runtimeInputs = with pkgs; [
@@ -253,7 +244,12 @@
               echo "--- Validating ---"
 
               for f in flake.nix .sops.yaml secrets.yaml .gitignore apply; do
-                [[ -f "$TARGET/$f" ]] && echo "OK: $f exists" || { echo "FAIL: $f missing"; exit 1; }
+                if [[ -f "$TARGET/$f" ]]; then
+                  echo "OK: $f exists"
+                else
+                  echo "FAIL: $f missing"
+                  exit 1
+                fi
               done
 
               # Structure validation (no nix dependency needed)
@@ -284,23 +280,11 @@
         # Export mkSystem for downstream flakes
         lib = { inherit mkSystem; };
 
-        # Author's darwin configuration
-        darwinConfigurations."${userConfig.hostname}" = mkSystem {
-          inherit userConfig;
-          secretsFile = ./secrets.yaml;
-          extraDarwinModules = [
-            {
-              nixpkgs.overlays = [
-                inputs.rust-overlay.overlays.default
-                (_final: _prev: {
-                  screenpipe = import ./packages/screenpipe {
-                    pkgs = _final;
-                    screenpipe-src = inputs.screenpipe-src;
-                  };
-                })
-              ];
-            }
-          ];
+        # Export Home Manager modules for downstream composition
+        homeManagerModules = {
+          claude-code = import ./modules/claude-code.nix;
+          shared-scripts = import ./modules/shared-scripts.nix;
+          base = import ./modules/base.nix;
         };
       };
     };
