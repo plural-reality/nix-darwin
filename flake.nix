@@ -43,9 +43,8 @@
       mkSystem =
         {
           userConfig,
-          secretsFile,
-          extraHomeModules ? [ ],
-          extraDarwinModules ? [ ],
+          secretsFile ? null,
+          modules ? [ ],
           system ? "aarch64-darwin",
         }:
         nix-darwin.lib.darwinSystem {
@@ -62,9 +61,6 @@
                 ...
               }:
               {
-                # List packages installed in system profile.
-                environment.systemPackages = [ pkgs.vim ];
-
                 # Necessary for using flakes on this system.
                 nix = {
                   settings = {
@@ -126,9 +122,6 @@
                 # Homebrew configuration
                 homebrew = {
                   enable = true;
-                  casks = [
-                    "blackhole-2ch"
-                  ];
                 };
               }
             )
@@ -138,21 +131,20 @@
               home-manager.useGlobalPkgs = true;
               home-manager.useUserPackages = true;
               home-manager.backupFileExtension = "backup";
-              # Explicitly inject userConfig and secretsFile into Home Manager modules
               home-manager.extraSpecialArgs = {
                 inherit userConfig secretsFile;
               };
               home-manager.users.${userConfig.username} = {
-                imports = [
-                  ./home.nix
-                  inputs.mac-app-util.homeManagerModules.default
-                  inputs.sops-nix.homeManagerModules.sops
-                ]
-                ++ extraHomeModules;
+                imports =
+                  [
+                    ./home.nix
+                    inputs.mac-app-util.homeManagerModules.default
+                  ]
+                  ++ (nixpkgs.lib.optional (secretsFile != null) inputs.sops-nix.homeManagerModules.sops);
               };
             }
           ]
-          ++ extraDarwinModules;
+          ++ modules;
         };
 
     in
@@ -201,9 +193,9 @@
           # Formatter for the flake itself
           formatter = pkgs.nixfmt;
 
-          # Team setup script: nix run github:plural-reality/nix-darwin#setup
-          packages.setup = pkgs.writeShellApplication {
-            name = "setup";
+          # Team setup script: nix run github:plural-reality/nix-darwin#setup-downstream
+          packages.setup-downstream = pkgs.writeShellApplication {
+            name = "setup-downstream";
             runtimeInputs = with pkgs; [
               age
               sops
@@ -212,12 +204,12 @@
             text = ''
               TEMPLATES=${./templates}
             ''
-            + builtins.readFile ./setup.sh;
+            + builtins.readFile ./setup-downstream.sh;
           };
 
           # Disposable test: nix run .#test-setup
-          packages.test-setup = pkgs.writeShellApplication {
-            name = "test-setup";
+          packages.test-setup-downstream = pkgs.writeShellApplication {
+            name = "test-setup-downstream";
             runtimeInputs = with pkgs; [ git ];
             text = ''
               WORKDIR=$(mktemp -d)
@@ -238,7 +230,7 @@
                 "" \
                 "" \
                 "" \
-              | ${self'.packages.setup}/bin/setup
+              | ${self'.packages.setup-downstream}/bin/setup-downstream
 
               echo ""
               echo "--- Validating ---"
@@ -280,11 +272,40 @@
         # Export mkSystem for downstream flakes
         lib = { inherit mkSystem; };
 
-        # Export Home Manager modules for downstream composition
+        # Darwin-level modules for use with mkSystem
+        # Each wraps HM modules via home-manager.users.${username}.imports
+        modules =
+          let
+            wrapHM =
+              hmModules:
+              { userConfig, ... }:
+              {
+                home-manager.users.${userConfig.username}.imports = hmModules;
+              };
+          in
+          {
+            default = wrapHM [
+              ./modules/base.nix
+              ./modules/claude-code.nix
+              ./modules/shared-scripts.nix
+            ];
+            base = wrapHM [ ./modules/base.nix ];
+            claude-code = wrapHM [ ./modules/claude-code.nix ];
+            shared-scripts = wrapHM [ ./modules/shared-scripts.nix ];
+          };
+
+        # Raw HM modules for standalone use (without mkSystem)
         homeManagerModules = {
+          default = {
+            imports = [
+              ./modules/base.nix
+              ./modules/claude-code.nix
+              ./modules/shared-scripts.nix
+            ];
+          };
+          base = import ./modules/base.nix;
           claude-code = import ./modules/claude-code.nix;
           shared-scripts = import ./modules/shared-scripts.nix;
-          base = import ./modules/base.nix;
         };
       };
     };

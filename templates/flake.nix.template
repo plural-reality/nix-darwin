@@ -10,12 +10,10 @@
         gitEmail = "@GIT_EMAIL@";
       };
       secretsFile = ./secrets.yaml;
-      extraHomeModules = [
-        nix-darwin-upstream.homeManagerModules.claude-code
-        nix-darwin-upstream.homeManagerModules.shared-scripts
-        # nix-darwin-upstream.homeManagerModules.base  # already included via home.nix
+      modules = with nix-darwin-upstream.modules; [
+        default        # base + claude-code + shared-scripts
+        # ./personal.nix
       ];
-      # extraDarwinModules = [];
     };
   };
 }
