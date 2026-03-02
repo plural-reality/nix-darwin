@@ -30,6 +30,12 @@ nix run github:plural-reality/nix-darwin#setup-downstream
 age 鍵の生成、secrets の暗号化、下流 flake の雛形生成を対話的に行う。
 生成されるファイル: `flake.nix`, `secrets.yaml`, `.sops.yaml`, `.gitignore`, `apply`
 
+### セットアップ後の流れ
+
+1. `cd /private/etc/nix-darwin` (生成先ディレクトリ)
+2. 必要なら `personal.nix` を作成（後述）
+3. `./apply` を実行 (`nix flake update` → `darwin-rebuild switch --flake .`)
+
 ### 下流 flake の構造
 
 ```nix
@@ -71,6 +77,32 @@ modules = with nix-darwin-upstream.modules; [
   { nix.settings.max-jobs = 8; }
 ];
 ```
+
+### personal.nix の書き方
+
+`modules` は darwin module list に入るため、personal.nix も darwin module として書く。
+HM のオプション (`home.packages`, `programs.*` 等) は `home-manager.users.${userConfig.username}` 経由で設定する:
+
+```nix
+# personal.nix — darwin module
+{ pkgs, userConfig, ... }:
+{
+  # HM 設定 (パッケージ, dotfiles, programs 等)
+  home-manager.users.${userConfig.username} = {
+    home.packages = with pkgs; [
+      ripgrep
+      fd
+      jq
+    ];
+    programs.bat.enable = true;
+  };
+
+  # darwin 設定 (homebrew, system defaults 等) も同じファイルに書ける
+  homebrew.casks = [ "firefox" ];
+}
+```
+
+`userConfig` は `mkSystem` が `specialArgs` に注入するため、どの module からも参照可能。
 
 #### mkSystem の合成モデル
 
