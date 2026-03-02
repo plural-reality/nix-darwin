@@ -37,9 +37,6 @@
       ...
     }:
     let
-      # ==========================================
-      # Reusable system builder (exported as lib.mkSystem)
-      # ==========================================
       mkSystem =
         {
           userConfig,
@@ -61,7 +58,6 @@
                 ...
               }:
               {
-                # Necessary for using flakes on this system.
                 nix = {
                   settings = {
                     experimental-features = "nix-command flakes";
@@ -88,38 +84,27 @@
                   };
                 };
 
-                # Set Git commit hash for darwin-version.
                 system.configurationRevision = self.rev or self.dirtyRev or null;
-
-                # Used for backwards compatibility
                 system.stateVersion = 6;
-
-                # The platform the configuration will be used on.
                 nixpkgs.hostPlatform = system;
 
-                ## Darwin Configurations
-                # Allow unfree packages
                 nixpkgs.config.allowUnfreePredicate =
                   pkg:
                   builtins.elem (lib.getName pkg) [
                     "claude-code"
                   ];
 
-                # Define the user for home-manager
                 users.users.${userConfig.username} = {
                   name = userConfig.username;
                   home = "/Users/${userConfig.username}";
                   shell = pkgs.zsh;
                 };
-                # Set primary user for homebrew and other user-specific options
                 system.primaryUser = userConfig.username;
-                # System defaults configuration
                 system.defaults = {
                   CustomSystemPreferences."com.apple.security"."com.apple.security.authorization.ignoreArd" = true;
                 };
                 security.pam.services.sudo_local.touchIdAuth = true;
 
-                # Homebrew configuration
                 homebrew = {
                   enable = true;
                 };
@@ -134,14 +119,31 @@
               home-manager.extraSpecialArgs = {
                 inherit userConfig secretsFile;
               };
-              home-manager.users.${userConfig.username} = {
-                imports =
-                  [
-                    ./home.nix
-                    inputs.mac-app-util.homeManagerModules.default
-                  ]
-                  ++ (nixpkgs.lib.optional (secretsFile != null) inputs.sops-nix.homeManagerModules.sops);
-              };
+              home-manager.users.${userConfig.username} =
+                { config, lib, ... }:
+                {
+                  imports =
+                    [
+                      inputs.mac-app-util.homeManagerModules.default
+                      ./modules/base.nix
+                      ./modules/claude-code.nix
+                      ./modules/shared-scripts.nix
+                    ]
+                    ++ (nixpkgs.lib.optional (secretsFile != null) inputs.sops-nix.homeManagerModules.sops);
+
+                  programs.home-manager.enable = true;
+                  home.username = userConfig.username;
+                  home.homeDirectory = "/Users/${userConfig.username}";
+                  home.stateVersion = "24.05";
+
+                  sops = lib.mkIf (secretsFile != null) {
+                    age.keyFile = "${config.home.homeDirectory}/.config/sops/age/keys.txt";
+                    defaultSopsFile = secretsFile;
+                  };
+                  launchd.agents.sops-nix.config.EnvironmentVariables.PATH =
+                    lib.mkIf (secretsFile != null)
+                      (lib.mkForce "/usr/bin:/bin:/usr/sbin:/sbin");
+                };
             }
           ]
           ++ modules;
@@ -269,44 +271,7 @@
         };
 
       flake = {
-        # Export mkSystem for downstream flakes
         lib = { inherit mkSystem; };
-
-        # Darwin-level modules for use with mkSystem
-        # Each wraps HM modules via home-manager.users.${username}.imports
-        modules =
-          let
-            wrapHM =
-              hmModules:
-              { userConfig, ... }:
-              {
-                home-manager.users.${userConfig.username}.imports = hmModules;
-              };
-          in
-          {
-            default = wrapHM [
-              ./modules/base.nix
-              ./modules/claude-code.nix
-              ./modules/shared-scripts.nix
-            ];
-            base = wrapHM [ ./modules/base.nix ];
-            claude-code = wrapHM [ ./modules/claude-code.nix ];
-            shared-scripts = wrapHM [ ./modules/shared-scripts.nix ];
-          };
-
-        # Raw HM modules for standalone use (without mkSystem)
-        homeManagerModules = {
-          default = {
-            imports = [
-              ./modules/base.nix
-              ./modules/claude-code.nix
-              ./modules/shared-scripts.nix
-            ];
-          };
-          base = import ./modules/base.nix;
-          claude-code = import ./modules/claude-code.nix;
-          shared-scripts = import ./modules/shared-scripts.nix;
-        };
       };
     };
 }

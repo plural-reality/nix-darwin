@@ -10,10 +10,7 @@
         gitEmail = "@GIT_EMAIL@";
       };
       secretsFile = ./secrets.yaml;
-      modules = with nix-darwin-upstream.modules; [
-        default        # base + claude-code + shared-scripts
-        # ./personal.nix
-      ];
+      # modules = [ ./personal.nix ];
     };
   };
 }
