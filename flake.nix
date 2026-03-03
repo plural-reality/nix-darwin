@@ -245,6 +245,13 @@
           # Formatter for the flake itself
           formatter = pkgs.nixfmt;
 
+          # Migration: nix run github:plural-reality/nix-darwin#migrate
+          packages.migrate = pkgs.writeShellApplication {
+            name = "migrate";
+            runtimeInputs = with pkgs; [ nixfmt ];
+            text = builtins.readFile ./downstream/migrate.sh;
+          };
+
           # Team setup script: nix run github:plural-reality/nix-darwin#setup-downstream
           packages.setup-downstream = pkgs.writeShellApplication {
             name = "setup-downstream";
