@@ -17,6 +17,9 @@ in
     sops
     nixos-generators
 
+    # AI tooling
+    claude-code
+
     # Development
     tmux
     deno
