@@ -166,6 +166,39 @@
           ++ modules;
         };
 
+      # Complete downstream flake outputs: darwinConfigurations + devShells + formatter + apps
+      mkDownstreamFlake =
+        {
+          userConfig,
+          secretsFile ? null,
+          modules ? [ ],
+          system ? "aarch64-darwin",
+        }:
+        let
+          pkgs = import nixpkgs { inherit system; };
+        in
+        {
+          darwinConfigurations.${userConfig.hostname} = mkSystem {
+            inherit
+              userConfig
+              secretsFile
+              modules
+              system
+              ;
+          };
+          devShells.${system}.default = pkgs.mkShell {
+            packages = with pkgs; [
+              nixfmt
+              nil
+            ];
+          };
+          formatter.${system} = pkgs.nixfmt;
+          apps.${system}.apply = {
+            type = "app";
+            program = "${self.packages.${system}.apply}/bin/apply";
+          };
+        };
+
     in
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [
@@ -267,7 +300,7 @@
               echo ""
               echo "--- Validating ---"
 
-              for f in flake.nix .sops.yaml secrets.yaml .gitignore apply; do
+              for f in flake.nix .sops.yaml secrets.yaml .gitignore apply .envrc; do
                 if [[ -f "$TARGET/$f" ]]; then
                   echo "OK: $f exists"
                 else
@@ -277,8 +310,9 @@
               done
 
               # Structure validation (no nix dependency needed)
-              grep -q 'darwinConfigurations."Test-Mac"' "$TARGET/flake.nix"
+              grep -q 'mkDownstreamFlake' "$TARGET/flake.nix"
               grep -q 'username = "testuser"' "$TARGET/flake.nix"
+              grep -q 'hostname = "Test-Mac"' "$TARGET/flake.nix"
               grep -q 'gitEmail = "test@example.com"' "$TARGET/flake.nix"
               echo "OK: flake.nix contains expected substitutions"
 
@@ -290,9 +324,6 @@
 
               [[ -x "$TARGET/apply" ]]
               echo "OK: apply is executable"
-
-              grep -q 'apps\.' "$TARGET/flake.nix"
-              echo "OK: flake.nix exposes apps.apply"
 
               grep -q 'nix run .#apply' "$TARGET/apply"
               echo "OK: apply is a shim delegating to nix run"
@@ -307,7 +338,7 @@
         };
 
       flake = {
-        lib = { inherit mkSystem; };
+        lib = { inherit mkSystem mkDownstreamFlake; };
       };
     };
 }

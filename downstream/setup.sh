@@ -86,6 +86,7 @@ substitute "$TEMPLATES/secrets.yaml.template" > "$target_dir/secrets.yaml"
 cp "$TEMPLATES/gitignore" "$target_dir/.gitignore"
 cp "$TEMPLATES/apply" "$target_dir/apply"
 chmod +x "$target_dir/apply"
+cp "$TEMPLATES/envrc" "$target_dir/.envrc"
 
 SOPS_AGE_KEY_FILE="$age_key_file" sops --config "$target_dir/.sops.yaml" --encrypt --in-place "$target_dir/secrets.yaml"
 
