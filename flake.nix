@@ -22,6 +22,9 @@
     screenpipe-src.url = "github:screenpipe/screenpipe/v0.3.135";
     screenpipe-src.flake = false;
 
+    # Kimi Code CLI agent
+    kimi-cli.url = "github:MoonshotAI/kimi-cli";
+
     # Haskell Dev Environment
     flake-parts.url = "github:hercules-ci/flake-parts";
     haskell-flake.url = "github:srid/haskell-flake";
@@ -122,6 +125,10 @@
               home-manager.users.${userConfig.username} =
                 { config, lib, ... }:
                 {
+                  home.packages = [
+                    inputs.kimi-cli.packages.${system}.default
+                  ];
+
                   imports =
                     [
                       inputs.mac-app-util.homeManagerModules.default
