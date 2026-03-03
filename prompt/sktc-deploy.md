@@ -1433,7 +1433,7 @@ EOF
 
 mkdir -p ~/.ssh/sockets
 
-# 8. 動作確認
+# 7. 動作確認
 nix run .#deploy
 echo "Setup complete!"
 ```
