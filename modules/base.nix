@@ -25,6 +25,7 @@ in
     deno
     nodejs
     bun
+    python3
 
     # Media processing
     ffmpeg
