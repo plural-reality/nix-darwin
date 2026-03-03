@@ -221,9 +221,22 @@
               git
             ];
             text = ''
-              TEMPLATES=${./templates}
+              TEMPLATES=${./downstream/templates}
             ''
-            + builtins.readFile ./setup-downstream.sh;
+            + builtins.readFile ./downstream/setup.sh;
+          };
+
+          # Apply script: nix build .#apply / nix run .#apply
+          packages.apply = pkgs.writeShellApplication {
+            name = "apply";
+            text = ''
+              nix flake update
+              if command -v darwin-rebuild &>/dev/null; then
+                sudo darwin-rebuild switch --flake .
+              else
+                sudo nix run nix-darwin -- switch --flake .
+              fi
+            '';
           };
 
           # Disposable test: nix run .#test-setup
@@ -277,6 +290,12 @@
 
               [[ -x "$TARGET/apply" ]]
               echo "OK: apply is executable"
+
+              grep -q 'apps\.' "$TARGET/flake.nix"
+              echo "OK: flake.nix exposes apps.apply"
+
+              grep -q 'nix run .#apply' "$TARGET/apply"
+              echo "OK: apply is a shim delegating to nix run"
 
               git -C "$TARGET" log --oneline
               echo "OK: git repository initialized"

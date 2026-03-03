@@ -1,16 +1,25 @@
 {
   description = "@USERNAME@'s nix-darwin configuration";
   inputs.nix-darwin-upstream.url = "github:plural-reality/nix-darwin";
-  outputs = { nix-darwin-upstream, ... }: {
-    darwinConfigurations."@HOSTNAME@" = nix-darwin-upstream.lib.mkSystem {
-      userConfig = {
-        username = "@USERNAME@";
-        hostname = "@HOSTNAME@";
-        gitName = "@GIT_NAME@";
-        gitEmail = "@GIT_EMAIL@";
+  outputs = { nix-darwin-upstream, ... }:
+    let
+      system = "aarch64-darwin";
+    in
+    {
+      darwinConfigurations."@HOSTNAME@" = nix-darwin-upstream.lib.mkSystem {
+        userConfig = {
+          username = "@USERNAME@";
+          hostname = "@HOSTNAME@";
+          gitName = "@GIT_NAME@";
+          gitEmail = "@GIT_EMAIL@";
+        };
+        secretsFile = ./secrets.yaml;
+        # modules = [ ./personal.nix ];
       };
-      secretsFile = ./secrets.yaml;
-      # modules = [ ./personal.nix ];
+
+      apps.${system}.apply = {
+        type = "app";
+        program = "${nix-darwin-upstream.packages.${system}.apply}/bin/apply";
+      };
     };
-  };
 }
