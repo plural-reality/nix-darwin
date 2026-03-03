@@ -249,7 +249,10 @@
           packages.migrate = pkgs.writeShellApplication {
             name = "migrate";
             runtimeInputs = with pkgs; [ nixfmt ];
-            text = builtins.readFile ./downstream/migrate.sh;
+            text = ''
+              MIGRATIONS=${./downstream/migrations}
+            ''
+            + builtins.readFile ./downstream/migrate.sh;
           };
 
           # Team setup script: nix run github:plural-reality/nix-darwin#setup-downstream
