@@ -269,11 +269,13 @@
             + builtins.readFile ./downstream/setup.sh;
           };
 
-          # Apply script: nix build .#apply / nix run .#apply
+          # Apply: invoked via `nix run github:plural-reality/nix-darwin#apply`
           packages.apply = pkgs.writeShellApplication {
             name = "apply";
             text = ''
               nix flake update
+              # Run all pending migrations from this upstream version
+              ${self'.packages.migrate}/bin/migrate .
               if command -v darwin-rebuild &>/dev/null; then
                 sudo darwin-rebuild switch --flake .
               else
@@ -335,8 +337,8 @@
               [[ -x "$TARGET/apply" ]]
               echo "OK: apply is executable"
 
-              grep -q 'nix run .#apply' "$TARGET/apply"
-              echo "OK: apply is a shim delegating to nix run"
+              grep -q 'github:plural-reality/nix-darwin#apply' "$TARGET/apply"
+              echo "OK: apply shim references upstream directly"
 
               git -C "$TARGET" log --oneline
               echo "OK: git repository initialized"

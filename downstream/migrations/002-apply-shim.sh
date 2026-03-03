@@ -1,21 +1,20 @@
-# 002: Update ./apply shim to separate flake update from upstream delegation
-# Ensures `nix flake update` runs before resolving .#apply, so the latest
-# upstream (including new migrations) is used in a single ./apply invocation.
+# 002: Decouple ./apply shim from local lock
+# Uses github: reference so the shim always fetches the latest upstream.
+# Eliminates chicken-and-egg: shim never needs updating again.
 
 target="${1:-.}"
 apply="$target/apply"
 
 [[ -f "$apply" ]] || exit 0
 
-# Guard: already updated
-grep -q 'nix flake update' "$apply" && exit 0
+# Guard: already decoupled
+grep -q 'github:plural-reality/nix-darwin#apply' "$apply" && exit 0
 
 cat > "$apply" << 'SHIM'
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")"
-nix flake update
-nix run .#apply
+exec nix run "github:plural-reality/nix-darwin#apply"
 SHIM
 chmod +x "$apply"
 
