@@ -130,6 +130,65 @@ nix run github:plural-reality/nix-darwin#migrate
 | 001 | `mkSystem` → `mkDownstreamFlake` への flake.nix 変換 + `.envrc` 生成 |
 | 002 | `./apply` shim を `github:` 直接参照に切り替え（ローカル lock 依存の解消） |
 
+## 運用ガイド
+
+### チームの最新状態に追いつく
+
+どこにいても、これだけ打てばよい:
+
+```bash
+/private/etc/nix-darwin/apply
+```
+
+これ一発で以下が順に実行される:
+
+1. `nix flake update` — upstream の最新リビジョンを取得
+2. `migrate` — 破壊的変更があれば flake.nix / apply shim を自動変換（冪等）
+3. `sudo darwin-rebuild switch --flake .` — システム再構築
+
+shim 内部で `cd "$(dirname "$0")"` するため、カレントディレクトリに依存しない。
+
+> 段階的に確認したい場合: `cd /private/etc/nix-darwin && nix flake update --commit-lock-file` → diff を見てから `darwin-rebuild switch --flake .`
+
+### コントリビュート
+
+#### 対象の切り分け
+
+| 変更内容 | 変更先 |
+|---|---|
+| 全員に必要なツール・設定 | **このリポジトリ** (`modules/base.nix` 等) |
+| 個人のツール・設定 | **自分の下流リポジトリ** (`personal.nix`) |
+| AI プロンプト・スキル | **このリポジトリ** (`prompt/`, `modules/claude-code.nix`) |
+| 新しい共有スクリプト | **このリポジトリ** (`scripts/`, `modules/shared-scripts.nix`) |
+
+#### 開発フロー
+
+```bash
+# 1. clone & devShell に入る
+git clone git@github.com:plural-reality/nix-darwin.git
+cd nix-darwin
+nix develop   # HLS, fourmolu, cabal-gild, nixfmt が使える
+
+# 2. ブランチを切って変更
+git checkout -b feat/add-something
+
+# 3. フォーマット
+nix fmt
+
+# 4. セットアップスクリプトのテスト (下流 flake 生成の検証)
+nix run .#test-setup-downstream
+
+# 5. PR を出す
+```
+
+#### 変更時の注意
+
+- **`mkSystem` / `mkDownstreamFlake` のインターフェースを変更する場合**: 既存の下流 flake が壊れないよう、`downstream/migrations/` にマイグレーションスクリプトを追加すること。
+- **Nix**: `nix fmt` (nixfmt) で整形。
+- **Haskell**: fourmolu で整形。言語拡張は `.hs` ではなく `.cabal` に記載。ビルドは cabal ではなく Nix (haskell-flake)。
+- **Shell**: `set -euo pipefail` を先頭に。
+- **ツール追加**: nixpkgs にあればそのまま使う。なければ GitHub 上の flake を input に追加。`brew install` / `pip install` 等のグローバルインストールは禁止。
+
 ## 内部構造
 
 ```
