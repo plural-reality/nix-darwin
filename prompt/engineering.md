@@ -891,8 +891,17 @@ ghcの言語拡張は `.hs` ファイルではなく `.cabal` ファイルに書
 **"Code is not instructions; it is a description of reality."**
 （コードは命令ではない。それは現実の記述である。）
 
-### SSH key の命名について(重要)
-SSH key の命名規則を以下のように定めます。これにより、キーの管理と識別が容易になります。
-- 命名規則: `<プロジェクト名>-<役割>-<人名>-<コンピューター名>-<日付>.pub`
-  - 例: `myapp-deployment-yui-macbook-pro-m3max-20240601.pub`
+### SSH key の管理について(重要)
+SSH 秘密鍵は SOPS で暗号化し、git リポジトリで管理する。鍵の粒度は **role** のみ。
+人・端末・プロジェクトの次元は不要（人の識別は AWS IAM/KMS 層が担う）。
+
+```
+secrets/ssh/
+  operator.yaml   ← 人間が EC2 に SSH する用 (SOPS encrypted)
+  deploy.yaml     ← colmena / self-deploy 用 (SOPS encrypted)
+```
+
+- 鍵はディスクに平文で保存しない。`sops exec-file secrets/ssh/operator.yaml 'ssh-add {}'` で agent に読み込む。
+- 参加/離脱は `locals.tf` の KMS 権限で制御。SSH 鍵自体のローテーションは原則不要。
+- 詳細は sktc-deploy スキルを参照。
 

@@ -35,6 +35,10 @@ creation_rules:
   - path_regex: secrets/ci\.yaml$
     kms: "arn:aws:kms:<region>:<account-id>:key/<key-id>"
 
+  # SSH 鍵 (ロールベース共有鍵, SOPS 暗号化)
+  - path_regex: secrets/ssh/.*\.yaml$
+    kms: "arn:aws:kms:<region>:<account-id>:key/<key-id>"
+
   # アプリケーションシークレット (環境別)
   - path_regex: secrets/<project>-.*\.yaml$
     kms: "arn:aws:kms:<region>:<account-id>:key/<key-id>"
@@ -44,20 +48,35 @@ creation_rules:
 
 ```yaml
 # secrets/infra.yaml (SOPS 暗号化、git commit)
-# インフラ管理に必要なシークレット
+# インフラ管理に必要なシークレット (SSH 鍵は含まない — secrets/ssh/ で管理)
 
 # DNS プロバイダの API token
 dns_api_token: "xxx..."
 dns_zone_id: "xxx..."
 
-# SSH key pair (deploy 用)
-# 初回生成: ssh-keygen -t ed25519 -f ~/.ssh/<project>-deploy
-ssh_private_key: |
-  -----BEGIN OPENSSH PRIVATE KEY-----
-  ...
-  -----END OPENSSH PRIVATE KEY-----
-ssh_public_key: "ssh-ed25519 AAAA... <project>-deploy"
+# SSH public key (Terraform の ssh_public_key 変数に注入する用)
+ssh_public_key: "ssh-ed25519 AAAA... operator"
 ```
+
+```yaml
+# secrets/ssh/operator.yaml (SOPS 暗号化、git commit)
+# 開発者全員が共有する SSH 秘密鍵 (ロールベース)
+# 個人の識別は AWS IAM (KMS Decrypt 権限) で行う
+-----BEGIN OPENSSH PRIVATE KEY-----
+...
+-----END OPENSSH PRIVATE KEY-----
+```
+
+```yaml
+# secrets/ssh/deploy.yaml (SOPS 暗号化、git commit)
+# Self-Deploy / colmena 用の SSH 秘密鍵 (GitHub Deploy Key)
+-----BEGIN OPENSSH PRIVATE KEY-----
+...
+-----END OPENSSH PRIVATE KEY-----
+```
+
+> **注意**: `secrets/ssh/*.yaml` は SOPS の `--input-type binary` で暗号化される。
+> 鍵ファイルそのものが暗号化された状態で格納される（YAML 構造ではなく raw バイナリ）。
 
 ```yaml
 # secrets/<project>-prod.yaml (SOPS 暗号化、git commit)
@@ -81,8 +100,8 @@ sops secrets/<project>-prod.yaml
 # 復号して標準出力
 sops -d secrets/<project>-prod.yaml
 
-# 特定の値を抽出
-sops -d secrets/infra.yaml | yq '.ssh_private_key'
+# SSH 秘密鍵を ssh-agent にロード (SOPS exec-file で一時ファイル経由)
+sops exec-file secrets/ssh/operator.yaml 'ssh-add {}'
 
 # 環境変数として注入して任意のコマンドを実行
 sops exec-env secrets/infra.yaml -- terraform apply

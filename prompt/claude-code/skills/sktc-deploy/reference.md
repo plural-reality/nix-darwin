@@ -30,8 +30,15 @@ git filter-branch --force --index-filter \
 **`colmena apply` が SSH 接続に失敗する**
 
 ```bash
+# ssh-agent に operator key がロードされているか確認
+ssh-add -l
+# → "operator" のエントリが表示されること
+# なければロード:
+nix run .#ssh-load
+# または: sops exec-file secrets/ssh/operator.yaml 'ssh-add {}'
+
 # SSH 接続テスト
-ssh -i ~/.ssh/<project>-deploy root@<EC2 IP>
+ssh root@<EC2 IP>
 
 # Security Group で port 22 が開いているか確認
 aws ec2 describe-security-groups --group-ids <sg-id> \
@@ -155,19 +162,21 @@ sops exec-env secrets/infra.yaml -- env | grep TF_VAR_
 ### 新プロジェクト開始時
 
 - [ ] リポジトリ構造を作成（セクション 4 参照）
-- [ ] SSH key pair を生成 (`ssh-keygen -t ed25519`)
+- [ ] Operator SSH key pair を生成 → `secrets/ssh/operator.yaml` に SOPS 暗号化
+- [ ] Deploy SSH key pair を生成 → `secrets/ssh/deploy.yaml` に SOPS 暗号化
 - [ ] Cachix cache を作成 (`cachix create <project>`)
 - [ ] Bootstrap Terraform を作成 (`infra/tfc-bootstrap/`)
 - [ ] Phase 1: KMS key を作成 (`terraform apply -target=aws_kms_key.sops`)
 - [ ] `.sops.yaml` を作成（KMS ARN を設定）
 - [ ] `secrets/infra.yaml` を暗号化して作成
-- [ ] `secrets/ci.yaml` を暗号化して作成（deploy key, webhook secret, cachix auth token）
+- [ ] `secrets/ci.yaml` を暗号化して作成（webhook secret, cachix auth token）
 - [ ] `secrets/<project>-<env>.yaml` を暗号化して作成
 - [ ] Phase 3: Bootstrap apply（Developer IAM users 作成）
 - [ ] メイン Terraform を作成・apply（VPC, EC2, DNS）
 - [ ] Terraform output JSON を git commit
 - [ ] NixOS 構成を作成 (`nixos/`, `flake.nix`)
 - [ ] `common.nix` に Cachix substituter を設定
+- [ ] NixOS authorizedKeys に operator 公開鍵を設定
 - [ ] SSH config を設定（多重化 + 圧縮）
 - [ ] `nix run .#deploy` で初回デプロイ（build → cachix push → colmena apply）
 - [ ] HTTPS アクセスを確認
@@ -181,7 +190,7 @@ sops exec-env secrets/infra.yaml -- env | grep TF_VAR_
 - [ ] `secrets.nix` に deploy key と webhook secret の宣言を追加
 - [ ] flake.nix に staging/prod 両方の Colmena ターゲット + `deploy.enable` を定義
 - [ ] nginx に `/.well-known/deploy` → `localhost:9000` プロキシを追加
-- [ ] GitHub で Deploy Key を登録（read-only SSH key）
+- [ ] GitHub で Deploy Key を登録（`secrets/ssh/deploy.yaml` に対応する公開鍵, read-only）
 - [ ] GitHub で Webhook を登録（push event, HMAC secret）
 - [ ] main push → staging 自動デプロイ（Cachix pull）を検証
 - [ ] tag push → production 自動デプロイ（Cachix pull）を検証
@@ -218,7 +227,8 @@ sops exec-env secrets/infra.yaml -- env | grep TF_VAR_
 - [ ] KMS key rotation が有効か (`enable_key_rotation = true`)
 - [ ] EC2 IAM role が最小権限か（`Decrypt` + `DescribeKey` のみ）
 - [ ] Developer IAM users が KMS 以外の権限を持っていないか
-- [ ] SSH key が SOPS で暗号化されて git 管理されているか
+- [ ] `secrets/ssh/operator.yaml` と `secrets/ssh/deploy.yaml` が存在し SOPS 暗号化されているか
+- [ ] NixOS authorizedKeys の公開鍵が SOPS 管理の秘密鍵と対応しているか
 - [ ] `.tfstate` ファイルが gitignore されているか
 - [ ] Security Group で不要なポートが開いていないか
 - [ ] `PermitRootLogin = "prohibit-password"` が設定されているか

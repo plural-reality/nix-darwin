@@ -4,15 +4,19 @@
 
 ### Phase 0: 準備
 
-> **注意**: SSH key ファイル名は `<project>-<role>-<person>-<computer>-<date>` 形式を推奨。
-> ただし `secrets/infra.yaml` に格納するデプロイ共有鍵は `<project>-deploy` で統一する。
+> **SSH 鍵管理**: ロールベースの共有鍵を SOPS で管理する。個人ごと・デバイスごとの鍵は生成しない。
+> 個人の識別は AWS IAM (KMS Decrypt 権限) で行う。
 
 ```bash
-# 1. SSH key pair を生成
-# 命名規則: <project>-<role>-<person>-<computer>-<date>
-ssh-keygen -t ed25519 \
-  -f ~/.ssh/<project>-deploy-$(whoami)-$(hostname -s)-$(date +%Y%m%d) \
-  -C "<project>-deploy"
+# 1. SSH key pair を生成 (ロールベース共有鍵)
+
+# Operator key (開発者全員が共有する SSH アクセス用)
+ssh-keygen -t ed25519 -f /tmp/operator -N "" -C "operator"
+# → /tmp/operator.pub の内容を NixOS authorizedKeys および Terraform ssh_public_key に使用
+
+# Deploy key (Self-Deploy の git pull 用)
+ssh-keygen -t ed25519 -f /tmp/deploy -N "" -C "deploy"
+# → /tmp/deploy.pub を GitHub Deploy Keys に登録 (read-only)
 
 # 2. Cachix cache を作成
 cachix create <project>
@@ -64,20 +68,26 @@ creation_rules:
     kms: "arn:aws:kms:<region>:<account-id>:key/<key-id>"
 EOF
 
-# 2. infra secrets を作成
+# 2. SSH 秘密鍵を SOPS で暗号化
+mkdir -p secrets/ssh
+sops encrypt --input-type binary /tmp/operator > secrets/ssh/operator.yaml
+sops encrypt --input-type binary /tmp/deploy > secrets/ssh/deploy.yaml
+
+# 3. infra secrets を作成
 sops secrets/infra.yaml
 # エディタが開くので以下を入力:
 #   dns_api_token: "<your-cloudflare-token>"
 #   dns_zone_id: "<your-zone-id>"
-#   ssh_private_key: |
-#     <~/.ssh/<project>-deploy の内容をペースト>
-#   ssh_public_key: "ssh-ed25519 AAAA... <project>-deploy"
+#   ssh_public_key: "ssh-ed25519 AAAA... operator"  ← /tmp/operator.pub の内容
 
-# 3. アプリケーション secrets を作成
+# 4. アプリケーション secrets を作成
 sops secrets/<project>-prod.yaml
 # エディタが開くのでアプリ用シークレットを入力
 
-# 4. git commit
+# 5. 一時ファイルを削除
+rm /tmp/operator /tmp/operator.pub /tmp/deploy /tmp/deploy.pub
+
+# 6. git commit
 git add .sops.yaml secrets/
 git commit -m "Add encrypted secrets via SOPS"
 ```
@@ -114,12 +124,16 @@ git commit -m "Add terraform output for colmena"
 ```bash
 cd ../..  # リポジトリルートへ
 
+# SSH 鍵を ssh-agent にロード
+nix run .#ssh-load
+# または: sops exec-file secrets/ssh/operator.yaml 'ssh-add {}'
+
 # SSH config を設定
 cat >> ~/.ssh/config << 'EOF'
 Host <project>-<env>
   HostName <EC2 IP>
   User root
-  IdentityFile ~/.ssh/<project>-deploy-*
+  # IdentityFile 不要 — ssh-agent が SOPS 経由でロードした鍵を保持
   ControlMaster auto
   ControlPath ~/.ssh/sockets/%r@%h-%p
   ControlPersist 600
