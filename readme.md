@@ -108,6 +108,28 @@ mkSystem { userConfig, secretsFile, modules }
 └── ++ modules ← 下流が自由に拡張/上書き
 ```
 
+### マイグレーション (既存ダウンストリーム向け)
+
+upstream が更新された際、ダウンストリームの `flake.nix` や `apply` shim を最新の構造に自動変換するマイグレーション基盤がある。
+
+```bash
+# マイグレーションのみ実行
+nix run github:plural-reality/nix-darwin#migrate
+
+# apply はマイグレーション + flake update + darwin-rebuild switch を一括実行
+./apply
+```
+
+`./apply` は内部で `migrate` を呼んでいるため、通常は `./apply` だけで十分。
+マイグレーションは冪等（適用済みのものはスキップされる）。
+
+現在のマイグレーション:
+
+| ID | 内容 |
+|---|---|
+| 001 | `mkSystem` → `mkDownstreamFlake` への flake.nix 変換 + `.envrc` 生成 |
+| 002 | `./apply` shim を `github:` 直接参照に切り替え（ローカル lock 依存の解消） |
+
 ## 内部構造
 
 ```
