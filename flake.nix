@@ -232,6 +232,9 @@
             };
           };
 
+          # XcodeBuildMCP: hermetic MCP server (no npx)
+          packages.xcodebuildmcp = import ./packages/xcodebuildmcp { inherit pkgs; };
+
           # Screenpipe: standalone build via `nix build .#screenpipe`
           packages.screenpipe =
             let

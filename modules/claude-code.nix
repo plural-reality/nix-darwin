@@ -5,10 +5,20 @@ let
   expandTemplate = import ../lib/expand-template.nix { inherit lib; };
   expandTemplatesDir = import ../lib/expand-templates-dir.nix { inherit pkgs lib; };
 
+  xcodebuildmcp = import ../packages/xcodebuildmcp { inherit pkgs; };
+
   # XcodeBuildMCP: shared between CLI and Xcode Agent
   xcodeBuildMcpEnv = {
     INCREMENTAL_BUILDS_ENABLED = "true";
     XCODEBUILDMCP_DYNAMIC_TOOLS = "true";
+  };
+
+  # MCP server config fragment — single source of truth for both CLI and Xcode Agent.
+  # Uses absolute Nix store path: no npx, no npm cache, fully hermetic.
+  xcodeBuildMcpServer = {
+    command = "${xcodebuildmcp}/bin/xcodebuildmcp";
+    args = [ "mcp" ];
+    env = xcodeBuildMcpEnv;
   };
 
   # Xcode Agent runs in a sandboxed environment without PATH inheritance.
@@ -17,9 +27,8 @@ let
     "Library/Developer/Xcode/CodingAssistant/ClaudeAgentConfig";
 in
 {
-  home.packages = with pkgs; [
-    nodejs_22 # XcodeBuildMCP runtime
-    claude-code # Claude Code CLI
+  home.packages = [
+    pkgs.claude-code # Claude Code CLI
   ];
 
   home.file =
@@ -75,20 +84,7 @@ in
       # ~/.claude/CLAUDE.md IS read by Xcode Agent — no duplication needed.
       "${xcodeAgentConfigDir}/.claude".text = builtins.toJSON {
         mcpServers = {
-          XcodeBuildMCP = {
-            command = "${pkgs.nodejs_22}/bin/npx";
-            args = [
-              "-y"
-              "xcodebuildmcp@latest"
-              "mcp"
-            ];
-            env = xcodeBuildMcpEnv // {
-              PATH = lib.makeBinPath [
-                pkgs.nodejs_22
-                pkgs.git
-              ];
-            };
-          };
+          XcodeBuildMCP = xcodeBuildMcpServer;
         };
       };
 
@@ -126,11 +122,7 @@ in
     # from Nix propagate correctly. All other keys are preserved.
     CLAUDE_JSON="$HOME/.claude.json"
     MCP='${builtins.toJSON {
-      XcodeBuildMCP = {
-        command = "npx";
-        args = [ "-y" "xcodebuildmcp@latest" "mcp" ];
-        env = xcodeBuildMcpEnv;
-      };
+      XcodeBuildMCP = xcodeBuildMcpServer;
     }}'
 
     if [ -f "$CLAUDE_JSON" ]; then
