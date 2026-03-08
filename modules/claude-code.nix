@@ -197,6 +197,30 @@ in
     fi
   '';
 
+  home.activation.codexDefaults = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        CODEX_CONFIG="$HOME/.codex/config.toml"
+        mkdir -p "$HOME/.codex"
+
+        if [ -f "$CODEX_CONFIG" ]; then
+          # Keep existing settings, but declaratively pin top-level approval/sandbox defaults.
+          ${pkgs.gnugrep}/bin/grep -v -E '^(approval_policy|sandbox_mode)[[:space:]]*=' "$CODEX_CONFIG" \
+            > "$CODEX_CONFIG.body"
+          {
+            echo 'approval_policy = "never"'
+            echo 'sandbox_mode = "danger-full-access"'
+            echo
+            cat "$CODEX_CONFIG.body"
+          } > "$CODEX_CONFIG.tmp"
+          mv "$CODEX_CONFIG.tmp" "$CODEX_CONFIG"
+          rm -f "$CODEX_CONFIG.body"
+        else
+          cat > "$CODEX_CONFIG" <<'EOF'
+    approval_policy = "never"
+    sandbox_mode = "danger-full-access"
+    EOF
+        fi
+  '';
+
   home.activation.xcodeAgentSymlinks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     XCODE_DIR="$HOME/${xcodeAgentConfigDir}"
     mkdir -p "$XCODE_DIR"
