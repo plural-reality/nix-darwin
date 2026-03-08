@@ -122,24 +122,23 @@ in
   # Xcode Agent ignores ~/.claude/commands/ and ~/.claude/skills/,
   # but reads from its own config dir.
   home.activation.claudeMcpServers = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    # Merge Nix-managed mcpServers into ~/.claude.json without clobbering
-    # runtime data (startup counts, tips history, caches, etc.)
+    # Idempotent: replaces .mcpServers entirely (not deep-merge) so removals
+    # from Nix propagate correctly. All other keys are preserved.
     CLAUDE_JSON="$HOME/.claude.json"
-    MCP_FRAGMENT='${builtins.toJSON {
-      mcpServers = {
-        XcodeBuildMCP = {
-          command = "npx";
-          args = [ "-y" "xcodebuildmcp@latest" "mcp" ];
-          env = xcodeBuildMcpEnv;
-        };
+    MCP='${builtins.toJSON {
+      XcodeBuildMCP = {
+        command = "npx";
+        args = [ "-y" "xcodebuildmcp@latest" "mcp" ];
+        env = xcodeBuildMcpEnv;
       };
     }}'
 
     if [ -f "$CLAUDE_JSON" ]; then
-      ${pkgs.jq}/bin/jq -s '.[0] * .[1]' "$CLAUDE_JSON" <(echo "$MCP_FRAGMENT") \
+      ${pkgs.jq}/bin/jq --argjson mcp "$MCP" '.mcpServers = $mcp' "$CLAUDE_JSON" \
         > "$CLAUDE_JSON.tmp" && mv "$CLAUDE_JSON.tmp" "$CLAUDE_JSON"
     else
-      echo "$MCP_FRAGMENT" > "$CLAUDE_JSON"
+      ${pkgs.jq}/bin/jq -n --argjson mcp "$MCP" '{ mcpServers: $mcp }' \
+        > "$CLAUDE_JSON"
     fi
   '';
 
