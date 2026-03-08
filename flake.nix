@@ -25,8 +25,8 @@
     # Kimi Code CLI agent
     kimi-cli.url = "github:MoonshotAI/kimi-cli";
 
-    # Claude Code: official pre-built binary overlay
-    claude-code-overlay.url = "github:ryoppippi/claude-code-overlay";
+    # AI coding agents: Claude Code, Codex, etc. (daily auto-updated overlay)
+    llm-agents.url = "github:numtide/llm-agents.nix";
 
     # Haskell Dev Environment
     flake-parts.url = "github:hercules-ci/flake-parts";
@@ -73,9 +73,9 @@
                     ];
                     builders-use-substitutes = true;
                     accept-flake-config = true;
-                    extra-substituters = [ "https://ryoppippi.cachix.org" ];
+                    extra-substituters = [ "https://cache.numtide.com" ];
                     extra-trusted-public-keys = [
-                      "ryoppippi.cachix.org-1:b2LbtWNvJeL/qb1B6TYOMK+apaCps4SCbzlPRfSQIms="
+                      "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
                     ];
                   };
                   linux-builder = {
@@ -99,12 +99,13 @@
                 nixpkgs.hostPlatform = system;
 
                 nixpkgs.overlays = [
-                  inputs.claude-code-overlay.overlays.default
+                  inputs.llm-agents.overlays.default
                 ];
                 nixpkgs.config.allowUnfreePredicate =
                   pkg:
                   builtins.elem (lib.getName pkg) [
                     "claude"
+                    "claude-code"
                   ];
 
                 users.users.${userConfig.username} = {

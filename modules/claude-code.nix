@@ -28,7 +28,7 @@ let
 in
 {
   home.packages = [
-    pkgs.claude-code # Claude Code CLI
+    pkgs.llm-agents.claude-code # Claude Code CLI
   ];
 
   home.file =

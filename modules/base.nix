@@ -18,7 +18,7 @@ in
     nixos-generators
 
     # AI tooling
-    claude-code
+    llm-agents.codex
 
     # Development
     tmux
