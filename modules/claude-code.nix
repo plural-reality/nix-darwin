@@ -1,10 +1,27 @@
 # Managed dotfiles: Claude Code, Gemini, Cursor
+# Includes Xcode 26.3 Claude Agent MCP bridge for Reliable OMI / iOS BLE dev
 { pkgs, lib, ... }:
 let
   expandTemplate = import ../lib/expand-template.nix { inherit lib; };
   expandTemplatesDir = import ../lib/expand-templates-dir.nix { inherit pkgs lib; };
+
+  # XcodeBuildMCP: shared between CLI and Xcode Agent
+  xcodeBuildMcpEnv = {
+    INCREMENTAL_BUILDS_ENABLED = "true";
+    XCODEBUILDMCP_DYNAMIC_TOOLS = "true";
+  };
+
+  # Xcode Agent runs in a sandboxed environment without PATH inheritance.
+  # All commands must use absolute Nix store paths.
+  xcodeAgentConfigDir =
+    "Library/Developer/Xcode/CodingAssistant/ClaudeAgentConfig";
 in
 {
+  home.packages = with pkgs; [
+    nodejs_22 # XcodeBuildMCP runtime
+    claude-code # Claude Code CLI
+  ];
+
   home.file =
     {
       # Gemini
@@ -47,6 +64,40 @@ in
             "WebFetch"
           ];
         };
+        # Global MCP servers (CLI uses npx from PATH, so relative command is fine)
+        mcpServers = {
+          XcodeBuildMCP = {
+            command = "npx";
+            args = [
+              "-y"
+              "xcodebuildmcp@latest"
+              "mcp"
+            ];
+            env = xcodeBuildMcpEnv;
+          };
+        };
+      };
+
+      # Xcode Agent MCP config (absolute Nix store paths required)
+      # Xcode Agent ignores ~/.claude.json and ~/.claude/settings.json.
+      # ~/.claude/CLAUDE.md IS read by Xcode Agent — no duplication needed.
+      "${xcodeAgentConfigDir}/.claude".text = builtins.toJSON {
+        mcpServers = {
+          XcodeBuildMCP = {
+            command = "${pkgs.nodejs_22}/bin/npx";
+            args = [
+              "-y"
+              "xcodebuildmcp@latest"
+              "mcp"
+            ];
+            env = xcodeBuildMcpEnv // {
+              PATH = lib.makeBinPath [
+                pkgs.nodejs_22
+                pkgs.git
+              ];
+            };
+          };
+        };
       };
 
       # Cursor
@@ -73,4 +124,26 @@ in
         }) skillNames
       )
     );
+
+  # Symlink ~/.claude/{commands,skills} → Xcode Agent config dir
+  # so both CLI and Xcode Agent share the same commands/skills.
+  # Xcode Agent ignores ~/.claude/commands/ and ~/.claude/skills/,
+  # but reads from its own config dir.
+  home.activation.xcodeAgentSymlinks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    XCODE_DIR="$HOME/${xcodeAgentConfigDir}"
+    mkdir -p "$XCODE_DIR"
+
+    # commands: Xcode Agent dir → ~/.claude/commands (source of truth)
+    if [ ! -e "$XCODE_DIR/commands" ]; then
+      ln -s "$HOME/.claude/commands" "$XCODE_DIR/commands"
+    fi
+
+    # skills: Xcode Agent dir → ~/.claude/skills (source of truth, Nix-managed)
+    if [ ! -e "$XCODE_DIR/skills" ]; then
+      ln -s "$HOME/.claude/skills" "$XCODE_DIR/skills"
+    fi
+  '';
+
+  # Xcode's own MCP bridge (for CLI → Xcode build/test/preview access):
+  # claude mcp add --transport stdio xcode -- xcrun mcpbridge
 }
