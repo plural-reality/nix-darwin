@@ -1,4 +1,4 @@
-## 10. 日常運用
+## 11. 日常運用
 
 ブートストラップ完了後、2 つのデプロイ方法が利用可能。
 
@@ -102,7 +102,7 @@ ssh <project>-<env> systemctl status <project>
 
 ---
 
-## 11. 開発者オンボーディング
+## 12. 開発者オンボーディング
 
 ### 新しい開発者を追加する（既存の開発者なら誰でも実行可能）
 
@@ -152,15 +152,15 @@ aws configure
 # AWS Secret Access Key: <上で取得した値>
 # Default region: <region>
 
-# 4. KMS アクセスを確認
+# 3. KMS アクセスを確認
 aws sts get-caller-identity
 sops -d secrets/<project>-prod.yaml > /dev/null && echo "OK: KMS access confirmed"
 
-# 5. SSH 鍵を ssh-agent にロード (SOPS で復号 → 一時ファイル → ssh-add → 自動削除)
+# 4. SSH 鍵を ssh-agent にロード (SOPS で復号 → 一時ファイル → ssh-add → 自動削除)
 nix run .#ssh-load
 # または手動: sops exec-file secrets/ssh/operator.yaml 'ssh-add {}'
 
-# 6. SSH config を設定
+# 5. SSH config を設定
 # (Cachix auth token は deploy スクリプト内で SOPS から自動抽出される。手動設定不要)
 # IdentityFile は不要 — ssh-agent が鍵を保持する
 cat >> ~/.ssh/config << 'EOF'
@@ -175,7 +175,7 @@ EOF
 
 mkdir -p ~/.ssh/sockets
 
-# 7. 動作確認
+# 6. 動作確認
 nix run .#deploy
 echo "Setup complete!"
 ```
@@ -220,7 +220,7 @@ sops exec-env ../../secrets/infra.yaml -- terraform apply
 
 ---
 
-## 12. デプロイ最適化
+## 13. デプロイ最適化
 
 Cachix Binary Cache がデフォルトの転送手段。追加の最適化は以下の通り。
 
@@ -306,4 +306,163 @@ apps.aarch64-darwin.ssh-load = {
 | Cachix Binary Cache | **デフォルト** | 大 | 初期セットアップ時 |
 | ソースフィルタリング | 5分 | 大 | 即座に |
 | SSH 多重化 | 5分 | 中 | 即座に |
-| Self-Deploy Webhook | 2-3時間 | 大 (自動化) | staging/prod 分離時（セクション 13） |
+| Self-Deploy Webhook | 2-3時間 | 大 (自動化) | staging/prod 分離時（セクション 15） |
+
+---
+
+## 14. トラブルシューティング
+
+### SOPS 関連
+
+**`Error decrypting key: AccessDeniedException`**
+
+- IAM user に KMS の `Decrypt` 権限がない
+- `aws sts get-caller-identity` で正しい IAM user か確認
+- `infra/tfc-bootstrap/locals.tf` に自分のユーザー名があるか確認
+- 既存の開発者に `terraform apply` を依頼
+
+**`config file not found`**
+
+- `.sops.yaml` がリポジトリルートにあるか確認
+- カレントディレクトリまたは親ディレクトリに `.sops.yaml` が必要
+
+**SOPS ファイルを誤って平文で commit した場合**
+
+```bash
+# 1. git history を書き換え (force push が必要)
+git filter-branch --force --index-filter \
+  'git rm --cached --ignore-unmatch secrets/<file>.yaml' HEAD
+
+# 2. シークレットをローテーション（漏洩した前提で対応）
+# 3. 新しいシークレットで SOPS ファイルを再作成
+```
+
+### Colmena / NixOS 関連
+
+**`colmena apply` が SSH 接続に失敗する**
+
+```bash
+# ssh-agent に operator key がロードされているか確認
+ssh-add -l
+# → "operator" のエントリが表示されること
+# なければロード:
+nix run .#ssh-load
+# または: sops exec-file secrets/ssh/operator.yaml 'ssh-add {}'
+
+# SSH 接続テスト
+ssh root@<EC2 IP>
+
+# Security Group で port 22 が開いているか確認
+aws ec2 describe-security-groups --group-ids <sg-id> \
+  --query 'SecurityGroups[].IpPermissions[?FromPort==`22`]'
+```
+
+**sops-nix が KMS 復号に失敗する**
+
+```bash
+# EC2 上で instance profile を確認
+ssh <project>-<env> 'curl -s http://169.254.169.254/latest/meta-data/iam/info'
+
+# IAM role に KMS Decrypt 権限があるか確認
+aws iam get-role-policy --role-name <project>-ec2-sops --policy-name kms-decrypt-sops
+```
+
+**Let's Encrypt 証明書の取得に失敗する**
+
+- DNS レコードが EC2 の EIP を指しているか確認
+- Cloudflare の場合、proxy が無効 (gray cloud) であること（HTTP-01 challenge のため）
+- Security Group で port 80 が開いていること
+- `journalctl -u acme-<domain>.service` でログを確認
+
+**EC2 が Cachix から closure を pull できない**
+
+```bash
+# EC2 上で Cachix substituter の設定を確認
+ssh <project>-<env> 'nix show-config | grep substituters'
+# → https://<project>.cachix.org が含まれていること
+
+# EC2 上で Cachix からの fetch を手動テスト
+ssh <project>-<env> 'nix store ping --store https://<project>.cachix.org'
+
+# trusted-public-keys が正しいか確認
+ssh <project>-<env> 'nix show-config | grep trusted-public-keys'
+
+# フォールバック: Cachix 障害時はローカルから SSH 直接転送
+nix run .#deploy-ssh
+```
+
+**EC2 で OOM が発生する**
+
+```bash
+# メモリ使用状況を確認
+ssh <project>-<env> free -h
+
+# nix-daemon のメモリ制限を確認
+ssh <project>-<env> systemctl show nix-daemon | grep MemoryMax
+
+# Swap が有効か確認
+ssh <project>-<env> swapon --show
+```
+
+### Self-Deploy Webhook 関連
+
+**Webhook が反応しない**
+
+```bash
+# EC2 上で webhook サービスの状態を確認
+ssh <project>-<env> systemctl status deploy-webhook
+ssh <project>-<env> journalctl -u deploy-webhook -f
+
+# hooks.json が正しく生成されているか
+ssh <project>-<env> cat /run/deploy-webhook/hooks.json
+# → __WEBHOOK_SECRET__ が残っていたら sops-nix の起動順序問題
+
+# GitHub 側の Webhook delivery を確認
+# repo → Settings → Webhooks → Recent Deliveries
+# 200 以外なら HMAC secret の不一致 or ref パターン不一致
+```
+
+**Deploy が並列実行されている**
+
+```bash
+# flock が効いていない場合、ロックファイルを確認
+ssh <project>-<env> ls -la /run/<project>-deploy.lock
+
+# transient unit の一覧
+ssh <project>-<env> systemctl list-units '<project>-deploy-*'
+```
+
+**git pull が Permission denied (publickey)**
+
+```bash
+# deploy key が sops-nix で展開されているか
+ssh <project>-<env> ls -la /run/secrets/github-deploy-key
+
+# SSH 接続テスト
+ssh <project>-<env> 'GIT_SSH_COMMAND="ssh -i /run/secrets/github-deploy-key" git ls-remote git@github.com:<org>/<repo>.git'
+
+# GitHub の Deploy Key 設定を確認（read access が有効か）
+```
+
+### Terraform 関連
+
+**State lock エラー（local state の場合）**
+
+```bash
+# .terraform.tfstate.lock.info を削除 (他の terraform が実行中でないことを確認)
+rm .terraform.tfstate.lock.info
+```
+
+**`sops exec-env` で変数が注入されない**
+
+```bash
+# 環境変数のプレフィックスを確認
+# Terraform は TF_VAR_<name> で変数を読む
+# secrets/infra.yaml のキー名が variables.tf と一致しているか確認
+
+# デバッグ: 環境変数を表示
+sops exec-env secrets/infra.yaml -- env | grep TF_VAR_
+
+# SOPS の YAML キー名に注意:
+#   cloudflare_api_token → TF_VAR_cloudflare_api_token として注入される
+```

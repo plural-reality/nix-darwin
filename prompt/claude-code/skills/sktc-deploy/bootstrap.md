@@ -147,3 +147,84 @@ mkdir -p ~/.ssh/sockets
 # (CACHIX_AUTH_TOKEN 環境変数。グローバル設定ファイルは変更しない)
 nix run .#deploy
 ```
+
+---
+
+## 10. チェックリスト
+
+### 新プロジェクト開始時
+
+- [ ] リポジトリ構造を作成（セクション 4 参照）
+- [ ] Operator SSH key pair を生成 → `secrets/ssh/operator.yaml` に SOPS 暗号化
+- [ ] Deploy SSH key pair を生成 → `secrets/ssh/deploy.yaml` に SOPS 暗号化
+- [ ] Cachix cache を作成 (`cachix create <project>`)
+- [ ] Bootstrap Terraform を作成 (`infra/tfc-bootstrap/`)
+- [ ] Phase 1: KMS key を作成 (`terraform apply -target=aws_kms_key.sops`)
+- [ ] `.sops.yaml` を作成（KMS ARN を設定）
+- [ ] `secrets/infra.yaml` を暗号化して作成
+- [ ] `secrets/ci.yaml` を暗号化して作成（webhook secret, cachix auth token）
+- [ ] `secrets/<project>-<env>.yaml` を暗号化して作成
+- [ ] Phase 3: Bootstrap apply（Developer IAM users 作成）
+- [ ] メイン Terraform を作成・apply（VPC, EC2, DNS）
+- [ ] Terraform output JSON を git commit
+- [ ] NixOS 構成を作成 (`nixos/`, `flake.nix`)
+- [ ] `common.nix` に Cachix substituter を設定
+- [ ] NixOS authorizedKeys に operator 公開鍵を設定
+- [ ] SSH config を設定（多重化 + 圧縮）
+- [ ] `nix run .#deploy` で初回デプロイ（build → cachix push → colmena apply）
+- [ ] HTTPS アクセスを確認
+- [ ] `.gitignore` に `*.tfstate*` を追加
+
+### Self-Deploy Webhook セットアップ
+
+- [ ] staging 用 EC2 を Terraform で作成（`infra/terraform/staging/`）
+- [ ] `secrets/<project>-staging.yaml` を作成
+- [ ] `deploy.nix` を作成（webhook + deploy script + repo init）
+- [ ] `secrets.nix` に deploy key と webhook secret の宣言を追加
+- [ ] flake.nix に staging/prod 両方の Colmena ターゲット + `deploy.enable` を定義
+- [ ] nginx に `/.well-known/deploy` → `localhost:9000` プロキシを追加
+- [ ] GitHub で Deploy Key を登録（`secrets/ssh/deploy.yaml` に対応する公開鍵, read-only）
+- [ ] GitHub で Webhook を登録（push event, HMAC secret）
+- [ ] main push → staging 自動デプロイ（Cachix pull）を検証
+- [ ] tag push → production 自動デプロイ（Cachix pull）を検証
+- [ ] deploy スクリプトにロールバック機能が含まれていること
+- [ ] EC2 の systemPackages に `colmena` と `git` が含まれていること
+
+### 日常運用
+
+#### 方法 1: ローカルデプロイ（手動）
+
+- [ ] コード変更 → `nix run .#deploy` (build → cachix push → colmena apply)
+- [ ] フォールバック → `nix run .#deploy-ssh` (SSH 直接転送)
+
+#### 方法 2: Self-Deploy（自動）
+
+- [ ] コード変更 → `nix run .#deploy` で build + cachix push → `git push` → staging 自動デプロイ
+- [ ] staging 確認 → `git tag v*` → `git push --tags` → production 自動デプロイ
+- [ ] 緊急時 → `nix run .#deploy-ssh` で SSH 直接デプロイ
+
+#### 共通
+
+- [ ] Secret 変更 → `sops edit` → `nix run .#deploy` or commit + push → 自動デプロイ
+- [ ] インフラ変更 → `terraform apply` → JSON を git commit → デプロイ
+
+### 開発者の追加
+
+- [ ] `locals.tf` に追加
+- [ ] `git commit` + `push`
+- [ ] `terraform apply`（Bootstrap）
+- [ ] 新メンバーにセットアップ手順を共有
+
+### セキュリティレビュー
+
+- [ ] KMS key rotation が有効か (`enable_key_rotation = true`)
+- [ ] EC2 IAM role が最小権限か（`Decrypt` + `DescribeKey` のみ）
+- [ ] Developer IAM policy が ABAC (Project タグ) でスコープ制限されているか
+- [ ] `secrets/ssh/operator.yaml` と `secrets/ssh/deploy.yaml` が存在し SOPS 暗号化されているか
+- [ ] NixOS authorizedKeys の公開鍵が SOPS 管理の秘密鍵と対応しているか
+- [ ] `.tfstate` ファイルが gitignore されているか
+- [ ] Security Group で不要なポートが開いていないか
+- [ ] `PermitRootLogin = "prohibit-password"` が設定されているか
+- [ ] EC2 の IMDSv2 が強制されていること (`http_tokens = "required"`)
+- [ ] Security Group に IPv6 ルール (`ipv6_cidr_blocks`) が設定されていること
+- [ ] EBS バックアップ (AWS Backup) が設定されていること

@@ -1,4 +1,4 @@
-## 13. Self-Deploy Webhook パイプライン — 完全実装リファレンス
+## 15. Self-Deploy Webhook パイプライン — 完全実装リファレンス
 
 ### 設計思想
 
@@ -865,17 +865,7 @@ secrets/
 
 ### Part 5: Credential Matrix
 
-| 操作 | 必要な認証情報 | 実行主体 | 頻度 |
-|---|---|---|---|
-| ローカルビルド + Cachix push | Cachix auth token (SOPS) | 開発者 | 毎デプロイ |
-| GitHub Webhook 登録 | GitHub token (SOPS → Terraform) | 開発者 (terraform apply) | 初回 + 変更時 |
-| Staging deploy (自動) | なし（webhook + Cachix pull） | EC2 (webhook → apply-local) | 毎 main push |
-| Production deploy (自動) | なし（webhook + Cachix pull） | EC2 (webhook → apply-local) | 毎タグ push |
-| フォールバックデプロイ | SSH key (ssh-agent) | 開発者 (`colmena apply`) | 緊急時 |
-| Secret 編集 | AWS credentials (KMS) | 開発者 | 時々 |
-| インフラ変更 | Developer IAM credentials | 開発者 | 稀 |
-
-最も頻繁な操作であるデプロイ時に AWS credentials が不要。EC2 は Cachix substituter から pre-built closure を pull し、sops-nix が instance profile で KMS 復号を行う。
+> セクション 5（`architecture.md`）の Credential Matrix を参照。
 
 ---
 

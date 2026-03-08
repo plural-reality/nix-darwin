@@ -6,4 +6,3 @@
 @[operations.md]
 @[self-deploy.md]
 @[multi-project.md]
-@[reference.md]

@@ -133,15 +133,23 @@ resource "aws_iam_user" "developer" {
 
 # Developer 権限: 初回ブートストラップ後のすべての操作を開発者が実行可能にする
 # ABAC (Attribute-Based Access Control): Project タグでスコープを制限
-resource "aws_iam_user_policy" "developer" {
-  for_each = toset(local.developers)
-  name     = "project-manage"
-  user     = aws_iam_user.developer[each.key].name
+#
+# 4 層防御:
+#   1. Allow: Describe (読み取り) は全リソース許可
+#   2. Allow: 変更操作は ResourceTag/Project = 自プロジェクト のみ
+#   3. Deny:  新規作成は RequestTag/Project = 自プロジェクト でないと拒否
+#   4. Deny:  Project タグの改竄・削除を明示的に拒否
+
+resource "aws_iam_policy" "developer" {
+  name        = "<project-name>-developer"
+  path        = "/developers/<project-name>/"
+  description = "Developer permissions with ABAC scoping to Project=<project-name>"
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      # --- Bootstrap 層: 開発者の追加・削除 ---
+
+      # ── Bootstrap 層: 開発者の追加・削除 ──────────────
       {
         Sid    = "ManageDeveloperUsers"
         Effect = "Allow"
@@ -159,70 +167,14 @@ resource "aws_iam_user_policy" "developer" {
           "iam:DeleteUserPolicy",
           "iam:GetUserPolicy",
           "iam:ListUserPolicies",
+          "iam:AttachUserPolicy",
+          "iam:DetachUserPolicy",
+          "iam:ListAttachedUserPolicies",
         ]
         Resource = "arn:aws:iam::<account-id>:user/developers/<project-name>/*"
       },
       {
-        Sid    = "ManageSOPSKeyPolicy"
-        Effect = "Allow"
-        Action = [
-          "kms:PutKeyPolicy",
-          "kms:GetKeyPolicy",
-        ]
-        Resource = aws_kms_key.sops.arn
-      },
-      # --- メイン層: インフラ管理 ---
-      {
-        Sid    = "ManageEC2"
-        Effect = "Allow"
-        Action = [
-          "ec2:RunInstances",
-          "ec2:TerminateInstances",
-          "ec2:DescribeInstances",
-          "ec2:DescribeImages",
-          "ec2:CreateTags",
-          "ec2:DeleteTags",
-          "ec2:DescribeTags",
-          # VPC / Subnet / SG / IGW / Route / EIP
-          "ec2:*Vpc*",
-          "ec2:*Subnet*",
-          "ec2:*SecurityGroup*",
-          "ec2:*InternetGateway*",
-          "ec2:*RouteTable*",
-          "ec2:*Route",
-          "ec2:*Address*",       # EIP
-          "ec2:*KeyPair*",
-          "ec2:*NetworkInterface*",
-          "ec2:DescribeAvailabilityZones",
-          "ec2:DescribeAccountAttributes",
-        ]
-        Resource = "*"
-        Condition = {
-          StringEquals = {
-            "aws:ResourceTag/Project" = "<project-name>"
-          }
-        }
-      },
-      {
-        Sid    = "EC2DescribeUntagged"
-        Effect = "Allow"
-        Action = [
-          "ec2:DescribeVpcs",
-          "ec2:DescribeSubnets",
-          "ec2:DescribeSecurityGroups",
-          "ec2:DescribeInternetGateways",
-          "ec2:DescribeRouteTables",
-          "ec2:DescribeAddresses",
-          "ec2:DescribeKeyPairs",
-          "ec2:DescribeImages",
-          "ec2:DescribeAvailabilityZones",
-          "ec2:DescribeAccountAttributes",
-          "ec2:DescribeNetworkInterfaces",
-        ]
-        Resource = "*"
-      },
-      {
-        Sid    = "ManageIAMRoles"
+        Sid    = "ManageProjectIAMRoles"
         Effect = "Allow"
         Action = [
           "iam:CreateRole",
@@ -250,10 +202,94 @@ resource "aws_iam_user_policy" "developer" {
         ]
       },
       {
-        Sid    = "ManageBackup"
+        Sid    = "ManageProjectIAMPolicies"
         Effect = "Allow"
         Action = [
-          "backup:*",
+          "iam:CreatePolicy",
+          "iam:DeletePolicy",
+          "iam:GetPolicy",
+          "iam:GetPolicyVersion",
+          "iam:ListPolicyVersions",
+        ]
+        Resource = "arn:aws:iam::<account-id>:policy/developers/<project-name>/*"
+      },
+
+      # ── KMS: SOPS 操作 + key policy 管理 ────────────
+      {
+        Sid    = "AllowKMSOnProjectKey"
+        Effect = "Allow"
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:DescribeKey",
+          "kms:GenerateDataKey*",
+          "kms:ReEncrypt*",
+          "kms:PutKeyPolicy",
+          "kms:GetKeyPolicy",
+        ]
+        Resource = aws_kms_key.sops.arn
+      },
+      {
+        Sid    = "DenyKMSOnOtherKeys"
+        Effect = "Deny"
+        Action = "kms:*"
+        Resource = "*"
+        Condition = {
+          StringNotEquals = {
+            "aws:ResourceTag/Project" = "<project-name>"
+          }
+          Null = {
+            "aws:ResourceTag/Project" = "false"
+          }
+        }
+      },
+
+      # ── 層 1: 読み取り (全リソース) ──────────────────
+      {
+        Sid    = "AllowDescribe"
+        Effect = "Allow"
+        Action = [
+          "ec2:Describe*",
+          "elasticloadbalancing:Describe*",
+          "cloudwatch:GetMetricData",
+          "cloudwatch:ListMetrics",
+          "backup:Describe*",
+          "backup:List*",
+          "backup:Get*",
+        ]
+        Resource = "*"
+      },
+
+      # ── 層 2a: 既存リソースの変更 (ResourceTag で制御) ──
+      {
+        Sid    = "AllowEC2MutationOnProject"
+        Effect = "Allow"
+        Action = [
+          "ec2:StartInstances",
+          "ec2:StopInstances",
+          "ec2:RebootInstances",
+          "ec2:TerminateInstances",
+          "ec2:ModifyInstanceAttribute",
+          "ec2:DeleteVpc",
+          "ec2:ModifyVpcAttribute",
+          "ec2:DeleteSubnet",
+          "ec2:ModifySubnetAttribute",
+          "ec2:DeleteSecurityGroup",
+          "ec2:AuthorizeSecurityGroupIngress",
+          "ec2:AuthorizeSecurityGroupEgress",
+          "ec2:RevokeSecurityGroupIngress",
+          "ec2:RevokeSecurityGroupEgress",
+          "ec2:DeleteInternetGateway",
+          "ec2:AttachInternetGateway",
+          "ec2:DetachInternetGateway",
+          "ec2:DeleteRouteTable",
+          "ec2:AssociateRouteTable",
+          "ec2:DisassociateRouteTable",
+          "ec2:ReleaseAddress",
+          "ec2:AssociateAddress",
+          "ec2:DisassociateAddress",
+          "ec2:DeleteKeyPair",
+          "ec2:*NetworkInterface*",
         ]
         Resource = "*"
         Condition = {
@@ -262,8 +298,227 @@ resource "aws_iam_user_policy" "developer" {
           }
         }
       },
+
+      # ── 層 2b: 新規リソースの作成 (RequestTag で制御) ──
+      # 新規リソースには ResourceTag がないため RequestTag を使う
+      {
+        Sid    = "AllowCreateNetworkResources"
+        Effect = "Allow"
+        Action = [
+          "ec2:CreateVpc",
+          "ec2:CreateSubnet",
+          "ec2:CreateSecurityGroup",
+          "ec2:CreateInternetGateway",
+          "ec2:CreateRouteTable",
+          "ec2:AllocateAddress",
+          "ec2:ImportKeyPair",
+          "ec2:CreateKeyPair",
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:RequestTag/Project" = "<project-name>"
+          }
+        }
+      },
+
+      # ── 層 2c: Route 操作 ──
+      # Route 操作は route-table リソースに対して ResourceTag 条件が使える
+      {
+        Sid    = "AllowRouteOperations"
+        Effect = "Allow"
+        Action = [
+          "ec2:CreateRoute",
+          "ec2:DeleteRoute",
+          "ec2:ReplaceRoute",
+        ]
+        Resource = "arn:aws:ec2:*:*:route-table/*"
+        Condition = {
+          StringEquals = {
+            "aws:ResourceTag/Project" = "<project-name>"
+          }
+        }
+      },
+
+      # ── 層 2d: タグ操作 ──
+      {
+        Sid    = "AllowCreateTagsOnOwnResources"
+        Effect = "Allow"
+        Action = "ec2:CreateTags"
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:ResourceTag/Project" = "<project-name>"
+          }
+          "StringEqualsIfExists" = {
+            "aws:RequestTag/Project" = "<project-name>"
+          }
+        }
+      },
+      # 新規作成時の CreateTags (RunInstances 等の tag-on-create)
+      {
+        Sid    = "AllowCreateTagsOnNewResources"
+        Effect = "Allow"
+        Action = "ec2:CreateTags"
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "ec2:CreateAction" = [
+              "RunInstances",
+              "CreateVpc",
+              "CreateSubnet",
+              "CreateSecurityGroup",
+              "CreateInternetGateway",
+              "CreateRouteTable",
+              "AllocateAddress",
+              "ImportKeyPair",
+              "CreateKeyPair",
+              "CreateVolume",
+            ]
+            "aws:RequestTag/Project" = "<project-name>"
+          }
+        }
+      },
+
+      # ── 層 2e: RunInstances (新規 + 既存リソース参照) ──
+      {
+        Sid    = "AllowRunInstancesNewResources"
+        Effect = "Allow"
+        Action = "ec2:RunInstances"
+        Resource = [
+          "arn:aws:ec2:*:*:instance/*",
+          "arn:aws:ec2:*:*:volume/*",
+          "arn:aws:ec2:*:*:network-interface/*",
+        ]
+        Condition = {
+          StringEquals = {
+            "aws:RequestTag/Project" = "<project-name>"
+          }
+        }
+      },
+      {
+        Sid    = "AllowRunInstancesExistingResources"
+        Effect = "Allow"
+        Action = "ec2:RunInstances"
+        Resource = [
+          "arn:aws:ec2:*:*:subnet/*",
+          "arn:aws:ec2:*:*:security-group/*",
+          "arn:aws:ec2:*:*:key-pair/*",
+          "arn:aws:ec2:*::image/*",
+        ]
+        Condition = {
+          StringEquals = {
+            "aws:ResourceTag/Project" = "<project-name>"
+          }
+        }
+      },
+      {
+        Sid    = "AllowRunInstancesNixOSAMI"
+        Effect = "Allow"
+        Action = "ec2:RunInstances"
+        Resource = "arn:aws:ec2:*::image/*"
+        Condition = {
+          StringEquals = {
+            "ec2:Owner" = "427812963091"
+          }
+        }
+      },
+
+      # ── Backup ───────────────────────────────────────
+      {
+        Sid    = "ManageBackup"
+        Effect = "Allow"
+        Action = "backup:*"
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:ResourceTag/Project" = "<project-name>"
+          }
+        }
+      },
+
+      # ── 層 3: 新規作成にタグ強制 ─────────────────────
+      # StringNotEquals は key absent 時に評価されないため、
+      # Null 条件で「タグ未指定」も明示的に拒否する。
+      {
+        Sid    = "DenyCreateWithWrongProjectTag"
+        Effect = "Deny"
+        Action = [
+          "ec2:RunInstances",
+          "ec2:CreateVolume",
+          "ec2:CreateVpc",
+          "ec2:CreateSubnet",
+          "ec2:CreateSecurityGroup",
+          "ec2:CreateInternetGateway",
+          "ec2:CreateRouteTable",
+          "ec2:AllocateAddress",
+          "ec2:ImportKeyPair",
+          "ec2:CreateKeyPair",
+        ]
+        Resource = "*"
+        Condition = {
+          StringNotEquals = {
+            "aws:RequestTag/Project" = "<project-name>"
+          }
+        }
+      },
+      {
+        Sid    = "DenyCreateWithoutProjectTag"
+        Effect = "Deny"
+        Action = [
+          "ec2:RunInstances",
+          "ec2:CreateVolume",
+          "ec2:CreateVpc",
+          "ec2:CreateSubnet",
+          "ec2:CreateSecurityGroup",
+          "ec2:CreateInternetGateway",
+          "ec2:CreateRouteTable",
+          "ec2:AllocateAddress",
+          "ec2:ImportKeyPair",
+          "ec2:CreateKeyPair",
+        ]
+        Resource = "*"
+        Condition = {
+          "Null" = {
+            "aws:RequestTag/Project" = "true"
+          }
+        }
+      },
+
+      # ── 層 4: Project タグの保護 ─────────────────────
+      {
+        Sid    = "DenyDeleteProjectTag"
+        Effect = "Deny"
+        Action = "ec2:DeleteTags"
+        Resource = "*"
+        Condition = {
+          "ForAnyValue:StringEquals" = {
+            "aws:TagKeys" = "Project"
+          }
+        }
+      },
+      {
+        Sid    = "DenyCreateTagsWrongProject"
+        Effect = "Deny"
+        Action = "ec2:CreateTags"
+        Resource = "*"
+        Condition = {
+          StringNotEquals = {
+            "aws:RequestTag/Project" = "<project-name>"
+          }
+          "ForAnyValue:StringEquals" = {
+            "aws:TagKeys" = "Project"
+          }
+        }
+      },
     ]
   })
+}
+
+resource "aws_iam_user_policy_attachment" "developer" {
+  for_each   = toset(local.developers)
+  user       = aws_iam_user.developer[each.key].name
+  policy_arn = aws_iam_policy.developer.arn
 }
 
 output "developer_usernames" {
