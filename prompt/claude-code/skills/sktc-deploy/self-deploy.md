@@ -238,7 +238,8 @@ nixos/
 ├── common.nix          # SSH, firewall, Cachix substituter, base packages
 ├── infrastructure.nix  # AMI, swap, EBS
 ├── application.nix     # DB, App, nginx, SOPS, ACME
-└── secrets.nix         # sops-nix シークレット宣言 (deploy 用を含む)
+├── secrets.nix         # sops-nix シークレット宣言 (deploy 用を含む)
+└── version.nix         # NixOS リビジョン配信 (/.well-known/version)
 ```
 
 #### `nixos/deploy.nix` — 完全な NixOS モジュール
@@ -419,6 +420,24 @@ let
       exit 1
     fi
 
+    # === 7. Revision 検証 ===
+    # version.nix が配信する /etc/nixos-version.json の configurationRevision と
+    # 現在の git HEAD が一致することを確認する。
+    # NixOS + colmena の構造上、ズレは「インフラ破損」レベルでしか起きないため、
+    # 失敗してもロールバックはせず警告のみ出力する。
+    DEPLOYED_REV=$(jq -r '.configurationRevision // "unknown"' /etc/nixos-version.json 2>/dev/null || echo "unknown")
+    EXPECTED_REV=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+    echo "Expected revision: $EXPECTED_REV"
+    echo "Deployed revision: $DEPLOYED_REV"
+    if [ "$DEPLOYED_REV" = "dirty" ] || [ "$DEPLOYED_REV" = "unknown" ]; then
+      echo "WARN: configurationRevision is '$DEPLOYED_REV' (tree was dirty or version.nix not loaded)"
+    elif [ "$DEPLOYED_REV" != "$EXPECTED_REV" ]; then
+      echo "WARN: Revision mismatch! Expected=$EXPECTED_REV, Got=$DEPLOYED_REV"
+      echo "WARN: This may indicate a flake eval issue. Investigate manually."
+    else
+      echo "OK: Revision verified."
+    fi
+
     echo "=== Deploy successful ==="
     echo "Smoke test passed. System is healthy."
     echo "Current system: $(readlink /run/current-system)"
@@ -531,6 +550,7 @@ in {
         git
         nix
         curl
+        jq           # revision 検証 (/etc/nixos-version.json の parse)
         coreutils
         systemd      # systemd-run
       ];
@@ -699,6 +719,7 @@ cachix_auth_token: "eyJhbGciOiJIUzI1NiJ9..."
         ./nixos/application.nix
         ./nixos/secrets.nix     # Self-Deploy 用シークレット宣言
         ./nixos/deploy.nix      # Self-Deploy モジュール
+        ./nixos/version.nix     # NixOS リビジョン配信 (/.well-known/version)
       ];
     in {
       colmenaHive = colmena.lib.makeHive {
@@ -719,6 +740,9 @@ cachix_auth_token: "eyJhbGciOiJIUzI1NiJ9..."
           imports = commonImports;
 
           networking.hostName = "<project>-prod";
+
+          # flake の git rev を version.nix が参照する configurationRevision に埋め込む
+          system.configurationRevision = self.rev or self.dirtyRev or null;
 
           <project>.secretsEnvironment = "prod";
           <project>.deploy = {
@@ -743,6 +767,8 @@ cachix_auth_token: "eyJhbGciOiJIUzI1NiJ9..."
           imports = commonImports;
 
           networking.hostName = "<project>-staging";
+
+          system.configurationRevision = self.rev or self.dirtyRev or null;
 
           <project>.secretsEnvironment = "staging";
           <project>.deploy = {
@@ -960,7 +986,10 @@ ssh <project>-<env> cat /run/deploy-webhook/hooks.json | jq '.[0].trigger-rule'
 - [ ] `common.nix` に Cachix substituter + trusted-public-keys を設定
 - [ ] `common.nix` の systemPackages に `colmena`, `git`, `curl` を確認
 - [ ] `flake.nix` に staging/prod ノードの `deploy.enable = true` + `refPattern` を定義
+- [ ] `flake.nix` に `system.configurationRevision = self.rev or self.dirtyRev or null` を設定
+- [ ] `version.nix` を `commonImports` に追加
 - [ ] nginx の virtualHost に `/.well-known/deploy` プロキシを確認 (deploy.nix が自動設定)
+- [ ] デプロイ後に `curl https://<domain>/.well-known/version` でリビジョンを確認
 - [ ] `nix run .#deploy` → `git push` で staging 自動デプロイを検証
 - [ ] `git tag v*` → `git push --tags` で production 自動デプロイを検証
 

@@ -352,6 +352,106 @@ in {
 }
 ```
 
+### `nixos/version.nix`（NixOS リビジョン配信）
+
+NixOS の `configurationRevision`（flake の git rev）を HTTP エンドポイントとして配信するモジュール。
+デプロイ後に「実際に何が動いているか」を外部から問い合わせ可能にする。
+
+```nix
+# nixos/version.nix
+#
+# NixOS Revision Endpoint
+#
+# 責務:
+#   1. /etc/nixos-version.json をビルド時に生成
+#   2. /.well-known/version で nginx 経由配信
+#
+# NixOS + colmena の構造上、configurationRevision が示すリビジョンと
+# 実際にメモリに載って動いているプロセスのリビジョンは実質的に等価:
+#   - Nix store は content-addressed → バイナリが変われば store path が変わる
+#   - store path が変われば ExecStart が変わる → systemd が restart する
+#   - configurationRevision = self.rev (flake.nix で設定)
+#
+# ズレが起きるのは「インフラ自体が壊れた」レベル (store corruption, OOM kill 等) のみ。
+
+{ config, pkgs, lib, ... }:
+
+let
+  versionJson = builtins.toJSON {
+    configurationRevision = config.system.configurationRevision or "dirty";
+    nixosVersion = config.system.nixos.version;
+    hostname = config.networking.hostName;
+  };
+
+  versionFile = pkgs.writeText "nixos-version.json" versionJson;
+in {
+  # === /etc/nixos-version.json (ビルド時に確定) ===
+  environment.etc."nixos-version.json".source = versionFile;
+
+  # === nginx: /.well-known/version ===
+  # application.nix の virtualHost に location を追加する形。
+  # deploy.nix の /.well-known/deploy と同じパターン。
+  services.nginx.virtualHosts."${config.networking.hostName}" = {
+    locations."/.well-known/version" = {
+      alias = "/etc/nixos-version.json";
+      extraConfig = ''
+        default_type application/json;
+        add_header Cache-Control "no-cache, no-store";
+        add_header X-Content-Type-Options nosniff;
+      '';
+    };
+  };
+}
+```
+
+#### 使用方法
+
+```bash
+# HTTP 経由で確認
+curl -s https://<domain>/.well-known/version | jq
+# → { "configurationRevision": "a1b2c3d...", "nixosVersion": "25.05...", "hostname": "<project>-prod" }
+
+# SSH 経由で直接確認 (nginx を経由しない)
+ssh <project>-<env> cat /etc/nixos-version.json | jq
+
+# /run/current-system と照合 (NixOS generation の真実)
+ssh <project>-<env> readlink /run/current-system
+```
+
+#### flake.nix への統合
+
+```nix
+# commonImports に version.nix を追加
+commonImports = [
+  sops-nix.nixosModules.sops
+  ./nixos/common.nix
+  ./nixos/infrastructure.nix
+  ./nixos/application.nix
+  ./nixos/secrets.nix
+  ./nixos/deploy.nix
+  ./nixos/version.nix    # ← 追加
+];
+```
+
+#### flake.nix の configurationRevision 設定
+
+`version.nix` が参照する `system.configurationRevision` は flake.nix のノード定義で設定する:
+
+```nix
+"<project>-prod" = { name, nodes, pkgs, ... }: {
+  # ... deployment, imports, etc.
+
+  # flake の git rev を configurationRevision に埋め込む
+  # self.rev: clean tree の場合のコミットハッシュ
+  # self.dirtyRev: 未コミット変更がある場合のハッシュ (末尾に -dirty)
+  # null: git 管理外 (通常発生しない)
+  system.configurationRevision = self.rev or self.dirtyRev or null;
+};
+```
+
+Self-Deploy の場合、EC2 上の `colmena apply-local` は checkout されたリポジトリの flake を評価するため、
+`self.rev` はその時点の git HEAD のコミットハッシュになる。
+
 ### メモリバジェット例（2GB RAM）
 
 | コンポーネント | 割り当て |

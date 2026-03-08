@@ -98,6 +98,14 @@ ssh <project>-<env> journalctl -u mysql -f
 
 # === サービス状態確認 ===
 ssh <project>-<env> systemctl status <project>
+
+# === デプロイされたリビジョン確認 ===
+# HTTP 経由 (外部から)
+curl -s https://<domain>/.well-known/version | jq
+# SSH 経由 (直接)
+ssh <project>-<env> cat /etc/nixos-version.json | jq
+# NixOS generation (store path)
+ssh <project>-<env> readlink /run/current-system
 ```
 
 ---
