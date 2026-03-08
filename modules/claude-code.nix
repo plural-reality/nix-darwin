@@ -64,19 +64,11 @@ in
             "WebFetch"
           ];
         };
-        # Global MCP servers (CLI uses npx from PATH, so relative command is fine)
-        mcpServers = {
-          XcodeBuildMCP = {
-            command = "npx";
-            args = [
-              "-y"
-              "xcodebuildmcp@latest"
-              "mcp"
-            ];
-            env = xcodeBuildMcpEnv;
-          };
-        };
       };
+
+      # MCP servers: ~/.claude.json is writable by Claude Code at runtime
+      # (startup counts, tips history, caches, etc.) so we cannot manage it
+      # as a read-only symlink. Instead, merge mcpServers via activation script.
 
       # Xcode Agent MCP config (absolute Nix store paths required)
       # Xcode Agent ignores ~/.claude.json and ~/.claude/settings.json.
@@ -129,6 +121,28 @@ in
   # so both CLI and Xcode Agent share the same commands/skills.
   # Xcode Agent ignores ~/.claude/commands/ and ~/.claude/skills/,
   # but reads from its own config dir.
+  home.activation.claudeMcpServers = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    # Merge Nix-managed mcpServers into ~/.claude.json without clobbering
+    # runtime data (startup counts, tips history, caches, etc.)
+    CLAUDE_JSON="$HOME/.claude.json"
+    MCP_FRAGMENT='${builtins.toJSON {
+      mcpServers = {
+        XcodeBuildMCP = {
+          command = "npx";
+          args = [ "-y" "xcodebuildmcp@latest" "mcp" ];
+          env = xcodeBuildMcpEnv;
+        };
+      };
+    }}'
+
+    if [ -f "$CLAUDE_JSON" ]; then
+      ${pkgs.jq}/bin/jq -s '.[0] * .[1]' "$CLAUDE_JSON" <(echo "$MCP_FRAGMENT") \
+        > "$CLAUDE_JSON.tmp" && mv "$CLAUDE_JSON.tmp" "$CLAUDE_JSON"
+    else
+      echo "$MCP_FRAGMENT" > "$CLAUDE_JSON"
+    fi
+  '';
+
   home.activation.xcodeAgentSymlinks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     XCODE_DIR="$HOME/${xcodeAgentConfigDir}"
     mkdir -p "$XCODE_DIR"
