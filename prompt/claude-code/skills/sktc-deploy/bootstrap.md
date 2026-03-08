@@ -40,7 +40,7 @@ git commit -m "Add bootstrap terraform configuration"
 
 ### Phase 1: KMS Key のみ作成
 
-SOPS が依存する KMS key を先に作成する。この段階では SOPS は使えないため、AWS admin credentials を直接使う。
+SOPS が依存する KMS key を先に作成する。この段階では SOPS は使えないため、IAM/KMS 全権限を持つ AWS credentials を直接使う（この操作のみ。以後は Developer credentials で完結する）。
 
 ```bash
 cd infra/tfc-bootstrap

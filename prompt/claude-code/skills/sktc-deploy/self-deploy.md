@@ -873,7 +873,7 @@ secrets/
 | Production deploy (自動) | なし（webhook + Cachix pull） | EC2 (webhook → apply-local) | 毎タグ push |
 | フォールバックデプロイ | SSH key (ssh-agent) | 開発者 (`colmena apply`) | 緊急時 |
 | Secret 編集 | AWS credentials (KMS) | 開発者 | 時々 |
-| インフラ変更 | AWS credentials (admin) | 開発者 | 稀 |
+| インフラ変更 | Developer IAM credentials | 開発者 | 稀 |
 
 最も頻繁な操作であるデプロイ時に AWS credentials が不要。EC2 は Cachix substituter から pre-built closure を pull し、sops-nix が instance profile で KMS 復号を行う。
 

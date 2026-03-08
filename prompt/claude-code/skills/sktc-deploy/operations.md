@@ -50,13 +50,13 @@ Developer Mac
 │  Secret 変更:                                                 │
 │    sops edit → git commit → nix run .#deploy                 │
 │                                                              │
-│  インフラ変更:                                                │
+│  インフラ変更 (既存の開発者なら誰でも実行可能):                │
 │    *.tf 編集 → sops exec-env ... -- terraform apply          │
 │    → JSON を git commit → nix run .#deploy                   │
 │                                                              │
-│  Bootstrap 変更 (稀):                                         │
+│  開発者の追加・削除 (既存の開発者なら誰でも実行可能):          │
 │    locals.tf 編集 → sops exec-env ... -- terraform apply     │
-│    (新しい IAM user/policy 追加、KMS policy 変更)             │
+│    → 新メンバーの Access Key を作成して渡す                   │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -84,7 +84,7 @@ cd infra/terraform
 sops exec-env ../../secrets/infra.yaml -- terraform plan   # 確認
 sops exec-env ../../secrets/infra.yaml -- terraform apply  # 適用
 
-# === Bootstrap 変更 (Developer 追加等) ===
+# === 開発者の追加・削除 (既存の開発者なら誰でも実行可能) ===
 cd infra/tfc-bootstrap
 sops exec-env ../../secrets/infra.yaml -- terraform apply
 
@@ -104,9 +104,11 @@ ssh <project>-<env> systemctl status <project>
 
 ## 11. 開発者オンボーディング
 
-### 新しい開発者を追加する（Bootstrap Operator が実行）
+### 新しい開発者を追加する（既存の開発者なら誰でも実行可能）
 
-全て宣言的。git commit のみで完結する。
+全て宣言的。git commit + `terraform apply` で完結する。
+既存の開発者は bootstrap 層の IAM / KMS 管理権限を持つため、
+初回ブートストラップ後は特別な権限は不要。
 
 ```bash
 # 1. locals.tf に開発者を追加
@@ -120,10 +122,19 @@ git commit -m "Add new developer: new-developer"
 git push
 
 # 3. Bootstrap apply (IAM user が自動作成される)
+# 既存の開発者の AWS credentials で実行可能
 sops exec-env ../../secrets/infra.yaml -- terraform apply
 
-# 4. 新メンバーに通知する内容:
+# 4. 新メンバーの初回 Access Key を作成して渡す
+aws iam create-access-key \
+  --user-name new-developer \
+  --output table
+# → AccessKeyId と SecretAccessKey を安全な方法で新メンバーに伝達
+#   (対面、暗号化メッセージ等。平文メール/Slack は避ける)
+
+# 5. 新メンバーに通知する内容:
 #   - IAM username
+#   - AccessKeyId / SecretAccessKey
 #   - リポジトリ URL
 #   - 以下のセットアップ手順
 ```
@@ -135,13 +146,7 @@ sops exec-env ../../secrets/infra.yaml -- terraform apply
 git clone <repo-url>
 cd <project>
 
-# 2. AWS access key を作成 (自分の IAM user で)
-#    AWS Console に admin にログインしてもらい、IAM User の Access Key を作成
-#    または:
-aws iam create-access-key --user-name <your-username>
-# → AccessKeyId と SecretAccessKey を取得
-
-# 3. AWS CLI を設定
+# 2. 既存メンバーから受け取った Access Key で AWS CLI を設定
 aws configure
 # AWS Access Key ID: <上で取得した値>
 # AWS Secret Access Key: <上で取得した値>

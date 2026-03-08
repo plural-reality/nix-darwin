@@ -131,6 +131,141 @@ resource "aws_iam_user" "developer" {
 # 開発者が自分で aws iam create-access-key を実行する
 # これにより、secret access key が Terraform state に保存されない
 
+# Developer 権限: 初回ブートストラップ後のすべての操作を開発者が実行可能にする
+# ABAC (Attribute-Based Access Control): Project タグでスコープを制限
+resource "aws_iam_user_policy" "developer" {
+  for_each = toset(local.developers)
+  name     = "project-manage"
+  user     = aws_iam_user.developer[each.key].name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      # --- Bootstrap 層: 開発者の追加・削除 ---
+      {
+        Sid    = "ManageDeveloperUsers"
+        Effect = "Allow"
+        Action = [
+          "iam:CreateUser",
+          "iam:DeleteUser",
+          "iam:GetUser",
+          "iam:TagUser",
+          "iam:UntagUser",
+          "iam:ListUsers",
+          "iam:CreateAccessKey",
+          "iam:DeleteAccessKey",
+          "iam:ListAccessKeys",
+          "iam:PutUserPolicy",
+          "iam:DeleteUserPolicy",
+          "iam:GetUserPolicy",
+          "iam:ListUserPolicies",
+        ]
+        Resource = "arn:aws:iam::<account-id>:user/developers/<project-name>/*"
+      },
+      {
+        Sid    = "ManageSOPSKeyPolicy"
+        Effect = "Allow"
+        Action = [
+          "kms:PutKeyPolicy",
+          "kms:GetKeyPolicy",
+        ]
+        Resource = aws_kms_key.sops.arn
+      },
+      # --- メイン層: インフラ管理 ---
+      {
+        Sid    = "ManageEC2"
+        Effect = "Allow"
+        Action = [
+          "ec2:RunInstances",
+          "ec2:TerminateInstances",
+          "ec2:DescribeInstances",
+          "ec2:DescribeImages",
+          "ec2:CreateTags",
+          "ec2:DeleteTags",
+          "ec2:DescribeTags",
+          # VPC / Subnet / SG / IGW / Route / EIP
+          "ec2:*Vpc*",
+          "ec2:*Subnet*",
+          "ec2:*SecurityGroup*",
+          "ec2:*InternetGateway*",
+          "ec2:*RouteTable*",
+          "ec2:*Route",
+          "ec2:*Address*",       # EIP
+          "ec2:*KeyPair*",
+          "ec2:*NetworkInterface*",
+          "ec2:DescribeAvailabilityZones",
+          "ec2:DescribeAccountAttributes",
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:ResourceTag/Project" = "<project-name>"
+          }
+        }
+      },
+      {
+        Sid    = "EC2DescribeUntagged"
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeVpcs",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeInternetGateways",
+          "ec2:DescribeRouteTables",
+          "ec2:DescribeAddresses",
+          "ec2:DescribeKeyPairs",
+          "ec2:DescribeImages",
+          "ec2:DescribeAvailabilityZones",
+          "ec2:DescribeAccountAttributes",
+          "ec2:DescribeNetworkInterfaces",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "ManageIAMRoles"
+        Effect = "Allow"
+        Action = [
+          "iam:CreateRole",
+          "iam:DeleteRole",
+          "iam:GetRole",
+          "iam:TagRole",
+          "iam:PassRole",
+          "iam:PutRolePolicy",
+          "iam:DeleteRolePolicy",
+          "iam:GetRolePolicy",
+          "iam:AttachRolePolicy",
+          "iam:DetachRolePolicy",
+          "iam:ListRolePolicies",
+          "iam:ListAttachedRolePolicies",
+          "iam:CreateInstanceProfile",
+          "iam:DeleteInstanceProfile",
+          "iam:GetInstanceProfile",
+          "iam:AddRoleToInstanceProfile",
+          "iam:RemoveRoleFromInstanceProfile",
+          "iam:ListInstanceProfilesForRole",
+        ]
+        Resource = [
+          "arn:aws:iam::<account-id>:role/<project-name>-*",
+          "arn:aws:iam::<account-id>:instance-profile/<project-name>-*",
+        ]
+      },
+      {
+        Sid    = "ManageBackup"
+        Effect = "Allow"
+        Action = [
+          "backup:*",
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:ResourceTag/Project" = "<project-name>"
+          }
+        }
+      },
+    ]
+  })
+}
+
 output "developer_usernames" {
   value       = [for user in aws_iam_user.developer : user.name]
   description = "Created IAM usernames"

@@ -260,7 +260,7 @@ resource "aws_iam_user_policy_attachment" "project_scope" {
 
 | 限界 | リスク | 緩和策 |
 |------|--------|--------|
-| IAM admin 権限があればポリシーを変更可能 | 開発者が自分の IAM policy を変更して制約を回避 | 開発者に IAM 変更権限を与えない。IAM は bootstrap operator のみ。 |
+| IAM 権限があればポリシーを変更可能 | 開発者が自分の IAM policy を変更して制約を回避 | Developer の IAM 管理権限を `/developers/<project>/*` パスに限定。自分自身の policy は変更できない（自分の user は別パスに存在するため）。信頼レベルが低い場合は SCP で制御。 |
 | 全 AWS サービスがタグ条件に対応していない | 将来サービス追加時にタグ制御が効かない | サービス追加時に ABAC 対応を確認。未対応なら別ポリシーで制御。 |
 | VPC Peering / Transit Gateway | VPC 間通信が設定されると論理分離が崩壊 | VPC Peering を Deny する SCP を適用。 |
 | 最終的な分離は AWS アカウント分離 | タグベースは「信頼できるチーム」前提の論理分離 | プロジェクト間の信頼レベルが低い場合は AWS Organizations でアカウント分離を推奨。 |
