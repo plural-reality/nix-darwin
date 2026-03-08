@@ -1,4 +1,4 @@
-# Managed dotfiles: Claude Code, Gemini, Cursor
+# Managed dotfiles: Claude Code, Gemini, Cursor, Codex skills
 # Includes Xcode 26.3 Claude Agent MCP bridge for Reliable OMI / iOS BLE dev
 { pkgs, lib, ... }:
 let
@@ -101,16 +101,25 @@ in
         skillNames = builtins.filter (name: entries.${name} == "directory") (
           builtins.attrNames entries
         );
+        expandedSkillSources = builtins.listToAttrs (
+          map (name: {
+            inherit name;
+            value = expandTemplatesDir {
+              templateScope = ../prompt;
+              src = skillsDir + "/${name}";
+            };
+          }) skillNames
+        );
+        mkSkillAttrs =
+          baseDir:
+          builtins.listToAttrs (
+            map (name: {
+              name = "${baseDir}/${name}";
+              value.source = expandedSkillSources.${name};
+            }) skillNames
+          );
       in
-      builtins.listToAttrs (
-        map (name: {
-          name = ".claude/skills/${name}";
-          value.source = expandTemplatesDir {
-            templateScope = ../prompt;
-            src = skillsDir + "/${name}";
-          };
-        }) skillNames
-      )
+      (mkSkillAttrs ".claude/skills") // (mkSkillAttrs ".codex/skills")
     );
 
   # Symlink ~/.claude/{commands,skills} → Xcode Agent config dir
