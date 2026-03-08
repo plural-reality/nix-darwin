@@ -104,6 +104,15 @@ in
     };
   };
 
+  # VS Code: Nix-managed wrapper to prevent Cursor from hijacking `code`
+  home.file.".local/bin/code" = {
+    executable = true;
+    text = ''
+      #!/bin/sh
+      exec "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" "$@"
+    '';
+  };
+
   # Environment variables
   home.sessionVariables = {
     MANPATH = ":/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/share/man";
