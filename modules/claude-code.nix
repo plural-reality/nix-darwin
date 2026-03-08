@@ -41,12 +41,38 @@ let
     }) sharedSkillNames
   );
 
+  codexSkillSources = builtins.listToAttrs (
+    map (name: {
+      inherit name;
+      value = pkgs.runCommand "codex-skill-${name}" { } ''
+        mkdir -p "$out"
+        cp -R ${expandedSkillSources.${name}}/. "$out/"
+
+        if [ -f "$out/SKILL.md" ]; then
+          first_line="$(${pkgs.coreutils}/bin/head -n 1 "$out/SKILL.md" || true)"
+          if [ "$first_line" != "---" ]; then
+            tmp="$out/SKILL.md.with-frontmatter"
+            {
+              echo "---"
+              echo "name: ${name}"
+              echo "description: Codex-compatible projection of the ${name} Claude skill."
+              echo "---"
+              echo
+              cat "$out/SKILL.md"
+            } > "$tmp"
+            mv "$tmp" "$out/SKILL.md"
+          fi
+        fi
+      '';
+    }) sharedSkillNames
+  );
+
   mkSkillAttrs =
-    baseDir:
+    baseDir: skillSources:
     builtins.listToAttrs (
       map (name: {
         name = "${baseDir}/${name}";
-        value.source = expandedSkillSources.${name};
+        value.source = skillSources.${name};
       }) sharedSkillNames
     );
 
@@ -62,19 +88,23 @@ let
       instructionPath,
       instructionTemplate,
       skillsPath,
+      skillsSourceMap,
     }:
-    (mkInstructionAttr instructionPath instructionTemplate) // (mkSkillAttrs skillsPath);
+    (mkInstructionAttr instructionPath instructionTemplate)
+    // (mkSkillAttrs skillsPath skillsSourceMap);
 
   agentProfiles = [
     {
       instructionPath = ".claude/CLAUDE.md";
       instructionTemplate = ../prompt/claude-code/claude.md;
       skillsPath = ".claude/skills";
+      skillsSourceMap = expandedSkillSources;
     }
     {
       instructionPath = ".codex/AGENTS.md";
       instructionTemplate = ../prompt/codex/agent.md;
       skillsPath = ".codex/skills";
+      skillsSourceMap = codexSkillSources;
     }
   ];
 
