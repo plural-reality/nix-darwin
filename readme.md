@@ -196,7 +196,7 @@ nix run .#test-setup-downstream
 ├── flake.nix                     — mkSystem 定義, perSystem (Haskell/screenpipe), outputs
 ├── modules/
 │   ├── base.nix                  — programs (git, zsh, direnv, gh), env, PATH, macOS defaults
-│   ├── claude-code.nix           — home.file: CLAUDE.md, GEMINI.md, settings.json, .cursorrules, skills (Claude/Codex)
+│   ├── claude-code.nix           — home.file: CLAUDE.md, AGENTS.md, GEMINI.md, settings.json, .cursorrules, skills (Claude/Codex)
 │   └── shared-scripts.nix        — 11スクリプト定義 + home.packages
 ├── scripts/                      — Haskell/Python/Shell ソースコード
 ├── lib/

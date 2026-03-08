@@ -1,4 +1,4 @@
-# Managed dotfiles: Claude Code, Gemini, Cursor, Codex skills
+# Managed dotfiles: Claude Code, Codex, Gemini, Cursor
 # Includes Xcode 26.3 Claude Agent MCP bridge for Reliable OMI / iOS BLE dev
 { pkgs, lib, ... }:
 let
@@ -23,104 +23,126 @@ let
 
   # Xcode Agent runs in a sandboxed environment without PATH inheritance.
   # All commands must use absolute Nix store paths.
-  xcodeAgentConfigDir =
-    "Library/Developer/Xcode/CodingAssistant/ClaudeAgentConfig";
+  xcodeAgentConfigDir = "Library/Developer/Xcode/CodingAssistant/ClaudeAgentConfig";
+
+  # Shared skill source: Claude Code skillpack is wired to both Claude and Codex.
+  sharedSkillsDir = ../prompt/claude-code/skills;
+  sharedSkillEntries = builtins.readDir sharedSkillsDir;
+  sharedSkillNames = builtins.filter (name: sharedSkillEntries.${name} == "directory") (
+    builtins.attrNames sharedSkillEntries
+  );
+  expandedSkillSources = builtins.listToAttrs (
+    map (name: {
+      inherit name;
+      value = expandTemplatesDir {
+        templateScope = ../prompt;
+        src = sharedSkillsDir + "/${name}";
+      };
+    }) sharedSkillNames
+  );
+
+  mkSkillAttrs =
+    baseDir:
+    builtins.listToAttrs (
+      map (name: {
+        name = "${baseDir}/${name}";
+        value.source = expandedSkillSources.${name};
+      }) sharedSkillNames
+    );
+
+  mkInstructionAttr = targetPath: templatePath: {
+    "${targetPath}".text = expandTemplate {
+      templateScope = ../prompt;
+      template = templatePath;
+    };
+  };
+
+  mkAgentAttrs =
+    {
+      instructionPath,
+      instructionTemplate,
+      skillsPath,
+    }:
+    (mkInstructionAttr instructionPath instructionTemplate) // (mkSkillAttrs skillsPath);
+
+  agentProfiles = [
+    {
+      instructionPath = ".claude/CLAUDE.md";
+      instructionTemplate = ../prompt/claude-code/claude.md;
+      skillsPath = ".claude/skills";
+    }
+    {
+      instructionPath = ".codex/AGENTS.md";
+      instructionTemplate = ../prompt/codex/agent.md;
+      skillsPath = ".codex/skills";
+    }
+  ];
+
+  agentFiles = builtins.foldl' (acc: profile: acc // (mkAgentAttrs profile)) { } agentProfiles;
 in
 {
   home.packages = [
     pkgs.llm-agents.claude-code # Claude Code CLI
   ];
 
-  home.file =
-    {
-      # Gemini
-      ".gemini/GEMINI.md".text = expandTemplate {
-        templateScope = ../prompt;
-        template = ../prompt/antigravity.md;
-      };
+  home.file = {
+    # Gemini
+    ".gemini/GEMINI.md".text = expandTemplate {
+      templateScope = ../prompt;
+      template = ../prompt/antigravity.md;
+    };
 
-      # Claude Code
-      ".claude/CLAUDE.md".text = expandTemplate {
-        templateScope = ../prompt;
-        template = ../prompt/claude-code/claude.md;
+    ".claude/settings.json".text = builtins.toJSON {
+      env = {
+        CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1";
       };
-      ".claude/settings.json".text = builtins.toJSON {
-        env = {
-          CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1";
-        };
-        teammateMode = "tmux";
-        permissions = {
-          allow = [
-            "Bash(grep:*)"
-            "Bash(find:*)"
-            "Bash(cat:*)"
-            "Bash(ls:*)"
-            "Bash(head:*)"
-            "Bash(tail:*)"
-            "Bash(wc:*)"
-            "Bash(sed:*)"
-            "Bash(rg:*)"
-            "Bash(fd:*)"
-            "Bash(tree:*)"
-            "Bash(echo:*)"
-            "Bash(git log*)"
-            "Bash(git diff*)"
-            "Bash(git status*)"
-            "Bash(git show*)"
-            "Read"
-            "Write"
-            "WebSearch"
-            "WebFetch"
-          ];
-        };
+      teammateMode = "tmux";
+      permissions = {
+        allow = [
+          "Bash(grep:*)"
+          "Bash(find:*)"
+          "Bash(cat:*)"
+          "Bash(ls:*)"
+          "Bash(head:*)"
+          "Bash(tail:*)"
+          "Bash(wc:*)"
+          "Bash(sed:*)"
+          "Bash(rg:*)"
+          "Bash(fd:*)"
+          "Bash(tree:*)"
+          "Bash(echo:*)"
+          "Bash(git log*)"
+          "Bash(git diff*)"
+          "Bash(git status*)"
+          "Bash(git show*)"
+          "Read"
+          "Write"
+          "WebSearch"
+          "WebFetch"
+        ];
       };
+    };
 
-      # MCP servers: ~/.claude.json is writable by Claude Code at runtime
-      # (startup counts, tips history, caches, etc.) so we cannot manage it
-      # as a read-only symlink. Instead, merge mcpServers via activation script.
+    # MCP servers: ~/.claude.json is writable by Claude Code at runtime
+    # (startup counts, tips history, caches, etc.) so we cannot manage it
+    # as a read-only symlink. Instead, merge mcpServers via activation script.
 
-      # Xcode Agent MCP config (absolute Nix store paths required)
-      # Xcode Agent ignores ~/.claude.json and ~/.claude/settings.json.
-      # ~/.claude/CLAUDE.md IS read by Xcode Agent — no duplication needed.
-      "${xcodeAgentConfigDir}/.claude".text = builtins.toJSON {
-        mcpServers = {
-          XcodeBuildMCP = xcodeBuildMcpServer;
-        };
+    # Xcode Agent MCP config (absolute Nix store paths required)
+    # Xcode Agent ignores ~/.claude.json and ~/.claude/settings.json.
+    # ~/.claude/CLAUDE.md IS read by Xcode Agent — no duplication needed.
+    "${xcodeAgentConfigDir}/.claude".text = builtins.toJSON {
+      mcpServers = {
+        XcodeBuildMCP = xcodeBuildMcpServer;
       };
+    };
 
-      # Cursor
-      ".cursorrules".text = expandTemplate {
-        templateScope = ../prompt;
-        template = ../prompt/cursor.md;
-      };
-    }
-    // (
-      let
-        skillsDir = ../prompt/claude-code/skills;
-        entries = builtins.readDir skillsDir;
-        skillNames = builtins.filter (name: entries.${name} == "directory") (
-          builtins.attrNames entries
-        );
-        expandedSkillSources = builtins.listToAttrs (
-          map (name: {
-            inherit name;
-            value = expandTemplatesDir {
-              templateScope = ../prompt;
-              src = skillsDir + "/${name}";
-            };
-          }) skillNames
-        );
-        mkSkillAttrs =
-          baseDir:
-          builtins.listToAttrs (
-            map (name: {
-              name = "${baseDir}/${name}";
-              value.source = expandedSkillSources.${name};
-            }) skillNames
-          );
-      in
-      (mkSkillAttrs ".claude/skills") // (mkSkillAttrs ".codex/skills")
-    );
+    # Cursor
+    ".cursorrules".text = expandTemplate {
+      templateScope = ../prompt;
+      template = ../prompt/cursor.md;
+    };
+  }
+  // agentFiles;
 
   # Symlink ~/.claude/{commands,skills} → Xcode Agent config dir
   # so both CLI and Xcode Agent share the same commands/skills.
@@ -130,9 +152,11 @@ in
     # Idempotent: replaces .mcpServers entirely (not deep-merge) so removals
     # from Nix propagate correctly. All other keys are preserved.
     CLAUDE_JSON="$HOME/.claude.json"
-    MCP='${builtins.toJSON {
-      XcodeBuildMCP = xcodeBuildMcpServer;
-    }}'
+    MCP='${
+      builtins.toJSON {
+        XcodeBuildMCP = xcodeBuildMcpServer;
+      }
+    }'
 
     if [ -f "$CLAUDE_JSON" ]; then
       ${pkgs.jq}/bin/jq --argjson mcp "$MCP" '.mcpServers = $mcp' "$CLAUDE_JSON" \
