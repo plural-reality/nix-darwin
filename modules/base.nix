@@ -19,6 +19,7 @@ in
 
     # AI tooling
     llm-agents.codex
+    llm-agents.openclaw
 
     # Development
     tmux
