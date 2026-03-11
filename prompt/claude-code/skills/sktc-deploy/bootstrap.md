@@ -124,10 +124,6 @@ git commit -m "Add terraform output for colmena"
 ```bash
 cd ../..  # リポジトリルートへ
 
-# SSH 鍵を ssh-agent にロード
-nix run .#ssh-load
-# または: sops exec-file secrets/ssh/operator.yaml 'ssh-add {}'
-
 # SSH config を設定
 cat >> ~/.ssh/config << 'EOF'
 Host <project>-<env>
@@ -142,7 +138,8 @@ EOF
 
 mkdir -p ~/.ssh/sockets
 
-# 初回デプロイ (build → cachix push → colmena apply)
+# 初回デプロイ (SSH 鍵は自動でロードされる)
+# build → cachix push → colmena apply
 # Cachix auth token は deploy スクリプト内で SOPS から自動抽出される
 # (CACHIX_AUTH_TOKEN 環境変数。グローバル設定ファイルは変更しない)
 nix run .#deploy
@@ -171,7 +168,7 @@ nix run .#deploy
 - [ ] `common.nix` に Cachix substituter を設定
 - [ ] NixOS authorizedKeys に operator 公開鍵を設定
 - [ ] SSH config を設定（多重化 + 圧縮）
-- [ ] `nix run .#deploy` で初回デプロイ（build → cachix push → colmena apply）
+- [ ] `nix run .#deploy` で初回デプロイ（SSH 鍵は自動ロード）
 - [ ] HTTPS アクセスを確認
 - [ ] `.gitignore` に `*.tfstate*` を追加
 

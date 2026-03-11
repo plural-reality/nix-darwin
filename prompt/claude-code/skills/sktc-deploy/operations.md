@@ -65,11 +65,11 @@ Developer Mac
 ```bash
 # === 方法 1: ローカルデプロイ (デフォルト: Cachix 経由) ===
 nix run .#deploy
-# → build → cachix push → colmena apply (EC2 は Cachix から pull)
+# → operator key を自動ロード → build → cachix push → colmena apply
 
 # === 方法 1: フォールバック (SSH 直接転送) ===
 nix run .#deploy-ssh
-# → colmena apply (SSH nix-copy-closure で直接転送)
+# → operator key を自動ロード → colmena apply (SSH nix-copy-closure で直接転送)
 
 # === 方法 2: Self-Deploy (自動) ===
 nix run .#deploy    # まず Cachix に push
@@ -89,6 +89,9 @@ cd infra/tfc-bootstrap
 sops exec-env ../../secrets/infra.yaml -- terraform apply
 
 # === サーバー接続 ===
+# deploy / deploy-ssh の前に SSH 鍵のロードは不要
+# 手動 SSH 接続だけ必要な場合のみ:
+nix run .#ssh-load   # operator key を agent にロード
 ssh <project>-<env>
 
 # === ログ確認 ===
@@ -164,11 +167,7 @@ aws configure
 aws sts get-caller-identity
 sops -d secrets/<project>-prod.yaml > /dev/null && echo "OK: KMS access confirmed"
 
-# 4. SSH 鍵を ssh-agent にロード (SOPS で復号 → 一時ファイル → ssh-add → 自動削除)
-nix run .#ssh-load
-# または手動: sops exec-file secrets/ssh/operator.yaml 'ssh-add {}'
-
-# 5. SSH config を設定
+# 4. SSH config を設定
 # (Cachix auth token は deploy スクリプト内で SOPS から自動抽出される。手動設定不要)
 # IdentityFile は不要 — ssh-agent が鍵を保持する
 cat >> ~/.ssh/config << 'EOF'
@@ -183,13 +182,14 @@ EOF
 
 mkdir -p ~/.ssh/sockets
 
-# 6. 動作確認
+# 5. 動作確認 (SSH 鍵は deploy が必要時に自動ロード)
 nix run .#deploy
 echo "Setup complete!"
 ```
 
-> **注意**: SSH 秘密鍵はディスクに書き出さない。`nix run .#ssh-load` で ssh-agent にロードし、
-> セッション中のみ使用する。KMS Decrypt 権限がある限り、いつでもロード可能。
+> **注意**: SSH 秘密鍵はディスクに書き出さない。`nix run .#deploy` / `nix run .#deploy-ssh` は
+> 必要時に operator key を自動ロードする。手動 SSH 接続だけ必要な場合は `nix run .#ssh-load`
+> を使う。KMS Decrypt 権限がある限り、いつでもロード可能。
 
 ### 開発者を削除する
 
@@ -289,7 +289,7 @@ Host <project>-<env>
   Compression yes
 ```
 
-### 追加: SSH 鍵ロード用 Flake App
+### 追加: SSH 鍵ロードユーティリティ
 
 ```nix
 # flake.nix に追加
@@ -349,15 +349,24 @@ git filter-branch --force --index-filter \
 
 **`colmena apply` が SSH 接続に失敗する**
 
-```bash
-# ssh-agent に operator key がロードされているか確認
-ssh-add -l
-# → "operator" のエントリが表示されること
-# なければロード:
-nix run .#ssh-load
-# または: sops exec-file secrets/ssh/operator.yaml 'ssh-add {}'
+`deploy` / `deploy-ssh` は operator key を自動ロードするため、
+原因は `ssh-agent` 未起動か SOPS/KMS での復号失敗であることが多い。
 
-# SSH 接続テスト
+```bash
+# ssh-agent が起動しているか確認
+ssh-add -l
+# → "Could not open a connection to your authentication agent" なら:
+eval "$(ssh-agent -s)"
+
+# operator key を SOPS で復号できるか確認
+sops exec-file secrets/ssh/operator.yaml \
+  'ssh-keygen -y -f {} >/dev/null && echo "OK: operator key decryptable"'
+
+# deploy は再実行で鍵を自動ロードする
+nix run .#deploy
+
+# 手動で切り分けたい場合のみ:
+nix run .#ssh-load
 ssh root@<EC2 IP>
 
 # Security Group で port 22 が開いているか確認

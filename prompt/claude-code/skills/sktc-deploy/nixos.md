@@ -61,6 +61,13 @@
         in "${pkgs.writeShellScript "deploy" ''
           set -euo pipefail
 
+          if ! ${pkgs.openssh}/bin/ssh-add -l >/dev/null 2>&1; then
+            echo "==> No SSH keys in agent, loading operator key..."
+            ${pkgs.sops}/bin/sops exec-file \
+              "secrets/ssh/operator.yaml" \
+              '${pkgs.openssh}/bin/ssh-add {}'
+          fi
+
           echo "=== Building NixOS closure ==="
           RESULT=$(nix build .#colmenaHive.nodes.<project>-<env>.config.system.build.toplevel --print-out-paths --no-link)
 
@@ -81,10 +88,32 @@
           pkgs = nixpkgs.legacyPackages.aarch64-darwin;
         in "${pkgs.writeShellScript "deploy-ssh" ''
           set -euo pipefail
+
+          if ! ${pkgs.openssh}/bin/ssh-add -l >/dev/null 2>&1; then
+            echo "==> No SSH keys in agent, loading operator key..."
+            ${pkgs.sops}/bin/sops exec-file \
+              "secrets/ssh/operator.yaml" \
+              '${pkgs.openssh}/bin/ssh-add {}'
+          fi
+
           echo "Deploying <project-name> via SSH (fallback)..."
           time ${colmena.packages.aarch64-darwin.colmena}/bin/colmena apply \
             --impure --on <project>-<env> "$@"
         ''}";
+      };
+
+      # 手動 SSH 接続だけ必要な場合のユーティリティ
+      apps.aarch64-darwin.ssh-load = {
+        type = "app";
+        program = let
+          pkgs = nixpkgs.legacyPackages.aarch64-darwin;
+        in toString (pkgs.writeShellScript "ssh-load" ''
+          set -euo pipefail
+          ${pkgs.sops}/bin/sops exec-file \
+            "secrets/ssh/operator.yaml" \
+            '${pkgs.openssh}/bin/ssh-add {}'
+          echo "Loaded operator SSH key into agent."
+        '');
       };
     };
 }

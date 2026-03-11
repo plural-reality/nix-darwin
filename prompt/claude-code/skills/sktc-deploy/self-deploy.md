@@ -792,6 +792,13 @@ cachix_auth_token: "eyJhbGciOiJIUzI1NiJ9..."
           set -euo pipefail
           TARGET="''${1:-<project>-prod}"
 
+          if ! ${pkgs.openssh}/bin/ssh-add -l >/dev/null 2>&1; then
+            echo "==> No SSH keys in agent, loading operator key..."
+            ${pkgs.sops}/bin/sops exec-file \
+              "secrets/ssh/operator.yaml" \
+              '${pkgs.openssh}/bin/ssh-add {}'
+          fi
+
           echo "=== Building NixOS closure for $TARGET ==="
           RESULT=$(nix build ".#colmenaHive.nodes.$TARGET.config.system.build.toplevel" \
             --print-out-paths --no-link)
@@ -817,13 +824,21 @@ cachix_auth_token: "eyJhbGciOiJIUzI1NiJ9..."
         in "${pkgs.writeShellScript "deploy-ssh" ''
           set -euo pipefail
           TARGET="''${1:-<project>-prod}"
+
+          if ! ${pkgs.openssh}/bin/ssh-add -l >/dev/null 2>&1; then
+            echo "==> No SSH keys in agent, loading operator key..."
+            ${pkgs.sops}/bin/sops exec-file \
+              "secrets/ssh/operator.yaml" \
+              '${pkgs.openssh}/bin/ssh-add {}'
+          fi
+
           echo "Deploying $TARGET via SSH (fallback)..."
           time ${colmena.packages.aarch64-darwin.colmena}/bin/colmena apply \
             --impure --on "$TARGET"
         ''}";
       };
 
-      # === SSH 鍵ロード ===
+      # === SSH 鍵ロードユーティリティ ===
       apps.aarch64-darwin.ssh-load = {
         type = "app";
         program = let
