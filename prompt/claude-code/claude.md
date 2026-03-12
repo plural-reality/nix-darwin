@@ -3,3 +3,4 @@
 @[engineering]
 @[context-compression]
 @[local-installation]
+@[architectual-decision]
