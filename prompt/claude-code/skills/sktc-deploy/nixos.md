@@ -8,6 +8,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";  # stable
+    nix-filter.url = "github:numtide/nix-filter";
     sops-nix = {
       url = "github:Mic92/sops-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -18,7 +19,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, sops-nix, colmena, ... }:
+  outputs = { self, nixpkgs, nix-filter, sops-nix, colmena, ... }:
     let
       # Terraform が生成した JSON を読む
       infraConfig = builtins.fromJSON (
@@ -48,18 +49,27 @@
             ./nixos/application.nix
           ];
 
+          _module.args = {
+            inherit nix-filter;
+          };
+
           # NixOS の hostname
           networking.hostName = "<project>-<env>";
         };
       };
 
-      # 便利: nix run .#deploy (build → cachix push → colmena apply)
+      # 便利: nix run .#deploy
+      # deploy pipeline:
+      #   Resolve dependencies → build → cachix push → colmena apply
+      #   → smoke test → revision verify → failure 時は remote rollback
+      # Cachix は高速化層であり、deploy の前提条件ではない。
       apps.aarch64-darwin.deploy = {
         type = "app";
         program = let
           pkgs = nixpkgs.legacyPackages.aarch64-darwin;
         in "${pkgs.writeShellScript "deploy" ''
           set -euo pipefail
+          COLMENA=${colmena.packages.aarch64-darwin.colmena}/bin/colmena
 
           if ! ${pkgs.openssh}/bin/ssh-add -l >/dev/null 2>&1; then
             echo "==> No SSH keys in agent, loading operator key..."
@@ -68,16 +78,49 @@
               '${pkgs.openssh}/bin/ssh-add {}'
           fi
 
+          TARGET_HOST=$($COLMENA eval --impure \
+            -E '{ nodes, ... }: (builtins.getAttr "<project>-<env>" nodes).config.deployment.targetHost' \
+            2>/dev/null || echo "")
+          REMOTE_TARGET=""
+          PREV_SYSTEM=""
+          EXPECTED_REV=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+          if [ -n "$TARGET_HOST" ]; then
+            REMOTE_TARGET="root@$TARGET_HOST"
+            PREV_SYSTEM=$(${pkgs.openssh}/bin/ssh "$REMOTE_TARGET" \
+              'readlink /run/current-system' 2>/dev/null || echo "")
+          fi
+
           echo "=== Building NixOS closure ==="
-          RESULT=$(nix build .#colmenaHive.nodes.<project>-<env>.config.system.build.toplevel --print-out-paths --no-link)
+          RESULT=$(nix build '.#colmenaHive.nodes."<project>-<env>".config.system.build.toplevel' --print-out-paths --no-link)
 
           echo "=== Pushing to Cachix ==="
           export CACHIX_AUTH_TOKEN=$(${pkgs.sops}/bin/sops -d secrets/ci.yaml | ${pkgs.yq-go}/bin/yq '.cachix_auth_token')
           echo "$RESULT" | ${pkgs.cachix}/bin/cachix push <project>
 
           echo "=== Deploying via Colmena ==="
-          time ${colmena.packages.aarch64-darwin.colmena}/bin/colmena apply \
-            --impure --on <project>-<env> "$@"
+          time "$COLMENA" apply --impure --on <project>-<env> "$@"
+
+          if [ -z "$REMOTE_TARGET" ]; then
+            echo "WARN: targetHost could not be resolved, skipping remote verification."
+            exit 0
+          fi
+
+          echo "=== Smoke test ==="
+          if ! ${pkgs.openssh}/bin/ssh "$REMOTE_TARGET" \
+            'curl -sf --max-time 30 --retry 3 --retry-delay 5 http://localhost:3000/api/health'; then
+            echo "ERROR: Smoke test failed"
+            if [ -n "$PREV_SYSTEM" ]; then
+              echo "Rolling back to previous generation: $PREV_SYSTEM"
+              ${pkgs.openssh}/bin/ssh "$REMOTE_TARGET" \
+                "$PREV_SYSTEM/bin/switch-to-configuration switch"
+            fi
+            exit 1
+          fi
+
+          DEPLOYED_REV=$(${pkgs.openssh}/bin/ssh "$REMOTE_TARGET" \
+            'jq -r .configurationRevision /etc/nixos-version.json 2>/dev/null || echo unknown')
+          echo "Expected revision: $EXPECTED_REV"
+          echo "Deployed revision: $DEPLOYED_REV"
         ''}";
       };
 
@@ -88,6 +131,7 @@
           pkgs = nixpkgs.legacyPackages.aarch64-darwin;
         in "${pkgs.writeShellScript "deploy-ssh" ''
           set -euo pipefail
+          COLMENA=${colmena.packages.aarch64-darwin.colmena}/bin/colmena
 
           if ! ${pkgs.openssh}/bin/ssh-add -l >/dev/null 2>&1; then
             echo "==> No SSH keys in agent, loading operator key..."
@@ -96,9 +140,42 @@
               '${pkgs.openssh}/bin/ssh-add {}'
           fi
 
+          TARGET_HOST=$($COLMENA eval --impure \
+            -E '{ nodes, ... }: (builtins.getAttr "<project>-<env>" nodes).config.deployment.targetHost' \
+            2>/dev/null || echo "")
+          REMOTE_TARGET=""
+          PREV_SYSTEM=""
+          EXPECTED_REV=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+          if [ -n "$TARGET_HOST" ]; then
+            REMOTE_TARGET="root@$TARGET_HOST"
+            PREV_SYSTEM=$(${pkgs.openssh}/bin/ssh "$REMOTE_TARGET" \
+              'readlink /run/current-system' 2>/dev/null || echo "")
+          fi
+
           echo "Deploying <project-name> via SSH (fallback)..."
-          time ${colmena.packages.aarch64-darwin.colmena}/bin/colmena apply \
-            --impure --on <project>-<env> "$@"
+          time "$COLMENA" apply --impure --on <project>-<env> "$@"
+
+          if [ -z "$REMOTE_TARGET" ]; then
+            echo "WARN: targetHost could not be resolved, skipping remote verification."
+            exit 0
+          fi
+
+          echo "=== Smoke test ==="
+          if ! ${pkgs.openssh}/bin/ssh "$REMOTE_TARGET" \
+            'curl -sf --max-time 30 --retry 3 --retry-delay 5 http://localhost:3000/api/health'; then
+            echo "ERROR: Smoke test failed"
+            if [ -n "$PREV_SYSTEM" ]; then
+              echo "Rolling back to previous generation: $PREV_SYSTEM"
+              ${pkgs.openssh}/bin/ssh "$REMOTE_TARGET" \
+                "$PREV_SYSTEM/bin/switch-to-configuration switch"
+            fi
+            exit 1
+          fi
+
+          DEPLOYED_REV=$(${pkgs.openssh}/bin/ssh "$REMOTE_TARGET" \
+            'jq -r .configurationRevision /etc/nixos-version.json 2>/dev/null || echo unknown')
+          echo "Expected revision: $EXPECTED_REV"
+          echo "Deployed revision: $DEPLOYED_REV"
         ''}";
       };
 
@@ -127,8 +204,22 @@
 | `colmena apply-local` (Self-Deploy) | 常に EC2 上（ただし Cachix substituter から pull） | **無関係** |
 
 Self-Deploy では `colmena apply-local` を使用するため、`buildOnTarget` フラグは影響しない。
-EC2 は Cachix substituter から pre-built closure を pull するため、実質的なビルド負荷はゼロ。
+EC2 はまず Cachix substituter を参照し、cache miss 時のみローカル build にフォールバックする。
 `buildOnTarget` は `colmena apply`（リモートデプロイ / フォールバック）時のみ関係する。
+
+### `deploy.nix` の必須 option
+
+`deploy.nix` は deploy mode の定義であり、最適化の有無とは独立して成立しなければならない。そのため `cachixCache` は optional optimization ではなく、cache read path と push-back path の両方を束ねる必須パラメータとして扱う。
+
+```nix
+<project>.deploy = {
+  enable      = true;
+  nodeName    = "<project>-prod";
+  repoUrl     = "git@github.com:<org>/<repo>.git";
+  refPattern  = "^refs/tags/v";
+  cachixCache = "<project>";  # read path + push-back path
+};
+```
 
 ### `nixos/common.nix`（共通設定）
 
@@ -166,7 +257,7 @@ EC2 は Cachix substituter から pre-built closure を pull するため、実�
       auto-optimise-store = true;
 
       # EC2 が Cachix + cache.nixos.org から直接パッケージを取得
-      # → SSH 転送不要。ローカルで cachix push した closure を EC2 が pull
+      # → cache hit 時は pull、cache miss 時は local build 後に push-back
       substituters = [
         "https://<project>.cachix.org"
         "https://cache.nixos.org"
@@ -202,6 +293,7 @@ EC2 は Cachix substituter から pre-built closure を pull するため、実�
     jq
     git          # Self-Deploy の git clone/pull で必要
     colmena      # Self-Deploy の colmena apply-local で必要
+    cachix       # Self-Deploy の push-back で必要
   ];
 }
 ```
@@ -239,7 +331,7 @@ EC2 は Cachix substituter から pre-built closure を pull するため、実�
 ### `nixos/application.nix`（アプリケーション定義）
 
 ```nix
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, nix-filter, ... }:
 
 let
   # --- プロジェクト固有の設定 ---
@@ -255,16 +347,13 @@ let
     pname = appName;
     version = "0.1.0";
 
-    # ソースフィルタリング (最適化: 関係ないファイルの変更で再ビルドしない)
-    src = let
-      fs = pkgs.lib.fileset;
-    in fs.toSource {
-      root = ./.;
-      fileset = fs.unions [
-        # アプリに必要なファイルのみ列挙
-        # ./src
-        # ./package.json
-        # ./package-lock.json
+    # ソースフィルタリング (純粋な最適化。deploy semantics は変えない)
+    src = nix-filter.lib {
+      root = ../.;
+      include = [
+        "src"
+        "package.json"
+        "package-lock.json"
         # ...
       ];
     };

@@ -88,6 +88,49 @@ api_key: "<value>"
 # ... アプリケーション固有のシークレット
 ```
 
+```yaml
+# secrets/ci.yaml (SOPS 暗号化、git commit)
+# Self-Deploy と Cachix 用の共通シークレット
+
+github_deploy_key: |
+  -----BEGIN OPENSSH PRIVATE KEY-----
+  ...
+  -----END OPENSSH PRIVATE KEY-----
+
+webhook_secret: "a1b2c3d4e5f6..."
+cachix_auth_token: "eyJhbGciOiJIUzI1NiJ9..."
+```
+
+```nix
+# nixos/secrets.nix
+#
+# Self-Deploy 固有の runtime secret。
+# deploy pipeline の正しさはこれらの注入に依存し、最適化の有無には依存しない。
+
+{
+  sops.secrets."github_deploy_key" = {
+    sopsFile = ../secrets/ci.yaml;
+    key = "github_deploy_key";
+    path = "/run/secrets/github-deploy-key";
+    mode = "0600";
+  };
+
+  sops.secrets."webhook_secret" = {
+    sopsFile = ../secrets/ci.yaml;
+    key = "webhook_secret";
+    path = "/run/secrets/webhook-secret";
+    mode = "0400";
+  };
+
+  sops.secrets."cachix_auth_token" = {
+    sopsFile = ../secrets/ci.yaml;
+    key = "cachix_auth_token";
+    path = "/run/secrets/cachix-auth-token";
+    mode = "0400";
+  };
+}
+```
+
 ### SOPS 基本操作
 
 ```bash

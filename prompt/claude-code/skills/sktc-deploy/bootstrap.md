@@ -139,7 +139,8 @@ EOF
 mkdir -p ~/.ssh/sockets
 
 # 初回デプロイ (SSH 鍵は自動でロードされる)
-# build → cachix push → colmena apply
+# Resolve dependencies → build → cachix push → colmena apply
+# → smoke test → revision verify
 # Cachix auth token は deploy スクリプト内で SOPS から自動抽出される
 # (CACHIX_AUTH_TOKEN 環境変数。グローバル設定ファイルは変更しない)
 nix run .#deploy
@@ -177,27 +178,28 @@ nix run .#deploy
 - [ ] staging 用 EC2 を Terraform で作成（`infra/terraform/staging/`）
 - [ ] `secrets/<project>-staging.yaml` を作成
 - [ ] `deploy.nix` を作成（webhook + deploy script + repo init）
-- [ ] `secrets.nix` に deploy key と webhook secret の宣言を追加
+- [ ] `secrets.nix` に deploy key, webhook secret, cachix auth token の宣言を追加
 - [ ] flake.nix に staging/prod 両方の Colmena ターゲット + `deploy.enable` を定義
 - [ ] nginx に `/.well-known/deploy` → `localhost:9000` プロキシを追加
 - [ ] GitHub で Deploy Key を登録（`secrets/ssh/deploy.yaml` に対応する公開鍵, read-only）
 - [ ] GitHub で Webhook を登録（push event, HMAC secret）
-- [ ] main push → staging 自動デプロイ（Cachix pull）を検証
-- [ ] tag push → production 自動デプロイ（Cachix pull）を検証
+- [ ] main push → staging 自動デプロイ（cache hit 時 pull / miss 時 local build）→ smoke test → Cachix push-back を検証
+- [ ] tag push → production 自動デプロイ（staging の push-back で cache hit 可能）→ smoke test → Cachix push-back を検証
 - [ ] deploy スクリプトにロールバック機能が含まれていること
-- [ ] EC2 の systemPackages に `colmena` と `git` が含まれていること
+- [ ] EC2 の systemPackages に `colmena`, `git`, `cachix` が含まれていること
 
 ### 日常運用
 
 #### 方法 1: ローカルデプロイ（手動）
 
-- [ ] コード変更 → `nix run .#deploy` (build → cachix push → colmena apply)
-- [ ] フォールバック → `nix run .#deploy-ssh` (SSH 直接転送)
+- [ ] コード変更 → `nix run .#deploy` (依存解決 → build → cachix push → colmena apply → smoke test → revision verify)
+- [ ] フォールバック → `nix run .#deploy-ssh` (依存解決 → SSH 直接転送 → smoke test → revision verify)
 
 #### 方法 2: Self-Deploy（自動）
 
-- [ ] コード変更 → `nix run .#deploy` で build + cachix push → `git push` → staging 自動デプロイ
+- [ ] コード変更 → `git push` → staging 自動デプロイ（cache hit 時 pull / miss 時 local build → smoke test → Cachix push-back）
 - [ ] staging 確認 → `git tag v*` → `git push --tags` → production 自動デプロイ
+- [ ] 必要なら `nix run .#deploy` または CI build で Cachix を pre-warm（高速化だが必須ではない）
 - [ ] 緊急時 → `nix run .#deploy-ssh` で SSH 直接デプロイ
 
 #### 共通

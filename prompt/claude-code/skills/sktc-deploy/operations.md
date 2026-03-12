@@ -1,6 +1,17 @@
 ## 11. 日常運用
 
-ブートストラップ完了後、2 つのデプロイ方法が利用可能。
+ブートストラップ完了後、2 つの実行形態が利用可能になる。ただし deploy pipeline 自体は 1 つであり、違うのは build / activate をどこで実行するかだけである。
+
+### 統一デプロイパイプライン
+
+1. 依存解決
+2. NixOS closure の build
+3. Cachix への publish
+4. activation
+5. smoke test + revision 検証
+6. failure 時の rollback
+
+ローカル deploy と Self-Deploy の違いは 2-4 の実行場所だけである。Cachix の pre-warm と source filtering は高速化であって前提条件ではない。
 
 ### 方法 1: ローカルデプロイ（手動）
 
@@ -10,45 +21,63 @@
 Developer Mac
   │
   ├─ nix run .#deploy
-  │    ├─ nix build       (ローカルでビルド)
-  │    ├─ cachix push      (Cachix に push)
-  │    └─ colmena apply    (EC2 が Cachix から pull + activation)
+  │    ├─ SSH 鍵 / Cachix token を自動解決
+  │    ├─ nix build        (ローカルでビルド)
+  │    ├─ cachix push      (Cachix に publish)
+  │    ├─ colmena apply    (activation)
+  │    ├─ smoke test       (SSH 経由)
+  │    └─ rollback         (failure 時は remote rollback)
   │
   └─ (フォールバック: nix run .#deploy-ssh)
-       └─ colmena apply    (SSH nix-copy-closure で直接転送)
+       ├─ SSH 鍵を自動解決
+       ├─ colmena apply    (SSH nix-copy-closure で直接転送)
+       ├─ smoke test       (SSH 経由)
+       └─ rollback         (failure 時は remote rollback)
 ```
 
 ### 方法 2: Self-Deploy（自動）
 
 main への push やタグ付きリリースに対して、EC2 が自動でデプロイする。
-**事前に cachix push が完了している必要がある。**
+事前の `cachix push` は高速化として有効だが、前提条件ではない。
 
 ```
-Developer Mac
+Developer Mac (or CI)
   │
-  ├─ nix build + cachix push  (ビルド → Cachix に push)
-  ├─ git push (main)          → EC2 staging: webhook → colmena apply-local (Cachix から pull)
-  └─ git tag v* + push        → EC2 prod: webhook → colmena apply-local (Cachix から pull)
+  ├─ (optional) nix build + cachix push  (Cachix を pre-warm)
+  ├─ git push (main)          → EC2 staging: webhook
+  │                              → colmena apply-local (cache hit 時 pull / miss 時 local build)
+  │                              → smoke test
+  │                              → Cachix push-back
+  │                              → revision verify
+  └─ git tag v* + push        → EC2 prod: webhook
+                                 → colmena apply-local (staging の push-back で cache hit 可能)
+                                 → smoke test
+                                 → Cachix push-back
+                                 → revision verify
 ```
 
-`nix run .#deploy` は build → cachix push → colmena apply を一括実行するため、
-方法 1 を実行した後に `git push` すれば、方法 2 の Self-Deploy でも Cachix cache が warm な状態になる。
+`nix run .#deploy` や CI build による Cachix pre-warm は有効だが、Self-Deploy は cache miss でも成立し、成功後に push-back で次回以降を高速化する。
 
 ### 開発サイクル一覧
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  コード変更 (方法 1):                                         │
-│    nix run .#deploy (build → cachix push → colmena apply)    │
+│    nix run .#deploy                                           │
+│      (依存解決 → build → cachix push → activate → verify)     │
 │                                                              │
 │  コード変更 (方法 2):                                         │
-│    nix run .#deploy → git push → EC2 自動デプロイ            │
+│    git push → EC2 自動デプロイ                               │
+│      (cache hit 時 pull / miss 時 local build → push-back)    │
+│    必要なら事前に nix run .#deploy / CI build で pre-warm     │
 │                                                              │
 │  フォールバック:                                              │
-│    nix run .#deploy-ssh (Cachix 障害時)                      │
+│    nix run .#deploy-ssh                                      │
+│      (依存解決 → SSH 転送 → activate → verify)                │
 │                                                              │
 │  Secret 変更:                                                 │
 │    sops edit → git commit → nix run .#deploy                 │
+│    または git push → EC2 自動デプロイ                        │
 │                                                              │
 │  インフラ変更 (既存の開発者なら誰でも実行可能):                │
 │    *.tf 編集 → sops exec-env ... -- terraform apply          │
@@ -66,14 +95,20 @@ Developer Mac
 # === 方法 1: ローカルデプロイ (デフォルト: Cachix 経由) ===
 nix run .#deploy
 # → operator key を自動ロード → build → cachix push → colmena apply
+# → smoke test + revision verify → failure 時は remote rollback
 
 # === 方法 1: フォールバック (SSH 直接転送) ===
 nix run .#deploy-ssh
 # → operator key を自動ロード → colmena apply (SSH nix-copy-closure で直接転送)
+# → smoke test + revision verify → failure 時は remote rollback
 
 # === 方法 2: Self-Deploy (自動) ===
-nix run .#deploy    # まず Cachix に push
-git push            # webhook が EC2 self-deploy を発火
+git push            # webhook が staging self-deploy を発火
+git tag v1.2.3
+git push --tags     # webhook が production self-deploy を発火
+
+# === Optional: Cachix pre-warm ===
+nix run .#deploy    # 先に closure を Cachix に push してもよいが必須ではない
 
 # === Secret 編集 ===
 sops secrets/<project>-prod.yaml
@@ -228,46 +263,55 @@ sops exec-env ../../secrets/infra.yaml -- terraform apply
 
 ---
 
-## 13. デプロイ最適化
+## 13. デプロイ最適化（透過的オプション）
 
-Cachix Binary Cache がデフォルトの転送手段。追加の最適化は以下の通り。
+以下は deploy の正しさを変えない高速化だけを扱う。無効でも deploy pipeline 自体は成立する。
+
+### デプロイと最適化の境界
+
+- deploy の責務: build, activate, verify, rollback
+- 最適化の責務: cache hit を増やす、不要な rebuild を減らす、転送を速くする
+- Self-Deploy は deploy mode であり、最適化ではない
+- `Cachix` と `nix-filter` は透過的な加速器であり、前提条件ではない
 
 ### デプロイパイプライン分析
 
 ```
 nix run .#deploy
     │
-    ├── 1. Nix evaluation          ~5s      (flake.nix → NixOS closure 計算)
-    ├── 2. App derivation build    ~30-60s  (依存インストール + ビルド)
-    ├── 3. NixOS closure build     ~10-30s  (system closure をリンク)
-    ├── 4. cachix push             ~10-20s  (closure を Cachix に push)
-    ├── 5. colmena apply           ~5-10s   (EC2 が Cachix から pull + activation)
-    └── 6. Service restart         ~3-5s
+    ├── 1. Dependency resolution   ~1-2s    (SSH 鍵 / Cachix token の自動解決)
+    ├── 2. Nix evaluation          ~5s      (flake.nix → NixOS closure 計算)
+    ├── 3. App derivation build    ~30-60s  (依存インストール + ビルド)
+    ├── 4. Cachix publish          ~10-20s  (closure を Cachix に push)
+    ├── 5. colmena apply           ~5-10s   (activation)
+    └── 6. Verification            ~5-10s   (smoke test + revision verify)
                                    ─────────
-                            合計: ~55-130s (typical)
+                            合計: ~56-107s (typical)
                             Cache hit: ~15-25s (ビルド済みの場合)
 ```
 
+Self-Deploy も同じステップを踏む。違いは build が EC2 上で走る点だけであり、cache miss 時はローカルビルド後に push-back される。
+
 従来の SSH `nix-copy-closure` と比較して:
 - **Cachix push/pull は並列転送**で SSH の単一ストリーム転送より高速
-- **Cache hit 時はステップ 2-4 がスキップ**される（他開発者がビルド済み等）
-- EC2 上でのビルド負荷は**ゼロ**（substituter からの pull のみ）
+- **Cache hit 時は build が大きく短縮**される（他開発者や staging の push-back が効く）
+- cache miss でも deploy は継続し、成功後に push-back で次回以降を高速化できる
 
-### 追加最適化 1: ソースフィルタリング（効果: 大）
+### 追加最適化 1: `nix-filter` によるソースフィルタリング（効果: 大）
 
-`lib.fileset` で、ビルドに不要なファイル（doc, infra, secrets 等）をソースから除外する。
+`nix-filter` で、ビルドに不要なファイル（doc, infra, secrets 等）をソースから除外する。deploy semantics は変えずに rebuild 範囲だけを狭める。
 
 ```nix
-# flake.nix のアプリケーション derivation 内
-src = let
-  fs = pkgs.lib.fileset;
-in fs.toSource {
-  root = ./.;
-  fileset = fs.unions [
-    ./src
-    ./package.json
-    ./package-lock.yaml  # or pnpm-lock.yaml
-    # ビルドに必要なファイルのみ列挙
+# flake.nix
+inputs.nix-filter.url = "github:numtide/nix-filter";
+
+# application derivation
+src = nix-filter.lib {
+  root = ../.;
+  include = [
+    "src"
+    "package.json"
+    "package-lock.yaml"  # or pnpm-lock.yaml
   ];
 };
 ```
@@ -289,32 +333,18 @@ Host <project>-<env>
   Compression yes
 ```
 
-### 追加: SSH 鍵ロードユーティリティ
+### 追加最適化 3: CI / ローカル pre-warm（効果: 中）
 
-```nix
-# flake.nix に追加
-apps.aarch64-darwin.ssh-load = {
-  type = "app";
-  program = let
-    pkgs = nixpkgs.legacyPackages.aarch64-darwin;
-  in toString (pkgs.writeShellScript "ssh-load" ''
-    set -euo pipefail
-    ${pkgs.sops}/bin/sops exec-file \
-      "secrets/ssh/operator.yaml" \
-      '${pkgs.openssh}/bin/ssh-add {}'
-    echo "Loaded operator SSH key into agent."
-  '');
-};
-```
+`git push` だけでも Self-Deploy は成立するが、CI やローカルで先に build して Cachix に publish すると staging / prod の cache hit 率が上がる。
 
 ### 最適化の優先順位
 
 | 施策 | 作業量 | 効果 | 推奨時期 |
 |------|--------|------|----------|
 | Cachix Binary Cache | **デフォルト** | 大 | 初期セットアップ時 |
-| ソースフィルタリング | 5分 | 大 | 即座に |
+| `nix-filter` | 5分 | 大 | 即座に |
 | SSH 多重化 | 5分 | 中 | 即座に |
-| Self-Deploy Webhook | 2-3時間 | 大 (自動化) | staging/prod 分離時（セクション 15） |
+| CI / ローカル pre-warm | 10-20分 | 中 | cache hit を上げたい時 |
 
 ---
 

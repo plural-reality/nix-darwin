@@ -8,12 +8,12 @@ EC2 が GitHub webhook を直接受信し、自分自身をデプロイする（
 - SSH private key を外部サービスに保存する必要がない
 - CI runner のアーキテクチャ問題（x86_64 vs aarch64）が発生しない
 - デプロイレイテンシが低い（webhook → 即実行）
-- **Cachix から pre-built closure を pull するため、EC2 上でのビルド負荷はゼロ**
+- **cache hit 時は Cachix から pull、cache miss 時は EC2 上で build して push-back できる**
 
 ```
-Developer
+Developer or CI
   │
-  ├─ nix build + cachix push   (ローカルでビルド → Cachix に push)
+  ├─ (optional) nix build + cachix push   (Cachix を pre-warm)
   │
   ├─ git push to main ────┐
   │  or git tag v*          │
@@ -30,28 +30,32 @@ Developer
   │              deploy script (flock 排他)
   │                ├─ git fetch + checkout/pull
   │                ├─ colmena apply-local --node <name>
-  │                │    └─ Cachix substituter から pre-built closure を pull
-  │                └─ smoke test (localhost)
+  │                │    └─ cache hit: Cachix pull / cache miss: local build
+  │                ├─ smoke test (localhost)
+  │                ├─ Cachix push-back
+  │                └─ rollback on failure
 ```
 
-**重要**: `cachix push` は `git push` より先に実行する。EC2 が `colmena apply-local` を実行する際に、Cachix に pre-built closure が存在している必要がある。`nix run .#deploy` ラッパーはこの順序を自動化する。
+`cachix push` を `git push` より先に実行すると staging / prod の cache hit が増える。ただしこれは高速化であり、Self-Deploy の前提条件ではない。cache miss 時は EC2 上で build し、成功後に Cachix push-back で次回以降を高速化する。
 
 ### 環境モデル
 
 | Git Event | Environment | refPattern | EC2 の動作 |
 |---|---|---|---|
-| `push to main` | Staging | `^refs/heads/main$` | git pull → `colmena apply-local` (Cachix から pull) |
-| `tag v*` | Production | `^refs/tags/v` | git checkout tag → `colmena apply-local` (Cachix から pull) |
+| `push to main` | Staging | `^refs/heads/main$` | git pull → `colmena apply-local` (cache hit 時 pull / miss 時 local build) → smoke test → push-back |
+| `tag v*` | Production | `^refs/tags/v` | git checkout tag → `colmena apply-local` (staging の push-back で cache hit 可能) → smoke test → push-back |
 
 staging は main の HEAD を常に追従。production はタグでのみ更新。
 
 ### 自動リリースフロー
 
 ```
-Developer: nix build → cachix push → git push (main)
-  → EC2 staging: webhook → self-deploy (Cachix pull) → smoke test
+Developer: git push (main)
+  → EC2 staging: webhook → self-deploy (cache hit 時 pull / miss 時 local build)
+  → smoke test → Cachix push-back
   → Developer: staging 確認 → git tag v* → git push --tags
-  → EC2 prod: webhook → self-deploy (Cachix pull) → smoke test
+  → EC2 prod: webhook → self-deploy (staging の push-back で cache hit 可能)
+  → smoke test → Cachix push-back
 ```
 
 ---
@@ -253,7 +257,7 @@ nixos/
 #   1. deploy-repo-init: 初回 git clone (idempotent oneshot)
 #   2. deploy-webhook:   GitHub webhook receiver (localhost:9000)
 #   3. trigger-deploy:   非同期デプロイ起動 (systemd-run)
-#   4. deploy script:    git fetch → colmena apply-local → smoke test → auto-rollback
+#   4. deploy script:    git fetch → colmena apply-local → smoke test → Cachix push-back → auto-rollback
 #
 # 外部依存:
 #   - sops-nix: /run/secrets/github-deploy-key, /run/secrets/webhook-secret
@@ -338,9 +342,11 @@ let
   #   1. flock で排他制御 (同時デプロイ防止)
   #   2. git fetch + checkout/pull
   #   3. 現在の generation を記録 (ロールバック用)
-  #   4. colmena apply-local (Cachix substituter から pull)
+  #   4. colmena apply-local (cache hit 時は pull / miss 時は local build)
   #   5. smoke test (curl で health endpoint)
-  #   6. 失敗時: 前の generation に自動ロールバック
+  #   6. Cachix push-back
+  #   7. revision 検証
+  #   8. 失敗時: 前の generation に自動ロールバック
   deployScript = pkgs.writeShellScript "deploy-${cfg.nodeName}" ''
     set -euo pipefail
 
@@ -380,36 +386,18 @@ let
 
     echo "HEAD is now at: $(git rev-parse --short HEAD) ($(git log -1 --format='%s'))"
 
-    # === 3. Cachix pre-built closure の存在チェック (警告のみ) ===
-    # 開発者が cachix push を忘れた場合のガード。
-    # チェック失敗でもデプロイは続行する (EC2 上でビルドが走る可能性がある)。
-    SYSTEM_DRV=$(nix eval --raw \
-      ".#colmenaHive.nodes.${cfg.nodeName}.config.system.build.toplevel.drvPath" \
-      2>/dev/null || true)
-
-    if [ -n "$SYSTEM_DRV" ]; then
-      if ! nix store ls --store "https://${cfg.cachixCache}.cachix.org" "$SYSTEM_DRV" &>/dev/null; then
-        echo "WARN: Pre-built closure not found in Cachix."
-        echo "WARN: Build may be slow or fail on low-memory EC2."
-        echo "WARN: Ensure 'cachix push' was run before 'git push'."
-      else
-        echo "OK: Pre-built closure found in Cachix."
-      fi
-    fi
-
-    # === 4. 現在の generation を記録 (ロールバック用) ===
+    # === 3. 現在の generation を記録 (ロールバック用) ===
     PREV_SYSTEM=$(readlink /run/current-system)
     echo "Previous system: $PREV_SYSTEM"
 
-    # === 5. colmena apply-local ===
+    # === 4. colmena apply-local ===
     # --node: 自分自身のノード名を指定
     # Cachix substituter が common.nix で設定されているため、
-    # pre-built closure が Cachix に存在すれば自動的に pull される。
-    # EC2 上でのビルドは発生しない (substituter hit の場合)。
+    # cache hit なら Cachix から pull され、cache miss 時のみ EC2 上でビルドされる。
     echo "=== Running colmena apply-local --node ${cfg.nodeName} ==="
     colmena apply-local --node "${cfg.nodeName}" --verbose
 
-    # === 6. Smoke test ===
+    # === 5. Smoke test ===
     echo "=== Running smoke test ==="
     if ! curl -sf --max-time 30 --retry 3 --retry-delay 5 \
         "http://localhost:${toString cfg.healthCheckPort}${cfg.healthCheckPath}"; then
@@ -418,6 +406,16 @@ let
       "$PREV_SYSTEM/bin/switch-to-configuration" switch
       echo "Rollback complete. Previous generation restored."
       exit 1
+    fi
+
+    # === 6. Cachix push-back ===
+    if [ -f /run/secrets/cachix-auth-token ]; then
+      export CACHIX_AUTH_TOKEN=$(cat /run/secrets/cachix-auth-token)
+      CURRENT_SYSTEM=$(readlink /run/current-system)
+      nix-store -qR "$CURRENT_SYSTEM" | cachix push "${cfg.cachixCache}"
+      echo "Pushed closure to Cachix."
+    else
+      echo "WARN: cachix-auth-token not found, skipping Cachix push-back."
     fi
 
     # === 7. Revision 検証 ===
@@ -471,7 +469,7 @@ in {
 
     cachixCache = lib.mkOption {
       type        = lib.types.str;
-      description = "Cachix cache name (for pre-built closure check)";
+      description = "Cachix cache name (cache read path と deploy 成功後の push-back の両方に使用)";
       example     = "<project>";
     };
 
@@ -546,6 +544,7 @@ in {
 
       # deploy script が使う外部コマンドを PATH に追加
       path = with pkgs; [
+        cachix
         colmena
         git
         nix
@@ -653,6 +652,15 @@ in {
     path     = "/run/secrets/webhook-secret";
     # deploy-webhook の ExecStartPre が参照
   };
+
+  sops.secrets."cachix_auth_token" = {
+    sopsFile = ../secrets/ci.yaml;
+    key      = "cachix_auth_token";
+    owner    = "root";
+    mode     = "0400";
+    path     = "/run/secrets/cachix-auth-token";
+    # deploy script の Cachix push-back が参照
+  };
 }
 ```
 
@@ -678,8 +686,9 @@ github_deploy_key: |
 # Terraform の var.webhook_secret と同じ値。
 webhook_secret: "a1b2c3d4e5f6..."
 
-# Cachix push 用 auth token (開発者のローカルで使用)
-# EC2 では使わない。nix run .#deploy が SOPS から自動抽出する。
+# Cachix push 用 auth token
+# ローカル deploy は SOPS から自動抽出し、Self-Deploy は /run/secrets/cachix-auth-token
+# として runtime 復号して push-back に使う。
 cachix_auth_token: "eyJhbGciOiJIUzI1NiJ9..."
 ```
 
@@ -791,6 +800,7 @@ cachix_auth_token: "eyJhbGciOiJIUzI1NiJ9..."
         in "${pkgs.writeShellScript "deploy" ''
           set -euo pipefail
           TARGET="''${1:-<project>-prod}"
+          COLMENA=${colmena.packages.aarch64-darwin.colmena}/bin/colmena
 
           if ! ${pkgs.openssh}/bin/ssh-add -l >/dev/null 2>&1; then
             echo "==> No SSH keys in agent, loading operator key..."
@@ -799,8 +809,20 @@ cachix_auth_token: "eyJhbGciOiJIUzI1NiJ9..."
               '${pkgs.openssh}/bin/ssh-add {}'
           fi
 
+          TARGET_HOST=$($COLMENA eval --impure \
+            -E "{ nodes, ... }: (builtins.getAttr \"$TARGET\" nodes).config.deployment.targetHost" \
+            2>/dev/null || echo "")
+          REMOTE_TARGET=""
+          PREV_SYSTEM=""
+          EXPECTED_REV=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+          if [ -n "$TARGET_HOST" ]; then
+            REMOTE_TARGET="root@$TARGET_HOST"
+            PREV_SYSTEM=$(${pkgs.openssh}/bin/ssh "$REMOTE_TARGET" \
+              'readlink /run/current-system' 2>/dev/null || echo "")
+          fi
+
           echo "=== Building NixOS closure for $TARGET ==="
-          RESULT=$(nix build ".#colmenaHive.nodes.$TARGET.config.system.build.toplevel" \
+          RESULT=$(nix build ".#colmenaHive.nodes.\"$TARGET\".config.system.build.toplevel" \
             --print-out-paths --no-link)
 
           echo "=== Pushing to Cachix ==="
@@ -809,8 +831,30 @@ cachix_auth_token: "eyJhbGciOiJIUzI1NiJ9..."
           echo "$RESULT" | ${pkgs.cachix}/bin/cachix push <project>
 
           echo "=== Deploying via Colmena ==="
-          time ${colmena.packages.aarch64-darwin.colmena}/bin/colmena apply \
-            --impure --on "$TARGET"
+          time "$COLMENA" apply --impure --on "$TARGET"
+
+          if [ -z "$REMOTE_TARGET" ]; then
+            echo "WARN: targetHost could not be resolved, skipping remote verification."
+            echo "=== Done ==="
+            exit 0
+          fi
+
+          echo "=== Smoke test ==="
+          if ! ${pkgs.openssh}/bin/ssh "$REMOTE_TARGET" \
+            'curl -sf --max-time 30 --retry 3 --retry-delay 5 http://localhost:3000/api/health'; then
+            echo "ERROR: Smoke test failed on $TARGET"
+            if [ -n "$PREV_SYSTEM" ]; then
+              echo "Rolling back to previous generation: $PREV_SYSTEM"
+              ${pkgs.openssh}/bin/ssh "$REMOTE_TARGET" \
+                "$PREV_SYSTEM/bin/switch-to-configuration switch"
+            fi
+            exit 1
+          fi
+
+          DEPLOYED_REV=$(${pkgs.openssh}/bin/ssh "$REMOTE_TARGET" \
+            'jq -r .configurationRevision /etc/nixos-version.json 2>/dev/null || echo unknown')
+          echo "Expected revision: $EXPECTED_REV"
+          echo "Deployed revision: $DEPLOYED_REV"
 
           echo "=== Done ==="
         ''}";
@@ -824,6 +868,7 @@ cachix_auth_token: "eyJhbGciOiJIUzI1NiJ9..."
         in "${pkgs.writeShellScript "deploy-ssh" ''
           set -euo pipefail
           TARGET="''${1:-<project>-prod}"
+          COLMENA=${colmena.packages.aarch64-darwin.colmena}/bin/colmena
 
           if ! ${pkgs.openssh}/bin/ssh-add -l >/dev/null 2>&1; then
             echo "==> No SSH keys in agent, loading operator key..."
@@ -832,9 +877,42 @@ cachix_auth_token: "eyJhbGciOiJIUzI1NiJ9..."
               '${pkgs.openssh}/bin/ssh-add {}'
           fi
 
+          TARGET_HOST=$($COLMENA eval --impure \
+            -E "{ nodes, ... }: (builtins.getAttr \"$TARGET\" nodes).config.deployment.targetHost" \
+            2>/dev/null || echo "")
+          REMOTE_TARGET=""
+          PREV_SYSTEM=""
+          EXPECTED_REV=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+          if [ -n "$TARGET_HOST" ]; then
+            REMOTE_TARGET="root@$TARGET_HOST"
+            PREV_SYSTEM=$(${pkgs.openssh}/bin/ssh "$REMOTE_TARGET" \
+              'readlink /run/current-system' 2>/dev/null || echo "")
+          fi
+
           echo "Deploying $TARGET via SSH (fallback)..."
-          time ${colmena.packages.aarch64-darwin.colmena}/bin/colmena apply \
-            --impure --on "$TARGET"
+          time "$COLMENA" apply --impure --on "$TARGET"
+
+          if [ -z "$REMOTE_TARGET" ]; then
+            echo "WARN: targetHost could not be resolved, skipping remote verification."
+            exit 0
+          fi
+
+          echo "=== Smoke test ==="
+          if ! ${pkgs.openssh}/bin/ssh "$REMOTE_TARGET" \
+            'curl -sf --max-time 30 --retry 3 --retry-delay 5 http://localhost:3000/api/health'; then
+            echo "ERROR: Smoke test failed on $TARGET"
+            if [ -n "$PREV_SYSTEM" ]; then
+              echo "Rolling back to previous generation: $PREV_SYSTEM"
+              ${pkgs.openssh}/bin/ssh "$REMOTE_TARGET" \
+                "$PREV_SYSTEM/bin/switch-to-configuration switch"
+            fi
+            exit 1
+          fi
+
+          DEPLOYED_REV=$(${pkgs.openssh}/bin/ssh "$REMOTE_TARGET" \
+            'jq -r .configurationRevision /etc/nixos-version.json 2>/dev/null || echo unknown')
+          echo "Expected revision: $EXPECTED_REV"
+          echo "Deployed revision: $DEPLOYED_REV"
         ''}";
       };
 
@@ -865,7 +943,7 @@ NixOS の generation 機能を活用した自動ロールバック。
 colmena apply-local
   │
   ├─ 成功 → smoke test
-  │           ├─ 成功 → デプロイ完了
+  │           ├─ 成功 → Cachix push-back → revision verify → デプロイ完了
   │           └─ 失敗 → $PREV_SYSTEM/bin/switch-to-configuration switch
   │                      → 前の generation に即座に復帰
   └─ 失敗 → エラー終了 (変更なし)
@@ -876,7 +954,8 @@ deploy script の該当部分:
 1. `colmena apply-local` 実行前に `/run/current-system` のシンボリックリンク先を `PREV_SYSTEM` に記録
 2. `colmena apply-local` で新しい generation に切り替え
 3. smoke test（`curl` で health endpoint を確認）
-4. smoke test 失敗時、`$PREV_SYSTEM/bin/switch-to-configuration switch` で前の generation に復帰
+4. smoke test 成功後、`/run/current-system` の closure を Cachix に push-back
+5. smoke test 失敗時、`$PREV_SYSTEM/bin/switch-to-configuration switch` で前の generation に復帰
 
 NixOS の generation はイミュータブルであり、ロールバックはアトミック。前の generation のすべてのサービス定義・パッケージが即座に復元される。
 
@@ -899,7 +978,7 @@ secrets/
 |----------|----------|---------------|
 | `ci.yaml` → `github_deploy_key` | EC2 (sops-nix → /run/secrets/) | git clone / git pull |
 | `ci.yaml` → `webhook_secret` | EC2 (sops-nix → /run/secrets/) + Terraform (GitHub Webhook) | HMAC 検証 |
-| `ci.yaml` → `cachix_auth_token` | 開発者ローカル (nix run .#deploy) | cachix push |
+| `ci.yaml` → `cachix_auth_token` | 開発者ローカル (nix run .#deploy) + EC2 (sops-nix → /run/secrets/) | cachix push / push-back |
 | `infra.yaml` → `github_token` | 開発者ローカル (terraform apply) | GitHub Webhook 登録 |
 
 ---
@@ -996,16 +1075,17 @@ ssh <project>-<env> cat /run/deploy-webhook/hooks.json | jq '.[0].trigger-rule'
 
 - [ ] `ci.yaml` に `github_deploy_key` を追加 (Deploy Key の秘密鍵)
 - [ ] GitHub で Deploy Key を登録（`ci.yaml` に対応する公開鍵, read-only）
-- [ ] `secrets.nix` に deploy key と webhook secret の sops-nix 宣言を追加
+- [ ] `secrets.nix` に deploy key, webhook secret, cachix auth token の sops-nix 宣言を追加
 - [ ] `deploy.nix` をコピーして `<project>` 名を変更
 - [ ] `common.nix` に Cachix substituter + trusted-public-keys を設定
-- [ ] `common.nix` の systemPackages に `colmena`, `git`, `curl` を確認
+- [ ] `common.nix` の systemPackages に `colmena`, `git`, `curl`, `cachix` を確認
 - [ ] `flake.nix` に staging/prod ノードの `deploy.enable = true` + `refPattern` を定義
 - [ ] `flake.nix` に `system.configurationRevision = self.rev or self.dirtyRev or null` を設定
 - [ ] `version.nix` を `commonImports` に追加
 - [ ] nginx の virtualHost に `/.well-known/deploy` プロキシを確認 (deploy.nix が自動設定)
 - [ ] デプロイ後に `curl https://<domain>/.well-known/version` でリビジョンを確認
-- [ ] `nix run .#deploy` → `git push` で staging 自動デプロイを検証
+- [ ] `git push` だけで staging 自動デプロイを検証
+- [ ] 必要なら `nix run .#deploy` または CI build で Cachix を pre-warm
 - [ ] `git tag v*` → `git push --tags` で production 自動デプロイを検証
 
 #### セキュリティ確認
