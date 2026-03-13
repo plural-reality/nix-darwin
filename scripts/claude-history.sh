@@ -148,15 +148,11 @@ rebuild_index() {
 search_sessions() {
   local query="${1:-}"
 
-  # Auto-rebuild if index doesn't exist or is stale (>1h)
+  # Always run incremental update (only processes new files, fast)
   if [ ! -f "$INDEX_FILE" ]; then
     rebuild_index true
   else
-    local index_age
-    index_age=$(( $(date +%s) - $(stat -c %Y "$INDEX_FILE" 2>/dev/null || echo 0) ))
-    if [ "$index_age" -gt 3600 ]; then
-      rebuild_index false
-    fi
+    rebuild_index false
   fi
 
   [ ! -f "$INDEX_FILE" ] && { echo "No index available." >&2; exit 1; }
