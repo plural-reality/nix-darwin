@@ -195,6 +195,13 @@ let
     #!${webScrapingPythonEnv}/bin/python
     ${builtins.readFile ../scripts/download-slack-channel-files.py}
   '';
+
+  # Claude Code history search (fzf-based cross-project session finder)
+  ch = pkgs.writeShellApplication {
+    name = "ch";
+    runtimeInputs = with pkgs; [ fzf jq coreutils gnused ];
+    text = builtins.readFile ../scripts/claude-history.sh;
+  };
 in
 {
   home.packages = [
@@ -212,6 +219,7 @@ in
     flatten-dir
     cat-all
     download-slack-channel-files
+    ch
 
     # CLI tools used by scripts
     pkgs.python313Packages.markitdown

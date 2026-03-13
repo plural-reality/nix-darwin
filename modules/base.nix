@@ -76,7 +76,6 @@ in
         la = "ls -la";
         lt = "tree";
         remake = "make -j clean && make -j";
-        ch = "bash ${config.home.homeDirectory}/.claude/scripts/claude-history.sh";
       };
       initContent =
         let
