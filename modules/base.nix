@@ -36,6 +36,7 @@ in
     # Utilities
     fdupes
     fzf
+    ripgrep
     yt-dlp
     glow
   ];
