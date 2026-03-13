@@ -98,11 +98,11 @@ rebuild_index() {
     # Use xargs for parallel processing if available
     if command -v xargs >/dev/null 2>&1; then
       export -f build_index_for_file
-      find "$PROJECTS_DIR" -name "*.jsonl" 2>/dev/null | \
-        xargs -P 8 -I{} bash -c 'build_index_for_file "$@"' _ {} >> "$tmp_index" 2>/dev/null
+      find "$PROJECTS_DIR" -name "*.jsonl" -print0 2>/dev/null | \
+        xargs -0 -P 8 -I{} bash -c 'build_index_for_file "$@"' _ {} >> "$tmp_index" 2>/dev/null
       echo "  Indexed $total files" >&2
     else
-      find "$PROJECTS_DIR" -name "*.jsonl" 2>/dev/null | while read -r f; do
+      find "$PROJECTS_DIR" -name "*.jsonl" -print0 2>/dev/null | while IFS= read -r -d '' f; do
         count=$((count + 1))
         printf '\r  [%d/%d]' "$count" "$total" >&2
         build_index_for_file "$f" >> "$tmp_index"
@@ -170,7 +170,7 @@ search_sessions() {
       --reverse \
       --no-sort \
       --ansi \
-      --bind='ctrl-r:reload(bash '"$0"' --list | awk -F'"'"'\t'"'"' '"'"'{printf "%s\t%-12s\t%-25s\t%s\n", $1, $2, $3, $4}'"'"')' \
+      --bind="ctrl-r:reload(bash $0 --list | awk -F'\t' '{printf \"%s\t%-12s\t%-25s\t%s\\n\", \$1, \$2, \$3, \$4}')" \
     || true)"
 
   [ -z "$selected" ] && exit 0
