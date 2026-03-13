@@ -73,9 +73,15 @@
                     ];
                     builders-use-substitutes = true;
                     accept-flake-config = true;
-                    extra-substituters = [ "https://cache.numtide.com" ];
+                    extra-substituters = [
+                      "https://cache.numtide.com"
+                      "https://plural-reality.cachix.org"
+                      "https://devenv.cachix.org"
+                    ];
                     extra-trusted-public-keys = [
                       "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
+                      "plural-reality.cachix.org-1:239F7m1UlqIqB/08o1JTXsUbICmBZgRV/65dtiDrzR8="
+                      "devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw="
                     ];
                   };
                   linux-builder = {
