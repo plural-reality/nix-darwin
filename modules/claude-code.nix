@@ -123,6 +123,8 @@ in
     };
 
     ".claude/settings.json".text = builtins.toJSON {
+      model = "claude-opus-4-6[1m]";
+      effortLevel = "max";
       env = {
         CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1";
       };
