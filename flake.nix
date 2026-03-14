@@ -2,7 +2,7 @@
   description = "Example nix-darwin system flake";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    nixpkgs.url = "github:numtide/nixpkgs-unfree?ref=nixos-25.11";
     nix-darwin.url = "github:nix-darwin/nix-darwin/nix-darwin-25.11";
     nix-darwin.inputs.nixpkgs.follows = "nixpkgs";
 
@@ -146,14 +146,13 @@
                     inputs.kimi-cli.packages.${system}.default
                   ];
 
-                  imports =
-                    [
-                      inputs.mac-app-util.homeManagerModules.default
-                      ./modules/base.nix
-                      ./modules/claude-code.nix
-                      ./modules/shared-scripts.nix
-                    ]
-                    ++ (nixpkgs.lib.optional (secretsFile != null) inputs.sops-nix.homeManagerModules.sops);
+                  imports = [
+                    inputs.mac-app-util.homeManagerModules.default
+                    ./modules/base.nix
+                    ./modules/claude-code.nix
+                    ./modules/shared-scripts.nix
+                  ]
+                  ++ (nixpkgs.lib.optional (secretsFile != null) inputs.sops-nix.homeManagerModules.sops);
 
                   programs.home-manager.enable = true;
                   home.username = userConfig.username;
@@ -164,9 +163,9 @@
                     age.keyFile = "${config.home.homeDirectory}/.config/sops/age/keys.txt";
                     defaultSopsFile = secretsFile;
                   };
-                  launchd.agents.sops-nix.config.EnvironmentVariables.PATH =
-                    lib.mkIf (secretsFile != null)
-                      (lib.mkForce "/usr/bin:/bin:/usr/sbin:/sbin");
+                  launchd.agents.sops-nix.config.EnvironmentVariables.PATH = lib.mkIf (secretsFile != null) (
+                    lib.mkForce "/usr/bin:/bin:/usr/sbin:/sbin"
+                  );
                 };
             }
           ]
