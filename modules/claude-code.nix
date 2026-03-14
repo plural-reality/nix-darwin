@@ -128,7 +128,7 @@ in
       env = {
         CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1";
       };
-      defaultMode = "bypassPermissions";
+      enableAutoMode = true;
       teammateMode = "tmux";
       permissions = {
         allow = [
