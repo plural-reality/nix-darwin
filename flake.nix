@@ -140,10 +140,11 @@
                 inherit userConfig secretsFile;
               };
               home-manager.users.${userConfig.username} =
-                { config, lib, ... }:
+                { config, lib, pkgs, ... }:
                 {
                   home.packages = [
                     inputs.kimi-cli.packages.${system}.default
+                    (import ./packages/codelayer { inherit pkgs; })
                   ];
 
                   imports = [
@@ -240,6 +241,9 @@
 
           # XcodeBuildMCP: hermetic MCP server (no npx)
           packages.xcodebuildmcp = import ./packages/xcodebuildmcp { inherit pkgs; };
+
+          # CodeLayer: AI coding agent (macOS .app + CLI)
+          packages.codelayer = import ./packages/codelayer { inherit pkgs; };
 
           # Screenpipe: standalone build via `nix build .#screenpipe`
           packages.screenpipe =
