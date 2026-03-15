@@ -229,12 +229,13 @@ in
     mkdir -p "$XCODE_DIR"
 
     # commands: Xcode Agent dir → ~/.claude/commands (source of truth)
-    if [ ! -e "$XCODE_DIR/commands" ]; then
+    # Use -L to detect dangling symlinks (which -e misses)
+    if [ ! -L "$XCODE_DIR/commands" ] && [ ! -e "$XCODE_DIR/commands" ]; then
       ln -s "$HOME/.claude/commands" "$XCODE_DIR/commands"
     fi
 
     # skills: Xcode Agent dir → ~/.claude/skills (source of truth, Nix-managed)
-    if [ ! -e "$XCODE_DIR/skills" ]; then
+    if [ ! -L "$XCODE_DIR/skills" ] && [ ! -e "$XCODE_DIR/skills" ]; then
       ln -s "$HOME/.claude/skills" "$XCODE_DIR/skills"
     fi
   '';
