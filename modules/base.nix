@@ -41,6 +41,7 @@ in
     ripgrep
     yt-dlp
     glow
+    ripgrep
   ];
 
   programs = {
