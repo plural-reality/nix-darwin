@@ -1,8 +1,0 @@
-@[architecture.md]
-@[secrets.md]
-@[infrastructure.md]
-@[nixos.md]
-@[bootstrap.md]
-@[operations.md]
-@[self-deploy.md]
-@[multi-project.md]
