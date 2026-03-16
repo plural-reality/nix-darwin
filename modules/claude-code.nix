@@ -25,6 +25,29 @@ let
   # All commands must use absolute Nix store paths.
   xcodeAgentConfigDir = "Library/Developer/Xcode/CodingAssistant/ClaudeAgentConfig";
 
+  # Shared agents & commands: deployed to ~/.claude/{agents,commands}
+  sharedAgentsDir = ../prompt/claude-code/agents;
+  sharedCommandsDir = ../prompt/claude-code/commands;
+
+  # Enumerate files recursively under a directory, returning relative paths.
+  # e.g. agents/cl/foo.md → ".claude/agents/cl/foo.md"
+  mkDirFileAttrs = targetPrefix: srcDir:
+    let
+      # Read top-level entries (namespace dirs like "cl/")
+      topEntries = builtins.readDir srcDir;
+      namespaces = builtins.filter (n: topEntries.${n} == "directory") (builtins.attrNames topEntries);
+      mkNamespaceAttrs = ns:
+        let
+          nsEntries = builtins.readDir (srcDir + "/${ns}");
+          files = builtins.filter (f: nsEntries.${f} == "regular") (builtins.attrNames nsEntries);
+        in
+        builtins.listToAttrs (map (f: {
+          name = "${targetPrefix}/${ns}/${f}";
+          value.source = srcDir + "/${ns}/${f}";
+        }) files);
+    in
+    builtins.foldl' (acc: ns: acc // (mkNamespaceAttrs ns)) { } namespaces;
+
   # Shared skill source: Claude Code skillpack is wired to both Claude and Codex.
   sharedSkillsDir = ../prompt/claude-code/skills;
   sharedSkillEntries = builtins.readDir sharedSkillsDir;
@@ -175,7 +198,9 @@ in
       template = ../prompt/cursor.md;
     };
   }
-  // agentFiles;
+  // agentFiles
+  // (mkDirFileAttrs ".claude/agents" sharedAgentsDir)
+  // (mkDirFileAttrs ".claude/commands" sharedCommandsDir);
 
   # Symlink ~/.claude/{commands,skills} → Xcode Agent config dir
   # so both CLI and Xcode Agent share the same commands/skills.
