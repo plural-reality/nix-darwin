@@ -202,6 +202,16 @@ let
     runtimeInputs = with pkgs; [ fzf jq coreutils gnused ];
     text = builtins.readFile ../scripts/claude-history.sh;
   };
+
+  # ── Scrapbox writer ─────────────────────────────────────
+  # @cosense/std is not in nixpkgs, so we use a managed node_modules
+  # directory under ~/.local/share/scrapbox-write/ with activation-time
+  # npm install. The wrapper injects NODE_PATH for hermetic resolution.
+  scrapbox-write = pkgs.writeScriptBin "scrapbox-write" ''
+    #!${pkgs.bash}/bin/bash
+    export NODE_PATH="$HOME/.local/share/scrapbox-write/node_modules"
+    exec ${pkgs.nodejs}/bin/node "$HOME/.local/share/scrapbox-write/scrapbox-write.mjs" "$@"
+  '';
 in
 {
   home.packages = [
@@ -221,8 +231,32 @@ in
     download-slack-channel-files
     ch
 
+    # Scrapbox writer
+    scrapbox-write
+
     # CLI tools used by scripts
     pkgs.python313Packages.markitdown
     pkgs.python313Packages.trafilatura
   ];
+
+  # Deploy scrapbox-write.mjs to ~/.local/share/scrapbox-write/
+  home.file.".local/share/scrapbox-write/scrapbox-write.mjs".source = ../scripts/scrapbox-write.mjs;
+  home.file.".local/share/scrapbox-write/package.json".text = builtins.toJSON {
+    name = "scrapbox-write";
+    version = "1.0.0";
+    type = "module";
+    dependencies = {
+      "@cosense/std" = "^0.31.0";
+    };
+  };
+
+  # Activation: npm install @cosense/std if node_modules is missing or stale
+  home.activation.scrapboxWriteNpmInstall = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    SBDIR="$HOME/.local/share/scrapbox-write"
+    if [ ! -d "$SBDIR/node_modules/@cosense/std" ]; then
+      ${pkgs.nodejs}/bin/npm install --prefix "$SBDIR" --no-audit --no-fund 2>/dev/null \
+        && echo "scrapbox-write: npm install complete" \
+        || echo "scrapbox-write: npm install failed (will retry next switch)" >&2
+    fi
+  '';
 }
