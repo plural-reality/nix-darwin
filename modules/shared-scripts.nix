@@ -246,6 +246,12 @@ in
     pkgs.python313Packages.trafilatura
   ];
 
+  # prompt-review collector (nix-shell shebang, self-contained)
+  home.file.".local/bin/prompt-review-collect" = {
+    source = ../prompt/claude-code/skills/prompt-review/scripts/collect.py;
+    executable = true;
+  };
+
   # Deploy scrapbox-write.mjs to ~/.local/share/scrapbox-write/
   home.file.".local/share/scrapbox-write/scrapbox-write.mjs".source = ../scripts/scrapbox-write.mjs;
   home.file.".local/share/scrapbox-write/package.json".text = builtins.toJSON {
