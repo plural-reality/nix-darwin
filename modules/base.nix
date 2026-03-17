@@ -27,6 +27,8 @@ in
     nodejs
     bun
     python3
+    tree
+    nvim
 
     # Media processing
     ffmpeg
@@ -36,7 +38,6 @@ in
     # Utilities
     fdupes
     fzf
-    ripgrep
     yt-dlp
     glow
     ripgrep
