@@ -21,8 +21,6 @@ in
     llm-agents.codex
     llm-agents.openclaw
 
-    ghostty-bin
-
     # Development
     tmux
     deno
