@@ -147,7 +147,7 @@ in
         plenary-nvim
       ];
 
-      extraLuaConfig = ''
+      initLua = ''
         -- Treesitter: grammars pre-built by Nix (withPlugins), auto-start highlight
         vim.api.nvim_create_autocmd('FileType', {
           callback = function(ev) pcall(vim.treesitter.start, ev.buf) end,
