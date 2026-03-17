@@ -207,10 +207,17 @@ let
   # @cosense/std is not in nixpkgs, so we use a managed node_modules
   # directory under ~/.local/share/scrapbox-write/ with activation-time
   # npm install. The wrapper injects NODE_PATH for hermetic resolution.
+  # ESM ignores NODE_PATH, so we cd into the directory where node_modules lives.
+  # The mjs file is a Nix symlink in the same dir, and node resolves imports
+  # relative to the realpath of the script, so we copy it to a temp location
+  # alongside node_modules to ensure correct resolution.
   scrapbox-write = pkgs.writeScriptBin "scrapbox-write" ''
     #!${pkgs.bash}/bin/bash
-    export NODE_PATH="$HOME/.local/share/scrapbox-write/node_modules"
-    exec ${pkgs.nodejs}/bin/node "$HOME/.local/share/scrapbox-write/scrapbox-write.mjs" "$@"
+    SBDIR="$HOME/.local/share/scrapbox-write"
+    # Ensure a writable copy of the script exists next to node_modules
+    # (Nix symlinks into the store break ESM resolution)
+    cp -f "$SBDIR/scrapbox-write.mjs" "$SBDIR/_run.mjs" 2>/dev/null || true
+    exec ${pkgs.nodejs}/bin/node "$SBDIR/_run.mjs" "$@"
   '';
 in
 {
