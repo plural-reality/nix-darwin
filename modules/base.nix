@@ -28,7 +28,6 @@ in
     bun
     python3
     tree
-    neovim
 
     # Media processing
     ffmpeg
@@ -108,6 +107,121 @@ in
     gh = {
       enable = true;
     };
+
+    neovim = {
+      enable = true;
+      defaultEditor = true;
+      viAlias = true;
+      vimAlias = true;
+
+      extraPackages = with pkgs; [
+        # LSP servers (HLS is project-local via devShell + direnv)
+        nodePackages.typescript-language-server
+      ];
+
+      plugins = with pkgs.vimPlugins; [
+        # Treesitter: grammars pre-built by Nix (no runtime compilation)
+        (nvim-treesitter.withPlugins (p: [
+          p.haskell
+          p.typescript
+          p.tsx
+          p.javascript
+          p.nix
+          p.lua
+          p.json
+          p.yaml
+          p.markdown
+          p.bash
+        ]))
+
+        # Completion
+        nvim-cmp
+        cmp-nvim-lsp
+        cmp-buffer
+        cmp-path
+        luasnip
+        cmp_luasnip
+
+        # Fuzzy finder
+        telescope-nvim
+        plenary-nvim
+      ];
+
+      extraLuaConfig = ''
+        -- Treesitter: grammars pre-built by Nix (withPlugins), auto-start highlight
+        vim.api.nvim_create_autocmd('FileType', {
+          callback = function(ev) pcall(vim.treesitter.start, ev.buf) end,
+        })
+
+        -- Completion (nvim-cmp)
+        local cmp = require('cmp')
+        local luasnip = require('luasnip')
+        cmp.setup {
+          snippet = {
+            expand = function(args) luasnip.lsp_expand(args.body) end,
+          },
+          mapping = cmp.mapping.preset.insert({
+            ['<C-Space>'] = cmp.mapping.complete(),
+            ['<CR>'] = cmp.mapping.confirm({ select = true }),
+            ['<C-n>'] = cmp.mapping.select_next_item(),
+            ['<C-p>'] = cmp.mapping.select_prev_item(),
+          }),
+          sources = cmp.config.sources(
+            { { name = 'nvim_lsp' }, { name = 'luasnip' } },
+            { { name = 'buffer' }, { name = 'path' } }
+          ),
+        }
+
+        -- LSP: vim.lsp.config (Neovim 0.11+ native API, no lspconfig framework)
+        local capabilities = require('cmp_nvim_lsp').default_capabilities()
+
+        vim.lsp.config('hls', {
+          cmd = { 'haskell-language-server-wrapper', '--lsp' },
+          filetypes = { 'haskell', 'lhaskell', 'cabal' },
+          root_markers = { 'hie.yaml', 'cabal.project', '*.cabal', 'stack.yaml', 'package.yaml' },
+          capabilities = capabilities,
+        })
+
+        vim.lsp.config('ts_ls', {
+          cmd = { 'typescript-language-server', '--stdio' },
+          filetypes = { 'typescript', 'typescriptreact', 'javascript', 'javascriptreact' },
+          root_markers = { 'tsconfig.json', 'jsconfig.json', 'package.json' },
+          capabilities = capabilities,
+        })
+
+        vim.lsp.config('nil_ls', {
+          cmd = { 'nil' },
+          filetypes = { 'nix' },
+          root_markers = { 'flake.nix' },
+          capabilities = capabilities,
+          settings = { ['nil'] = { formatting = { command = { 'nixfmt' } } } },
+        })
+
+        vim.lsp.enable({ 'hls', 'ts_ls', 'nil_ls' })
+
+        -- LSP keybindings
+        vim.api.nvim_create_autocmd('LspAttach', {
+          callback = function(ev)
+            local opts = { buffer = ev.buf }
+            vim.keymap.set('n', 'gd', vim.lsp.buf.definition, opts)
+            vim.keymap.set('n', 'gr', vim.lsp.buf.references, opts)
+            vim.keymap.set('n', 'K', vim.lsp.buf.hover, opts)
+            vim.keymap.set('n', '<leader>rn', vim.lsp.buf.rename, opts)
+            vim.keymap.set('n', '<leader>ca', vim.lsp.buf.code_action, opts)
+            vim.keymap.set('n', '<leader>f', function() vim.lsp.buf.format() end, opts)
+            vim.keymap.set('n', '[d', vim.diagnostic.goto_prev, opts)
+            vim.keymap.set('n', ']d', vim.diagnostic.goto_next, opts)
+          end,
+        })
+
+        -- Telescope
+        local telescope = require('telescope.builtin')
+        vim.keymap.set('n', '<leader>ff', telescope.find_files)
+        vim.keymap.set('n', '<leader>fg', telescope.live_grep)
+        vim.keymap.set('n', '<leader>fb', telescope.buffers)
+        vim.keymap.set('n', '<leader>fd', telescope.diagnostics)
+      '';
+    };
   };
 
   # VS Code: Nix-managed wrapper to prevent Cursor from hijacking `code`
@@ -123,8 +237,6 @@ in
   home.sessionVariables = {
     MANPATH = ":/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/share/man";
     SHELL = "zsh";
-    EDITOR = "nvim";
-    VISUAL = "nvim";
     PAGER = "less";
     LESS = "-R";
     SOPS_AGE_KEY_FILE = "${config.home.homeDirectory}/.config/sops/age/keys.txt";
