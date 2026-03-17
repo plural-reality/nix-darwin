@@ -21,7 +21,7 @@ let
     ps.requests
     ps.beautifulsoup4
     ps.trafilatura
-    ps.slack-sdk
+    (ps.slack-sdk.overridePythonAttrs (_: { doCheck = false; }))
   ]);
 
   # ── Haskell stream tools ──────────────────────────────────
