@@ -28,7 +28,7 @@ in
     bun
     python3
     tree
-    nvim
+    neovim
 
     # Media processing
     ffmpeg
