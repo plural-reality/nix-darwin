@@ -77,6 +77,7 @@ let
         INPUT_DIR=""
         OUTPUT_DIR=""
         JOBS=4
+        DELETE_ORIGINALS=0
 
         while [[ $# -gt 0 ]]; do
           case "$1" in
@@ -86,7 +87,7 @@ let
 
     USAGE:
       make-videos-under-15min -i ./videos -o ./output
-      make-videos-under-15min -i . -o ./splitted
+      make-videos-under-15min -i . -o . -d
       make-videos-under-15min -i . -o ./splitted -j 8
 
     DESCRIPTION:
@@ -97,6 +98,7 @@ let
       -i <dir>      Input directory (required, searches for video files recursively)
       -o <dir>      Output directory (required)
       -j <n>        Number of parallel jobs (default: 4)
+      -d, --delete-originals  Delete original files after successful splitting
       -h, --help    Show this help message
 
     SUPPORTED FORMATS:
@@ -105,12 +107,14 @@ let
     NOTES:
       - Uses ffmpeg's stream copy mode for fast processing
       - Resets timestamps for each segment
+      - -d only removes files that were actually split (>15min)
     HELP
               exit 0
               ;;
             -i) INPUT_DIR="$2"; shift 2 ;;
             -o) OUTPUT_DIR="$2"; shift 2 ;;
             -j) JOBS="$2"; shift 2 ;;
+            -d|--delete-originals) DELETE_ORIGINALS=1; shift ;;
             *)
               echo "Error: Unknown option '$1'" >&2
               echo "Use --help for usage information" >&2
@@ -134,6 +138,7 @@ let
           input_file="$1"
           output_dir="$2"
           max_dur="$3"
+          delete_flag="$4"
 
           duration=$(${pkgs.ffmpeg}/bin/ffprobe -v error -show_entries format=duration \
             -of default=noprint_wrappers=1:nokey=1 "$input_file" 2>/dev/null | cut -d. -f1)
@@ -150,9 +155,13 @@ let
               -c copy -f segment \
               -segment_time 14:50 \
               -reset_timestamps 1 \
-              "''${output_base}_%03d.mp4" 2>/dev/null
+              "''${output_base}_%03d.mp4" 2>/dev/null \
+            && [[ "$delete_flag" -eq 1 ]] && {
+              echo "[make-videos-under-15min] Deleting original: $input_file" >&2
+              rm "$input_file"
+            }
           fi
-        ' _ {} "$OUTPUT_DIR" "$MAX_DURATION"
+        ' _ {} "$OUTPUT_DIR" "$MAX_DURATION" "$DELETE_ORIGINALS"
   '';
 
   urls-under = pkgs.writeScriptBin "urls-under" ''
