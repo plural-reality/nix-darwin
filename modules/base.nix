@@ -98,9 +98,17 @@ in
         ];
     };
 
+    # Fish shell: ensures home.sessionVariables are exported in fish too.
+    # This does NOT change anyone's default shell (still zsh).
+    # Anyone who launches fish interactively gets Nix env vars automatically.
+    fish = {
+      enable = true;
+    };
+
     direnv = {
       enable = true;
       enableZshIntegration = true;
+      enableFishIntegration = true;
       nix-direnv.enable = true;
     };
 
