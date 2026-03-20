@@ -153,7 +153,12 @@ in
         SCRAPBOX_SID = "s:SHE-0nIW3e5263L9Hm4BeQf0aRSSQpFC.uVtaUJ7Wwu+6HtCS8tPE7Zb0CuAlLCtmNMWUGWp49Yo";
       };
       enableAutoMode = true;
+      skipDangerousModePermissionPrompt = true;
       teammateMode = "tmux";
+      statusLine = {
+        type = "command";
+        command = "bash /Users/tkgshn/.claude/statusline-command.sh";
+      };
       permissions = {
         allow = [
           "Bash(grep:*)"
