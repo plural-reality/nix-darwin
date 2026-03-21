@@ -255,6 +255,12 @@
               screenpipe-src = inputs.screenpipe-src;
             };
 
+          # Claude Code skills → Claude Desktop uploadable ZIPs
+          packages.desktop-skills = import ./packages/desktop-skills {
+            inherit pkgs;
+            skillsDir = ./prompt/claude-code/skills;
+          };
+
           # Formatter for the flake itself
           formatter = pkgs.nixfmt;
 

@@ -7,6 +7,12 @@ let
 
   xcodebuildmcp = import ../packages/xcodebuildmcp { inherit pkgs; };
 
+  # Claude Desktop uploadable skill ZIPs
+  desktopSkills = import ../packages/desktop-skills {
+    inherit pkgs;
+    skillsDir = ../prompt/claude-code/skills;
+  };
+
   # XcodeBuildMCP: shared between CLI and Xcode Agent
   xcodeBuildMcpEnv = {
     INCREMENTAL_BUILDS_ENABLED = "true";
@@ -197,6 +203,9 @@ in
         XcodeBuildMCP = xcodeBuildMcpServer;
       };
     };
+
+    # Claude Desktop: skill ZIPs for upload (⌘⇧G → ~/.claude/desktop-skills)
+    ".claude/desktop-skills".source = desktopSkills;
 
     # Cursor
     ".cursorrules".text = expandTemplate {
