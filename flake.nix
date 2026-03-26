@@ -106,6 +106,14 @@
 
                 nixpkgs.overlays = [
                   inputs.llm-agents.overlays.default
+                  # onnxruntime 1.23.2 test code fails with -Werror on macOS (nodiscard warning in graph_test.cc)
+                  (final: prev: {
+                    pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
+                      (pyFinal: pyPrev: {
+                        onnxruntime = pyPrev.onnxruntime.overrideAttrs (_: { doCheck = false; });
+                      })
+                    ];
+                  })
                 ];
                 nixpkgs.config.allowUnfreePredicate =
                   pkg:
@@ -204,6 +212,10 @@
             type = "app";
             program = "${self.packages.${system}.apply}/bin/apply";
           };
+          apps.${system}.zip-skills = {
+            type = "app";
+            program = "${self.packages.${system}.zip-skills}/bin/zip-skills";
+          };
         };
 
     in
@@ -259,6 +271,29 @@
           packages.desktop-skills = import ./packages/desktop-skills {
             inherit pkgs;
             skillsDir = ./prompt/claude-code/skills;
+          };
+
+          # Copy skill ZIPs to ~/Desktop (or custom dir)
+          # Usage: nix run .#zip-skills [-- /path/to/output]
+          packages.zip-skills = pkgs.writeShellApplication {
+            name = "zip-skills";
+            text = ''
+              OUTDIR="''${1:-$HOME/Desktop}/claude-skills"
+              mkdir -p "$OUTDIR"
+
+              echo "Copying skill ZIPs to $OUTDIR ..."
+
+              copied=()
+              for zip in "${self'.packages.desktop-skills}"/*.zip; do
+                name=$(basename "$zip")
+                cp -f "$zip" "$OUTDIR/$name"
+                copied+=("$name")
+                echo "  $name"
+              done
+
+              echo ""
+              echo "=== ''${#copied[@]} skill ZIPs exported to $OUTDIR ==="
+            '';
           };
 
           # Formatter for the flake itself
