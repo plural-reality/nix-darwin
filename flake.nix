@@ -212,10 +212,6 @@
             type = "app";
             program = "${self.packages.${system}.apply}/bin/apply";
           };
-          apps.${system}.zip-skills = {
-            type = "app";
-            program = "${self.packages.${system}.zip-skills}/bin/zip-skills";
-          };
         };
 
     in
@@ -294,6 +290,11 @@
               echo ""
               echo "=== ''${#copied[@]} skill ZIPs exported to $OUTDIR ==="
             '';
+          };
+
+          apps.zip-skills = {
+            type = "app";
+            program = "${self'.packages.zip-skills}/bin/zip-skills";
           };
 
           # Formatter for the flake itself
