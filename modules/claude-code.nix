@@ -142,6 +142,7 @@ in
 {
   home.packages = [
     pkgs.llm-agents.claude-code # Claude Code CLI
+    pkgs.llm-agents.agent-browser # Browser agent for LLMs
   ];
 
   home.file = {
