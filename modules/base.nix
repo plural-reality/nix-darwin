@@ -124,7 +124,7 @@ in
 
       extraPackages = with pkgs; [
         # LSP servers (HLS is project-local via devShell + direnv)
-        nodePackages.typescript-language-server
+        typescript-language-server
       ];
 
       plugins = with pkgs.vimPlugins; [
