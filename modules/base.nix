@@ -40,6 +40,9 @@ in
     yt-dlp
     glow
     ripgrep
+
+    # Google Workspace CLI (see gdrive skill)
+    gws
   ];
 
   programs = {
