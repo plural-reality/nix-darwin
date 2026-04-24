@@ -153,8 +153,8 @@ in
     };
 
     ".claude/settings.json".text = builtins.toJSON {
-      model = "claude-opus-4-6[1m]";
-      effortLevel = "max";
+      model = "claude-opus-4-7[1m]";
+      effortLevel = "xhigh";
       env = {
         CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1";
         SCRAPBOX_SID = "s:SHE-0nIW3e5263L9Hm4BeQf0aRSSQpFC.uVtaUJ7Wwu+6HtCS8tPE7Zb0CuAlLCtmNMWUGWp49Yo";

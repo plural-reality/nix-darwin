@@ -37,6 +37,7 @@ in
     # Utilities
     fdupes
     fzf
+    gws
     yt-dlp
     glow
     ripgrep
