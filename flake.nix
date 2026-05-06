@@ -111,6 +111,14 @@
                     pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
                       (pyFinal: pyPrev: {
                         onnxruntime = pyPrev.onnxruntime.overrideAttrs (_: { doCheck = false; });
+                        # pydub only needs ffmpeg/ffplay/ffprobe. Avoid ffmpeg-full's
+                        # kvazaar check path on Darwin while preserving pydub behavior.
+                        pydub = pyPrev.pydub.override { ffmpeg-full = final.ffmpeg; };
+                        # speechrecognition's test closure builds optional whisper backends;
+                        # openai-whisper's audio test fails under the Darwin sandbox.
+                        speechrecognition = pyPrev.speechrecognition.overridePythonAttrs (_: {
+                          doCheck = false;
+                        });
                       })
                     ];
                   })
