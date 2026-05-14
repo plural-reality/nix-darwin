@@ -225,7 +225,7 @@ let
     SBDIR="$HOME/.local/share/scrapbox-write"
     # Ensure a writable copy of the script exists next to node_modules
     # (Nix symlinks into the store break ESM resolution)
-    cp -f "$SBDIR/scrapbox-write.mjs" "$SBDIR/_run.mjs" 2>/dev/null || true
+    cp -Lf "$SBDIR/scrapbox-write.mjs" "$SBDIR/_run.mjs" 2>/dev/null || true
     exec ${pkgs.nodejs}/bin/node "$SBDIR/_run.mjs" "$@"
   '';
 in
