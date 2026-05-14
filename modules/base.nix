@@ -256,6 +256,9 @@ in
     SOPS_AGE_KEY_FILE = "${config.home.homeDirectory}/.config/sops/age/keys.txt";
     SCRAPBOX_SID = "s:SHE-0nIW3e5263L9Hm4BeQf0aRSSQpFC.uVtaUJ7Wwu+6HtCS8tPE7Zb0CuAlLCtmNMWUGWp49Yo";
     CLAUDE_CODE_EFFORT_LEVEL = "max";
+    # gws encryption key in ~/.config/gws/, not macOS Keychain.
+    # Why: Keychain ACL blocks GUI-subprocess access (Claude Code / Cursor), forcing re-auth.
+    GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND = "file";
   };
   home.sessionPath = [
     "${config.home.homeDirectory}/.local/bin"
