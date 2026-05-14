@@ -58,7 +58,7 @@ build_index_for_file() {
       (.msg | test("^fast$") | not)
     ) |
     "\(.ts)\t\(.msg | .[0:200])"
-  ' 2>/dev/null | head -1)"
+  ' 2>/dev/null | head -1)" || true
 
   [ -z "$result" ] && return 0
 
@@ -130,8 +130,8 @@ rebuild_index() {
       sid="$(basename "$f" .jsonl)"
       # Remove existing entry for this session
       sed -i "/^${sid}	/d" "$tmp_index" 2>/dev/null || true
-      build_index_for_file "$f" >> "$tmp_index"
-    done
+      build_index_for_file "$f" >> "$tmp_index" || true
+    done || true
   fi
 
   # Sort by date descending (field 2)
@@ -145,6 +145,18 @@ rebuild_index() {
 
 # --- Search ---
 
+# Format index for fzf display: ID\tformatted_display
+# Field 1 = session_id (hidden), Field 2 = pre-formatted columns (visible)
+format_for_fzf() {
+  awk -F'\t' '{
+    date = $2
+    proj = $3
+    msg  = substr($4, 1, 120)
+    printf "%s\t%-11s  %-22s  %s\n", $1, date, proj, msg
+  }' "$1"
+}
+export -f format_for_fzf
+
 search_sessions() {
   local query="${1:-}"
 
@@ -157,35 +169,60 @@ search_sessions() {
 
   [ ! -f "$INDEX_FILE" ] && { echo "No index available." >&2; exit 1; }
 
-  # fzf selection
+  # fzf selection — field 1 is hidden ID, field 2 is pre-formatted display
   local selected
-  selected="$(awk -F'\t' '{printf "%s\t%-12s\t%-25s\t%s\n", $1, $2, $3, $4}' "$INDEX_FILE" | \
+  selected="$(format_for_fzf "$INDEX_FILE" | \
     fzf \
-      --with-nth=2.. \
-      --delimiter='\t' \
-      --header=$'  Date         Project                   First Message' \
+      --with-nth=2 \
+      --delimiter=$'\t' \
+      --header='  Date        Project                Message' \
       --query="$query" \
       --prompt='ch> ' \
       --height=80% \
       --reverse \
       --no-sort \
-      --ansi \
-      --bind="ctrl-r:reload(bash $0 --list | awk -F'\t' '{printf \"%s\t%-12s\t%-25s\t%s\\n\", \$1, \$2, \$3, \$4}')" \
+      --bind="ctrl-r:reload(bash $0 --list | bash -c 'format_for_fzf /dev/stdin')" \
     || true)"
 
   [ -z "$selected" ] && exit 0
 
   local session_id
-  session_id="$(echo "$selected" | cut -f1)"
+  session_id="$(printf '%s' "$selected" | cut -f1)"
 
-  echo ""
-  echo "  claude --resume $session_id"
-  echo "  claude --resume $session_id --dangerously-skip-permissions"
-  echo ""
+  # Find session's project directory and cd there before resume
+  # claude --resume only searches within the current project context
+  # Encoded: -Users-tkgshn-Developer-plural-reality-cartographer
+  # Real:    /Users/tkgshn/Developer/plural-reality/cartographer
+  # Can't simply s/-/\//g — hyphens in dir names (plural-reality) get mangled
+  # Greedy decode: try longest dir name match at each level, shorten until found
+  local jsonl_file
+  jsonl_file="$(find "$PROJECTS_DIR" -name "${session_id}.jsonl" -not -path "*/subagents/*" 2>/dev/null | head -1)"
+  local real_path=""
+  [ -n "$jsonl_file" ] && {
+    local remaining
+    remaining="$(basename "$(dirname "$jsonl_file")")"
+    remaining="${remaining#-}"
+    real_path=""
+    while [ -n "$remaining" ]; do
+      local try="$remaining"
+      local matched=""
+      while [ -n "$try" ]; do
+        [ -d "${real_path}/${try}" ] && { real_path="${real_path}/${try}"; remaining="${remaining:${#try}}"; remaining="${remaining#-}"; matched=1; break; }
+        [[ "$try" == *-* ]] || break
+        try="${try%-*}"
+      done
+      [ -z "$matched" ] && break
+    done
+  }
 
-  # Copy basic resume command to clipboard
+  # Copy resume command to clipboard
   printf "claude --resume %s" "$session_id" | pbcopy
-  echo "(copied to clipboard)"
+
+  # cd to project dir (or stay if path doesn't exist)
+  [ -n "$real_path" ] && [ -d "$real_path" ] && cd "$real_path"
+  # Clean up lock before exec (exec replaces process, so trap EXIT won't fire)
+  rm -f "$LOCK_FILE"
+  exec claude --resume "$session_id"
 }
 
 # --- Main ---
