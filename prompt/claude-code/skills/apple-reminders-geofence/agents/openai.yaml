@@ -1,0 +1,7 @@
+interface:
+  display_name: "Apple Reminders Geofence"
+  short_description: "Create verified location-based reminders"
+  default_prompt: "Use $apple-reminders-geofence to create duplicate-safe Apple Reminders geofence reminders for a real venue."
+
+policy:
+  allow_implicit_invocation: true

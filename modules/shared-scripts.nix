@@ -21,7 +21,9 @@ let
     ps.requests
     ps.beautifulsoup4
     ps.trafilatura
-    (ps.slack-sdk.overridePythonAttrs (_: { doCheck = false; }))
+    (ps.slack-sdk.overridePythonAttrs (_: {
+      doCheck = false;
+    }))
   ]);
 
   # ── Haskell stream tools ──────────────────────────────────
@@ -208,8 +210,23 @@ let
   # Claude Code history search (fzf-based cross-project session finder)
   ch = pkgs.writeShellApplication {
     name = "ch";
-    runtimeInputs = with pkgs; [ fzf jq coreutils gnused ];
+    runtimeInputs = with pkgs; [
+      fzf
+      jq
+      coreutils
+      gnused
+    ];
     text = builtins.readFile ../scripts/claude-history.sh;
+  };
+
+  # freee REST filter: stdin JSON -> freee API -> stdout JSON.
+  # Auth state stays in ~/.config/freee-mcp, owned by freee-mcp's OAuth flow.
+  freeeCall = pkgs.writeShellApplication {
+    name = "freee-call";
+    runtimeInputs = [ pkgs.nodejs_22 ];
+    text = ''
+      exec ${pkgs.nodejs_22}/bin/node --experimental-strip-types ${../scripts/freee-call.ts} "$@"
+    '';
   };
 
   # ── Scrapbox writer ─────────────────────────────────────
@@ -246,6 +263,7 @@ in
     cat-all
     download-slack-channel-files
     ch
+    freeeCall
 
     # Scrapbox writer
     scrapbox-write

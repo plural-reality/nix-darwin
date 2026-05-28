@@ -39,7 +39,12 @@ let
   freeeMcpVersion = "0.26.7";
   freeeMcpServer = {
     command = "${pkgs.nodejs_22}/bin/npx";
-    args = [ "-y" "-p" "freee-mcp@${freeeMcpVersion}" "freee-mcp" ];
+    args = [
+      "-y"
+      "-p"
+      "freee-mcp@${freeeMcpVersion}"
+      "freee-mcp"
+    ];
   };
 
   sharedAgentEnvNames = [
@@ -308,6 +313,9 @@ in
           "Bash(fd:*)"
           "Bash(tree:*)"
           "Bash(echo:*)"
+          "Bash(printf:*)"
+          "Bash(jq:*)"
+          "Bash(freee-call:*)"
           "Bash(git log*)"
           "Bash(git diff*)"
           "Bash(git status*)"

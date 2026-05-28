@@ -110,7 +110,9 @@
                   (final: prev: {
                     pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
                       (pyFinal: pyPrev: {
-                        onnxruntime = pyPrev.onnxruntime.overrideAttrs (_: { doCheck = false; });
+                        onnxruntime = pyPrev.onnxruntime.overrideAttrs (_: {
+                          doCheck = false;
+                        });
                         # pydub only needs ffmpeg/ffplay/ffprobe. Avoid ffmpeg-full's
                         # kvazaar check path on Darwin while preserving pydub behavior.
                         pydub = pyPrev.pydub.override { ffmpeg-full = final.ffmpeg; };
@@ -156,7 +158,12 @@
                 inherit userConfig secretsFile;
               };
               home-manager.users.${userConfig.username} =
-                { config, lib, pkgs, ... }:
+                {
+                  config,
+                  lib,
+                  pkgs,
+                  ...
+                }:
                 {
                   home.packages = [
                     inputs.kimi-cli.packages.${system}.default
@@ -332,11 +339,11 @@
             + builtins.readFile ./downstream/setup.sh;
           };
 
-          # Apply: invoked via `nix run github:plural-reality/nix-darwin#apply`
+          # Apply: invoked from a downstream flake via `nix run .#apply`.
           packages.apply = pkgs.writeShellApplication {
             name = "apply";
             text = ''
-              nix flake update
+              nix flake update nix-darwin-upstream
               # Run all pending migrations from this upstream version
               ${self'.packages.migrate}/bin/migrate .
               if command -v darwin-rebuild &>/dev/null; then
@@ -400,8 +407,8 @@
               [[ -x "$TARGET/apply" ]]
               echo "OK: apply is executable"
 
-              grep -q 'github:plural-reality/nix-darwin#apply' "$TARGET/apply"
-              echo "OK: apply shim references upstream directly"
+              grep -q 'nix run .#apply' "$TARGET/apply"
+              echo "OK: apply shim delegates to the downstream flake"
 
               git -C "$TARGET" log --oneline
               echo "OK: git repository initialized"
