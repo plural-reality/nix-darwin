@@ -328,6 +328,14 @@ in
       };
     };
 
+    # Status line: the script referenced by statusLine.command above. Co-located
+    # with settings.json so the command and the script it runs are one source of
+    # truth (was previously a hand-written, Nix-unmanaged file under ~/.claude).
+    ".claude/statusline-command.sh" = {
+      source = ../scripts/statusline-command.sh;
+      executable = true;
+    };
+
     # MCP servers: ~/.claude.json is writable by Claude Code at runtime
     # (startup counts, tips history, caches, etc.) so we cannot manage it
     # as a read-only symlink. Instead, merge mcpServers via activation script.
