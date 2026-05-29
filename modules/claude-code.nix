@@ -48,7 +48,6 @@ let
   };
 
   sharedAgentEnvNames = [
-    "CLAUDE_CODE_EFFORT_LEVEL"
     "GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND"
     "SCRAPBOX_SID"
     "SOPS_AGE_KEY_FILE"
@@ -290,7 +289,10 @@ in
     };
 
     ".claude/settings.json".text = builtins.toJSON {
-      effortLevel = "max";
+      # ultracode = xhigh effort + standing dynamic-workflow orchestration.
+      # Single canonical source for effort; replaces the old CLAUDE_CODE_EFFORT_LEVEL
+      # env var which used to override (and thus suppress) this setting.
+      ultracode = true;
       env = sharedAgentEnv;
       enableAutoMode = true;
       skipDangerousModePermissionPrompt = true;
