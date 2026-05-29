@@ -6,23 +6,26 @@
 //   echo "line1\nline2" | scrapbox-write --project tkgshn-private --title "Page Title"
 //   scrapbox-write -p plural-reality -t "Meeting Notes" < body.txt
 //   echo "follow-up" | scrapbox-write --mode append --title "Meeting Notes"
+//   echo "newest note" | scrapbox-write --prepend --title "Meeting Notes"
 //   scrapbox-write --dry-run --title "Preview" < body.txt
 //
 // Environment:
 //   SCRAPBOX_SID — connect.sid cookie value (URL-decoded, starts with "s:")
 
 const usage = `Usage:
-  scrapbox-write --title "Page Title" [--project plural-reality] [--mode replace|append] [--dry-run]
+  scrapbox-write --title "Page Title" [--project plural-reality] [--mode replace|append|prepend] [--dry-run]
   scrapbox-write -t "Meeting Notes" -p plural-reality --append < body.txt
 
 Modes:
   replace  Replace the full page body with stdin content (default)
-  append   Append stdin content to the existing page body
+  append   Append stdin content to the end of the existing page body
+  prepend  Insert stdin content at the top of the page, right after the title
 
 Options:
   -p, --project <name>  Scrapbox project name (default: plural-reality)
   -t, --title <title>   Scrapbox page title
   -a, --append          Alias for --mode append
+  -P, --prepend         Alias for --mode prepend
   -n, --dry-run         Render Scrapbox lines to stdout without writing
   -h, --help            Show this help
 `;
@@ -47,6 +50,8 @@ const optionsWithValue = {
 const flagOptions = {
   "--append": { mode: "append" },
   "-a": { mode: "append" },
+  "--prepend": { mode: "prepend" },
+  "-P": { mode: "prepend" },
   "--dry-run": { dryRun: true },
   "-n": { dryRun: true },
   "--help": { help: true },
@@ -111,24 +116,34 @@ const readStdin = () =>
     process.stdin.on("error", reject);
   });
 
-const bodyToLines = (title, body) => [title, ...body.split("\n").map((line) => ` ${line}`)];
-const lineText = (line) => typeof line === "string" ? line : line.text;
 const isBlankLine = (line) => line.trim() === "";
-const withAppendSeparator = (lines) =>
+// Blank lines must stay truly empty: Scrapbox renders a space-only line as a stray
+// empty bullet (every body line is indented one level), so collapse blanks to "".
+const indentBodyLine = (line) => isBlankLine(line) ? "" : ` ${line}`;
+const bodyToLines = (title, body) => [title, ...body.split("\n").map(indentBodyLine)];
+const lineText = (line) => typeof line === "string" ? line : line.text;
+const withBlankSeparator = (lines) =>
   lines.length <= 1 || isBlankLine(lines.at(-1) ?? "")
     ? lines
-    : [...lines, " "];
+    : [...lines, ""];
 
 const patchStrategies = {
   replace: (title, body) => () => bodyToLines(title, body),
+  // append: old body → blank → new body (newest at the end).
   append: (title, body) => (currentLines) => {
     const existingLines = currentLines.map(lineText);
-    const pageLines = bodyToLines(title, body);
-    const appendedLines = pageLines.slice(1);
-
+    const newBody = bodyToLines(title, body).slice(1);
     return existingLines.length === 0
-      ? pageLines
-      : [...withAppendSeparator(existingLines), ...appendedLines];
+      ? bodyToLines(title, body)
+      : [...withBlankSeparator(existingLines), ...newBody];
+  },
+  // prepend: title → new body → blank → old body (newest at the top, per 逆時系列 convention).
+  prepend: (title, body) => (currentLines) => {
+    const existingLines = currentLines.map(lineText);
+    const newBody = bodyToLines(title, body).slice(1);
+    return existingLines.length === 0
+      ? bodyToLines(title, body)
+      : [existingLines[0], ...withBlankSeparator(newBody), ...existingLines.slice(1)];
   },
 };
 
