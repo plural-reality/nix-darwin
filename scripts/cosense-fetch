@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# Fetch Scrapbox (Cosense) content for LLMs. One CLI, three read modes:
+#
+#   (default) Smart Context page fetch via cosense-context-proxy — raw text,
+#             avoids WebFetch's lossy LLM summarization. (-h 1|2)
+#   --search  Full-text page search via Scrapbox's API (connect.sid direct).
+#   --raw     A single page's JSON (lines + metadata) via Scrapbox's API
+#             (connect.sid direct) — for reading/editing exact body text.
+#
+# The cosense proxy serves only Smart Context, so --search / --raw go straight
+# to scrapbox.io with the session cookie.
+#
+# Usage:
+#   cosense-fetch "ページ名" [-p PROJECT] [-h HOP] [-o FILE]
+#   cosense-fetch -s "検索語" [-p PROJECT] [-l LIMIT] [-o FILE]
+#   cosense-fetch -r "ページ名" [-p PROJECT] [-o FILE]
+#   cosense-fetch "https://cosense-context-proxy.vercel.app/r/...?b=...&h=2" [-o FILE]
+#
+#   PROJECT : plural-reality (default) | tkgshn-private
+#   HOP     : 1 (default) | 2          LIMIT : search results (default 20)
+#   -o FILE : write to FILE instead of stdout
+#
+# Env: ACCESS_TOKEN[_PRIVATE] in cosense-context-proxy/.env.local (fetch mode);
+#      SCRAPBOX_SID (connect.sid cookie — search & raw modes).
+set -euo pipefail
+
+PROJECT="plural-reality"
+HOP=1
+OUTPUT=""
+ARG=""
+SEARCH=0
+RAW=0
+LIMIT=20
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p|--project) PROJECT="$2"; shift 2 ;;
+    -h|--hop)     HOP="$2";     shift 2 ;;
+    -l|--limit)   LIMIT="$2";   shift 2 ;;
+    -o|--output)  OUTPUT="$2";  shift 2 ;;
+    -s|--search)  SEARCH=1;     shift ;;
+    -r|--raw)     RAW=1;        shift ;;
+    --)           shift; ARG="${1:-}"; break ;;
+    -*)
+      echo "Unknown flag: $1" >&2
+      echo "Usage: cosense-fetch <PAGE|URL> [-p PROJECT] [-h HOP] [-o FILE]" >&2
+      echo "       cosense-fetch -s <QUERY>  [-p PROJECT] [-l LIMIT] [-o FILE]" >&2
+      echo "       cosense-fetch -r <PAGE>   [-p PROJECT] [-o FILE]" >&2
+      exit 2 ;;
+    *)            ARG="$1"; shift ;;
+  esac
+done
+
+[[ -z "$ARG" ]] && {
+  echo "Usage: cosense-fetch <PAGE|URL> [-p PROJECT] [-h HOP] [-o FILE]" >&2
+  echo "       cosense-fetch -s <QUERY>  [-p PROJECT] [-l LIMIT] [-o FILE]" >&2
+  echo "       cosense-fetch -r <PAGE>   [-p PROJECT] [-o FILE]" >&2
+  exit 2
+}
+
+# Direct-API modes (search / raw) share connect.sid auth and URL encoding.
+emit() {  # $1 = URL
+  if [[ -n "$OUTPUT" ]]; then
+    curl -sfL "$1" -H "Cookie: connect.sid=${SCRAPBOX_SID}" -o "$OUTPUT"
+  else
+    curl -sfL "$1" -H "Cookie: connect.sid=${SCRAPBOX_SID}"
+  fi
+}
+
+# --- Search mode: Scrapbox full-text search ---
+if [[ "$SEARCH" == "1" ]]; then
+  : "${SCRAPBOX_SID:?SCRAPBOX_SID required for --search}"
+  Q=$(printf '%s' "$ARG" | jq -sRr @uri)
+  emit "https://scrapbox.io/api/pages/${PROJECT}/search/query?q=${Q}&limit=${LIMIT}"
+  exit $?
+fi
+
+# --- Raw mode: single page JSON (lines + metadata) ---
+if [[ "$RAW" == "1" ]]; then
+  : "${SCRAPBOX_SID:?SCRAPBOX_SID required for --raw}"
+  T=$(printf '%s' "$ARG" | jq -sRr @uri)
+  emit "https://scrapbox.io/api/pages/${PROJECT}/${T}"
+  exit $?
+fi
+
+# --- Fetch mode: Smart Context via proxy (raw text) ---
+if [[ "$ARG" =~ ^https?:// ]]; then
+  URL="$ARG"
+else
+  ENV_FILE="$HOME/Developer/plural-reality/cosense-context-proxy/.env.local"
+  [[ -f "$ENV_FILE" ]] || { echo "missing $ENV_FILE" >&2; exit 1; }
+
+  case "$PROJECT" in
+    plural-reality) VAR="ACCESS_TOKEN" ;;
+    tkgshn-private) VAR="ACCESS_TOKEN_PRIVATE" ;;
+    *) echo "Unknown project: $PROJECT (plural-reality | tkgshn-private)" >&2; exit 1 ;;
+  esac
+
+  TOKEN=$(grep -E "^${VAR}=" "$ENV_FILE" | head -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'\$//")
+  [[ -z "${TOKEN:-}" ]] && { echo "${VAR} not found in ${ENV_FILE}" >&2; exit 1; }
+
+  # base64url encode the UTF-8 page title
+  B64=$(printf '%s' "$ARG" | base64 | tr '+/' '-_' | tr -d '=\n')
+  URL="https://cosense-context-proxy.vercel.app/r/${TOKEN}?b=${B64}&h=${HOP}"
+fi
+
+if [[ -n "$OUTPUT" ]]; then
+  curl -sfL "$URL" -o "$OUTPUT"
+else
+  curl -sfL "$URL"
+fi

@@ -279,6 +279,14 @@ in
     executable = true;
   };
 
+  # cosense-fetch: Scrapbox (Cosense) read CLI — Smart Context via proxy (-h),
+  # full-text search (-s) and raw page JSON (-r) via connect.sid. Pure bash;
+  # deps (curl/jq/base64) resolve from PATH. Source: scripts/cosense-fetch.
+  home.file.".local/bin/cosense-fetch" = {
+    source = ../scripts/cosense-fetch;
+    executable = true;
+  };
+
   # Deploy scrapbox-write.mjs to ~/.local/share/scrapbox-write/
   home.file.".local/share/scrapbox-write/scrapbox-write.mjs".source = ../scripts/scrapbox-write.mjs;
   home.file.".local/share/scrapbox-write/package.json".text = builtins.toJSON {
