@@ -1,3 +1,13 @@
+---
+name: colmena
+description: >
+  Colmena stateless NixOS deployment reference. Use when deploying NixOS configs
+  to remote hosts over SSH, setting up multi-node clusters with shared/per-node
+  config, writing hive.nix or Flake-based hives (colmena.lib.makeHive),
+  deploying secrets (deployment.keys) outside the Nix store, filtering targets
+  by tag/glob, buildOnTarget, apply-local, or migrating from NixOps/morph.
+---
+
 # Colmena — Stateless NixOS Deployment Tool
 
 Colmena is a simple, stateless NixOS deployment tool written in Rust, modeled after NixOps and morph. It acts as a thin wrapper over Nix commands (`nix-instantiate`, `nix-copy-closure`) and supports parallel deployment to multiple hosts. Configuration is defined declaratively via a `hive.nix` file or Nix Flakes (`colmenaHive` output), with no external state database required.

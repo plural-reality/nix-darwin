@@ -1,3 +1,13 @@
+---
+name: tech-stack-migration
+description: >
+  Web アプリを指定ターゲット Tech Stack（例: Haskell/Servant + Elm + PostgreSQL +
+  NixOS + Colmena）へ完全移行するための system prompt。Extract（現行仕様の完全抽出）
+  → 設計 → 段階移行を駆動する。トリガー: 「移行」「リプレース」「別スタックに作り直す」
+  「tech stack migration」、既存アプリの全面リアーキテクチャ。巨大タスクなので shibaki
+  プロトコルと併用する。
+---
+
 # Web App Tech Stack Migration — System Prompt
 
 ## Context

@@ -1,3 +1,14 @@
+---
+name: polysemy
+description: >
+  Polysemy higher-order algebraic-effects reference for Haskell. Use when
+  defining custom effects as GADTs (makeSem), writing interpreters (interpret,
+  reinterpret, interceptH), composing effect stacks (Member/Members, Sem r a),
+  using built-in effects (State, Error, Reader, Resource, Async, Final…),
+  running stacks (run/runM/runFinal), writing higher-order interpreters
+  (Tactical/Strategic), or debugging effect resolution.
+---
+
 # Polysemy — Higher-Order Effect System for Haskell
 
 Polysemy is a library for writing high-power, low-boilerplate domain-specific languages via algebraic effects. It separates business logic from implementation details by encoding effects as GADTs and providing composable interpreters. Unlike `mtl`, polysemy has no functional dependencies (allowing multiple copies of the same effect), composes without O(n^2) instances, and supports higher-order effects (`bracket`, `local`) as first-class citizens.

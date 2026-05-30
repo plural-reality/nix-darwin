@@ -1,3 +1,14 @@
+---
+name: haskell-flake
+description: >
+  haskell-flake (Nix flake-parts module) reference. Use when configuring
+  haskellProjects.<name> in flake.nix, adding/overriding Haskell deps (Hackage,
+  Git, local paths), tuning per-package settings (check, jailbreak,
+  cabalFlags…), setting up devShells (HLS, cabal, ghcid), sharing overrides
+  across repos (haskellFlakeProjectModules), pinning GHC, building Docker
+  images, or shrinking closures (justStaticExecutables).
+---
+
 # haskell-flake — Nix Flake Module for Haskell Development
 
 `haskell-flake` is a [flake-parts](https://flake.parts/) module that provides a declarative, modular interface for building Haskell projects with Nix. It wraps the raw nixpkgs Haskell infrastructure (`pkgs.haskellPackages`, `callCabal2nix`, `shellFor`) behind a NixOS-module-style API: auto-detection of local packages from `cabal.project`, composable dependency overrides, per-package settings, devShell generation, and reusable project modules across repositories.

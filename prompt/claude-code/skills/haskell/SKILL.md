@@ -1,3 +1,14 @@
+---
+name: haskell
+description: >
+  Haskell language reference drawn from authoritative textbooks (beginner to
+  advanced). Use when writing, reading, reviewing, or building Haskell code, or
+  when asked about type-system features (GADTs, type families, monad
+  transformers, applicatives), IO/parsing/networking/database patterns,
+  STM/async/multi-core concurrency, or performance tuning. Trigger on .hs/.cabal
+  edits, GHC language-extension questions, and type errors.
+---
+
 # Haskell — Pure Functional Programming Language Reference
 
 This skill provides reference material from authoritative Haskell textbooks covering the language from beginner to advanced topics. The collection spans introductory guides, real-world application patterns, and parallel/concurrent programming techniques.

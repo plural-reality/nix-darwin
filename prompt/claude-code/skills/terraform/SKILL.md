@@ -1,3 +1,14 @@
+---
+name: terraform
+description: >
+  Terraform infrastructure-as-code reference. Use when writing or reviewing HCL
+  (resources, data sources, modules, providers), running CLI commands
+  (init/plan/apply/destroy/import/state), configuring remote-state backends
+  (S3, GCS, Azure…), designing module composition, performing state operations
+  (move/import/taint), debugging plans/dependency graphs, or using HCP Terraform
+  / Stacks.
+---
+
 # Terraform — Declarative Infrastructure as Code
 
 HashiCorp Terraform is an infrastructure as code (IaC) tool that lets you define cloud and on-premises resources in human-readable HCL configuration files. Terraform uses a declarative approach: you describe the desired end state, and Terraform computes the dependency graph (DAG) and execution plan to reach it. Key features include multi-cloud provider support via a plugin-based architecture, state management for tracking real-world resource mappings, plan/apply workflow for safe change previews, modules for reusable infrastructure components, and workspaces for managing multiple environments.

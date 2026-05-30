@@ -1,3 +1,13 @@
+---
+name: hls
+description: >
+  Haskell Language Server (HLS) reference. Use when setting up or
+  troubleshooting HLS in a Haskell project, configuring plugins/formatters
+  (ormolu, fourmolu, stylish-haskell) or editor/LSP integration, writing
+  hie.yaml cradles for multi-component projects, diagnosing wrong-GHC-version or
+  missing-tool errors, or installing HLS via ghcup/Nix/Homebrew/source.
+---
+
 # Haskell Language Server (HLS) — IDE Features for Haskell via LSP
 
 The Haskell Language Server (HLS) is an implementation of the Language Server Protocol (LSP) for Haskell. It provides IDE-like features — diagnostics, completions, hover info, code actions, formatting, and more — to any editor that supports LSP (VS Code, Neovim, Emacs, Vim, Helix, Kakoune, etc.). HLS uses a plugin architecture where individual features are provided by composable, independently-configurable plugins. Under the hood, `hie-bios` resolves project build configuration (via cabal or stack cradles), and `haskell-language-server-wrapper` selects the correct GHC-matched binary automatically.

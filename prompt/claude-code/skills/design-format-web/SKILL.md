@@ -3,6 +3,7 @@ name: design-format-web
 description: >
   形式E: Web / LP / デジタルコンテンツ用デザイントークンとパターン集。
   角丸0px、ライト/ダーク切替、7:5グリッド、KPI 80px。
+  「Webサイト」「LP」「ランディングページ」「Webデザイン」「デジタルコンテンツ」で発動。
   参考: ~/Desktop/plural-reality-design-preview.html
 ---
 

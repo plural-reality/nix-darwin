@@ -1,3 +1,13 @@
+---
+name: servant
+description: >
+  Servant type-level web-API reference for Haskell. Use when defining a web API
+  as a Haskell type and implementing it with servant-server, generating
+  type-safe clients (servant-client) or JS/OpenAPI from an API type, structuring
+  APIs with combinators (:>, :<|>, NamedRoutes), adding auth (Basic/JWT/OIDC),
+  integrating databases, streaming/uploads/pagination, or testing Servant apps.
+---
+
 # Servant — Type-Level Web DSL for Haskell
 
 Servant is a set of Haskell libraries for writing type-safe web applications. It uses a type-level DSL to describe web APIs as Haskell types, then derives servers, clients, documentation, and more from that single API description. The key insight is **reifying the API as a type**: the compiler checks that server handlers conform to the API, client functions match the API, and documentation stays in sync — all statically. Extensibility is achieved through open type families and type classes, making both the DSL and its interpretations open for extension without modifying existing code.

@@ -1,3 +1,13 @@
+---
+name: m36
+description: >
+  Project:M36 relational-algebra DBMS reference. Use when asked about M36
+  architecture/setup/usage, TutorialD syntax, relational-algebra concepts in
+  M36, Haskell↔M36 integration (Tupleable/Atomable, AtomFunctions, custom
+  types), transaction-graph operations (branching, merging, time-travel), or
+  the SQLegacy SQL-compatibility layer.
+---
+
 # Project:M36 — Relational Algebra DBMS
 
 Project:M36 is a relational-algebra-based database management system implemented in Haskell. It adheres strictly to the mathematics of the relational algebra — no NULL, no SQL compromises. Key differentiators:

@@ -1,3 +1,13 @@
+---
+name: nix
+description: >
+  Nix purely-functional package-manager and language reference. Use when asked
+  about Nix language syntax/builtins/derivations, store internals (store paths,
+  content addressing, NAR format), CLI (nix-build, nix-shell, nix-store…),
+  package management (profiles, channels, GC, binary caches),
+  reproducible/distributed builds, store-path calculation, or Nix internals.
+---
+
 # Nix — Purely Functional Package Manager
 
 Nix is a purely functional package manager that treats packages as values in a functional programming language — built by pure functions with no side effects, never overwritten after creation. This skill covers the complete Nix manual: language reference, store internals, command-line tools, and protocols.
