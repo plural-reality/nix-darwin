@@ -105,24 +105,11 @@ rm remote.docx remote_tmp.md
 
 #### Step 2: リモートの見出し構造を取得
 
-```bash
-gws docs documents get --params '{"documentId": "DOC_ID"}' --output doc.json
-```
+`scripts/extract-headings.py` が見出し → `startIndex/endIndex` を抽出する。**中身を読む必要はない。実行して出力 (見出しごとの範囲) だけ使う。** doc.json を stdin で渡す (引数でファイルパスも可):
 
-```python
-# doc.json から見出し → startIndex/endIndex を抽出
-python3 -c "
-import json
-with open('doc.json') as f:
-    doc = json.load(f)
-for el in doc['body']['content']:
-    para = el.get('paragraph')
-    if para:
-        style = para['paragraphStyle'].get('namedStyleType', '')
-        if style.startswith('HEADING'):
-            text = ''.join(r.get('textRun', {}).get('content', '') for r in para['elements'])
-            print(f'{el[\"startIndex\"]:>5} - {el[\"endIndex\"]:>5}  {style:<12}  {text.strip()[:70]}')
-"
+```bash
+gws docs documents get --params '{"documentId": "DOC_ID"}' | python3 scripts/extract-headings.py
+# 出力例:  <startIndex> - <endIndex>  HEADING_2     セクション名
 ```
 
 #### Step 3: 変更対象セクションの範囲を特定
@@ -174,31 +161,11 @@ ls current-unzipped/word/comments.xml
 
 ### Step 2: コメントと anchor span を抽出
 
-docx 埋込コメントの場合、`word/document.xml` 内の `<w:commentRangeStart>` / `<w:commentRangeEnd>` 間のテキスト断片が anchor span。Python で抽出:
+docx 埋込コメントの場合、`word/document.xml` 内の `<w:commentRangeStart>` / `<w:commentRangeEnd>` 間のテキスト断片が anchor span。`scripts/extract-docx-comments.py` が抽出する。**中身を読む必要はない。実行して出力 (コメント本文 + anchor span の JSON) だけ使う。** 引数は unzip 済みディレクトリ (`word/` を含む):
 
-```python
-import xml.etree.ElementTree as ET
-W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
-ns = {'w': W}
-
-# コメント本文
-comments = {c.get(f'{{{W}}}id'): {
-    'author': c.get(f'{{{W}}}author'),
-    'text': ''.join((t.text or '') for t in c.findall('.//w:t', ns))
-} for c in ET.parse('current-unzipped/word/comments.xml').getroot().findall('w:comment', ns)}
-
-# anchor span (document order で走査)
-active, anchors = {}, {}
-def walk(elem):
-    tag = elem.tag.split('}')[-1]
-    if tag == 'commentRangeStart': active[elem.get(f'{{{W}}}id')] = []
-    elif tag == 'commentRangeEnd':
-        cid = elem.get(f'{{{W}}}id')
-        if cid in active: anchors[cid] = ''.join(active.pop(cid))
-    elif tag == 't':
-        for cid in active: active[cid].append(elem.text or '')
-    for child in elem: walk(child)
-walk(ET.parse('current-unzipped/word/document.xml').getroot())
+```bash
+python3 scripts/extract-docx-comments.py current-unzipped
+# 出力: { "<commentId>": {"author": ..., "text": "コメント本文", "anchor": "anchor span"} , ... }
 ```
 
 anchor span が 1 文字だったり、内容と意味的にズレている場合 = drift。
