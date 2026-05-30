@@ -4,6 +4,9 @@
   config,
   pkgs,
   lib,
+  # Upstream repo's real on-disk path, injected by the launcher flake (null otherwise →
+  # skills fall back to the Nix-store snapshot, keeping this module checkout-layout agnostic).
+  upstreamPath ? null,
   ...
 }:
 let
@@ -48,7 +51,6 @@ let
   };
 
   sharedAgentEnvNames = [
-    "CLAUDE_CODE_EFFORT_LEVEL"
     "GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND"
     "SCRAPBOX_SID"
     "SOPS_AGE_KEY_FILE"
@@ -181,14 +183,29 @@ let
     }) sharedSkillNames
   );
 
+  # Skill attrs builder, parameterised by source strategy (sourceFor: name → path | derivation).
+  # The two callers differ only in that strategy: Claude wants a live symlink, Codex a snapshot.
   mkSkillAttrs =
-    baseDir: skillSources:
+    baseDir: sourceFor:
     builtins.listToAttrs (
       map (name: {
         name = "${baseDir}/${name}";
-        value.source = skillSources.${name};
+        value.source = sourceFor name;
       }) sharedSkillNames
     );
+
+  # Claude Code skill source. With upstreamPath (the upstream repo's real on-disk path,
+  # injected by the launcher) ~/.claude/skills/<name> becomes an out-of-store symlink into
+  # it, so editing prompt/claude-code/skills/<name>/SKILL.md takes effect immediately (no
+  # apply). Falls back to the Nix-store snapshot when null — app design must not depend on
+  # checkout layout; only the launcher knows where the repo lives. SKILL.md uses no @[…]
+  # template refs, so the store expand is a no-op and both paths carry equivalent content.
+  claudeSkillSource =
+    name:
+    if upstreamPath != null then
+      config.lib.file.mkOutOfStoreSymlink "${upstreamPath}/prompt/claude-code/skills/${name}"
+    else
+      expandedSkillSources.${name};
 
   mkInstructionAttr = targetPath: templatePath: {
     "${targetPath}".text = expandTemplate {
@@ -201,24 +218,22 @@ let
     {
       instructionPath,
       instructionTemplate,
-      skillsPath,
-      skillsSourceMap,
+      skillsAttrs,
     }:
-    (mkInstructionAttr instructionPath instructionTemplate)
-    // (mkSkillAttrs skillsPath skillsSourceMap);
+    (mkInstructionAttr instructionPath instructionTemplate) // skillsAttrs;
 
   agentProfiles = [
     {
       instructionPath = ".claude/CLAUDE.md";
       instructionTemplate = ../prompt/claude-code/claude.md;
-      skillsPath = ".claude/skills";
-      skillsSourceMap = expandedSkillSources;
+      # Claude Code 側: live symlink (upstreamPath 注入時)。 SKILL.md 編集が即反映 (apply 不要)
+      skillsAttrs = mkSkillAttrs ".claude/skills" claudeSkillSource;
     }
     {
       instructionPath = ".codex/AGENTS.md";
       instructionTemplate = ../prompt/codex/agent.md;
-      skillsPath = ".codex/skills";
-      skillsSourceMap = codexSkillSources;
+      # Codex 側: build mediation。 frontmatter 補完が必要なため snapshot を経由
+      skillsAttrs = mkSkillAttrs ".codex/skills" (name: codexSkillSources.${name});
     }
   ];
 
@@ -234,7 +249,7 @@ let
     personality = "pragmatic";
     notify = [
       "bash"
-      "/Users/tkgshn/.codex/notify_macos.sh"
+      "${config.home.homeDirectory}/.codex/notify_macos.sh"
     ];
 
     shell_environment_policy = {
@@ -282,6 +297,15 @@ in
     pkgs.llm-agents.claude-code # Claude Code CLI
   ];
 
+  # Default every Claude Code session to ultracode (xhigh reasoning + automatic
+  # workflow orchestration). ultracode is session-only and explicitly NOT read
+  # from settings.json by design, so the only declarative way to make it the
+  # default is to inject it at launch via --settings (merged onto settings.json,
+  # not overriding it). Replaces the former always-on CLAUDE_CODE_EFFORT_LEVEL=max
+  # env, which would have overridden any per-session /effort choice anyway.
+  # Escape hatch: `command claude` / `\claude` runs the un-aliased binary.
+  home.shellAliases.claude = "claude --settings '{\"ultracode\":true}'";
+
   home.file = {
     # Gemini
     ".gemini/GEMINI.md".text = expandTemplate {
@@ -290,14 +314,13 @@ in
     };
 
     ".claude/settings.json".text = builtins.toJSON {
-      effortLevel = "max";
       env = sharedAgentEnv;
       enableAutoMode = true;
       skipDangerousModePermissionPrompt = true;
       teammateMode = "tmux";
       statusLine = {
         type = "command";
-        command = "bash /Users/tkgshn/.claude/statusline-command.sh";
+        command = "bash ${config.home.homeDirectory}/.claude/statusline-command.sh";
       };
       permissions = {
         allow = [

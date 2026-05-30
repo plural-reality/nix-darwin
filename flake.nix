@@ -49,6 +49,7 @@
           secretsFile ? null,
           modules ? [ ],
           system ? "aarch64-darwin",
+          upstreamPath ? null,
         }:
         nix-darwin.lib.darwinSystem {
           specialArgs = {
@@ -155,7 +156,7 @@
               home-manager.useUserPackages = true;
               home-manager.backupFileExtension = "backup";
               home-manager.extraSpecialArgs = {
-                inherit userConfig secretsFile;
+                inherit userConfig secretsFile upstreamPath;
               };
               home-manager.users.${userConfig.username} =
                 {
@@ -203,6 +204,7 @@
           secretsFile ? null,
           modules ? [ ],
           system ? "aarch64-darwin",
+          upstreamPath ? null,
         }:
         let
           pkgs = import nixpkgs { inherit system; };
@@ -214,6 +216,7 @@
               secretsFile
               modules
               system
+              upstreamPath
               ;
           };
           devShells.${system}.default = pkgs.mkShell {
