@@ -229,6 +229,18 @@ let
     '';
   };
 
+  # freee 口座照合: 残高 vs 登録済み仕訳の差分を1コールに畳む。
+  # freee-call を合成して transport を再利用する (auth を二重に持たない)。
+  freeeReconcile = pkgs.writeShellApplication {
+    name = "freee-reconcile";
+    runtimeInputs = [
+      freeeCall
+      pkgs.jq
+      pkgs.coreutils
+    ];
+    text = builtins.readFile ../scripts/freee-reconcile.sh;
+  };
+
   # ── Scrapbox writer ─────────────────────────────────────
   # @cosense/std is not in nixpkgs, so we use a managed node_modules
   # directory under ~/.local/share/scrapbox-write/ with activation-time
@@ -264,6 +276,7 @@ in
     download-slack-channel-files
     ch
     freeeCall
+    freeeReconcile
 
     # Scrapbox writer
     scrapbox-write

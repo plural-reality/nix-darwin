@@ -1,36 +1,63 @@
 #!/usr/bin/env bash
-# Fetch Scrapbox (Cosense) content for LLMs. One CLI, three read modes:
+# Fetch Scrapbox (Cosense) content for LLMs. One CLI, several read modes:
 #
 #   (default) Smart Context page fetch via cosense-context-proxy — raw text,
 #             avoids WebFetch's lossy LLM summarization. (-h 1|2)
 #   --search  Full-text page search via Scrapbox's API (connect.sid direct).
-#   --raw     A single page's JSON (lines + metadata) via Scrapbox's API
-#             (connect.sid direct) — for reading/editing exact body text.
+#   --raw     A single page's JSON (lines + metadata) via Scrapbox's API.
+#   --code    A code block's raw text: /api/code/{project}/{page}/{file}.
+#   --exists  Print true|false whether a page exists (HTTP 200 on /api/pages).
+#   --list    Recently-updated page titles in a project (-l LIMIT).
+#   --me      Current Scrapbox user (/api/users/me).
+#   --decode  Decode a cosense-context-proxy ?b=<base64url> URL back to its
+#             page name (the 3-step base64 -d dance, folded in; no network).
 #
-# The cosense proxy serves only Smart Context, so --search / --raw go straight
-# to scrapbox.io with the session cookie.
+# The cosense proxy serves only Smart Context, so every other mode goes straight
+# to scrapbox.io with the session cookie (SCRAPBOX_SID).
 #
 # Usage:
 #   cosense-fetch "ページ名" [-p PROJECT] [-h HOP] [-o FILE]
 #   cosense-fetch -s "検索語" [-p PROJECT] [-l LIMIT] [-o FILE]
 #   cosense-fetch -r "ページ名" [-p PROJECT] [-o FILE]
+#   cosense-fetch -c "ページ名" "file.ext" [-p PROJECT] [-o FILE]
+#   cosense-fetch --exists "ページ名" [-p PROJECT]
+#   cosense-fetch --list [-p PROJECT] [-l LIMIT]
+#   cosense-fetch --me [-p PROJECT]
+#   cosense-fetch --decode "https://cosense-context-proxy.vercel.app/r/...?b=...&h=2"
 #   cosense-fetch "https://cosense-context-proxy.vercel.app/r/...?b=...&h=2" [-o FILE]
 #
-#   PROJECT : plural-reality (default) | tkgshn-private
-#   HOP     : 1 (default) | 2          LIMIT : search results (default 20)
+#   PROJECT : plural-reality (default) | tkgshn-private | takalog
+#   HOP     : 1 (default) | 2          LIMIT : results (default 20)
 #   -o FILE : write to FILE instead of stdout
 #
-# Env: ACCESS_TOKEN[_PRIVATE] in cosense-context-proxy/.env.local (fetch mode);
-#      SCRAPBOX_SID (connect.sid cookie — search & raw modes).
+# Env: ACCESS_TOKEN[_PRIVATE|_TAKALOG] in cosense-context-proxy/.env.local
+#      (fetch mode); SCRAPBOX_SID (connect.sid cookie — all direct-API modes).
 set -euo pipefail
 
 PROJECT="plural-reality"
 HOP=1
 OUTPUT=""
 ARG=""
+ARG2=""
 SEARCH=0
 RAW=0
+CODE=0
+EXISTS=0
+LIST=0
+ME=0
+DECODE=0
 LIMIT=20
+
+usage() {
+  echo "Usage: cosense-fetch <PAGE|URL> [-p PROJECT] [-h HOP] [-o FILE]" >&2
+  echo "       cosense-fetch -s <QUERY>  [-p PROJECT] [-l LIMIT] [-o FILE]" >&2
+  echo "       cosense-fetch -r <PAGE>   [-p PROJECT] [-o FILE]" >&2
+  echo "       cosense-fetch -c <PAGE> <FILE> [-p PROJECT] [-o FILE]" >&2
+  echo "       cosense-fetch --exists <PAGE> [-p PROJECT]" >&2
+  echo "       cosense-fetch --list [-p PROJECT] [-l LIMIT]" >&2
+  echo "       cosense-fetch --me [-p PROJECT]" >&2
+  echo "       cosense-fetch --decode <PROXY_URL>" >&2
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -40,72 +67,143 @@ while [[ $# -gt 0 ]]; do
     -o|--output)  OUTPUT="$2";  shift 2 ;;
     -s|--search)  SEARCH=1;     shift ;;
     -r|--raw)     RAW=1;        shift ;;
+    -c|--code)    CODE=1;       shift ;;
+    --exists)     EXISTS=1;     shift ;;
+    --list)       LIST=1;       shift ;;
+    --me)         ME=1;         shift ;;
+    --decode)     DECODE=1;     shift ;;
     --)           shift; ARG="${1:-}"; break ;;
     -*)
       echo "Unknown flag: $1" >&2
-      echo "Usage: cosense-fetch <PAGE|URL> [-p PROJECT] [-h HOP] [-o FILE]" >&2
-      echo "       cosense-fetch -s <QUERY>  [-p PROJECT] [-l LIMIT] [-o FILE]" >&2
-      echo "       cosense-fetch -r <PAGE>   [-p PROJECT] [-o FILE]" >&2
+      usage
       exit 2 ;;
-    *)            ARG="$1"; shift ;;
+    *)
+      if [[ -z "$ARG" ]]; then ARG="$1"; else ARG2="$1"; fi
+      shift ;;
   esac
 done
 
-[[ -z "$ARG" ]] && {
-  echo "Usage: cosense-fetch <PAGE|URL> [-p PROJECT] [-h HOP] [-o FILE]" >&2
-  echo "       cosense-fetch -s <QUERY>  [-p PROJECT] [-l LIMIT] [-o FILE]" >&2
-  echo "       cosense-fetch -r <PAGE>   [-p PROJECT] [-o FILE]" >&2
-  exit 2
-}
-
-# Direct-API modes (search / raw) share connect.sid auth and URL encoding.
-emit() {  # $1 = URL
+# Emit a URL with the session cookie. $1 = URL.
+emit() {
   if [[ -n "$OUTPUT" ]]; then
     curl -sfL "$1" -H "Cookie: connect.sid=${SCRAPBOX_SID}" -o "$OUTPUT"
   else
     curl -sfL "$1" -H "Cookie: connect.sid=${SCRAPBOX_SID}"
   fi
 }
+enc() { printf '%s' "$1" | jq -sRr @uri; }
+
+# --- Decode mode: proxy ?b= base64url -> page name (no network) ---
+if [[ "$DECODE" == "1" ]]; then
+  [[ -z "$ARG" ]] && { usage; exit 2; }
+  B=$(printf '%s' "$ARG" | sed -n 's/.*[?&]b=\([^&]*\).*/\1/p')
+  [[ -z "$B" ]] && { echo "no ?b= param in URL: $ARG" >&2; exit 1; }
+  B=$(printf '%s' "$B" | tr '_-' '/+')           # base64url -> base64
+  case $(( ${#B} % 4 )) in 2) B="${B}==" ;; 3) B="${B}=" ;; esac
+  printf '%s' "$B" | base64 -d
+  echo
+  exit 0
+fi
+
+# --- Me mode: current user (no page arg) ---
+if [[ "$ME" == "1" ]]; then
+  : "${SCRAPBOX_SID:?SCRAPBOX_SID required for --me}"
+  emit "https://scrapbox.io/api/users/me"
+  exit $?
+fi
+
+# --- List mode: recently-updated page titles (no page arg) ---
+if [[ "$LIST" == "1" ]]; then
+  : "${SCRAPBOX_SID:?SCRAPBOX_SID required for --list}"
+  emit "https://scrapbox.io/api/pages/${PROJECT}?limit=${LIMIT}&sort=updated" \
+    | jq -r '.pages[]?.title'
+  exit "${PIPESTATUS[0]}"
+fi
+
+[[ -z "$ARG" ]] && { usage; exit 2; }
 
 # --- Search mode: Scrapbox full-text search ---
 if [[ "$SEARCH" == "1" ]]; then
   : "${SCRAPBOX_SID:?SCRAPBOX_SID required for --search}"
-  Q=$(printf '%s' "$ARG" | jq -sRr @uri)
-  emit "https://scrapbox.io/api/pages/${PROJECT}/search/query?q=${Q}&limit=${LIMIT}"
+  emit "https://scrapbox.io/api/pages/${PROJECT}/search/query?q=$(enc "$ARG")&limit=${LIMIT}"
   exit $?
 fi
 
 # --- Raw mode: single page JSON (lines + metadata) ---
 if [[ "$RAW" == "1" ]]; then
   : "${SCRAPBOX_SID:?SCRAPBOX_SID required for --raw}"
-  T=$(printf '%s' "$ARG" | jq -sRr @uri)
-  emit "https://scrapbox.io/api/pages/${PROJECT}/${T}"
+  emit "https://scrapbox.io/api/pages/${PROJECT}/$(enc "$ARG")"
   exit $?
 fi
 
-# --- Fetch mode: Smart Context via proxy (raw text) ---
+# --- Code mode: a single code block's raw text ---
+if [[ "$CODE" == "1" ]]; then
+  : "${SCRAPBOX_SID:?SCRAPBOX_SID required for --code}"
+  [[ -z "$ARG2" ]] && { echo "--code needs <PAGE> <FILE>" >&2; usage; exit 2; }
+  emit "https://scrapbox.io/api/code/${PROJECT}/$(enc "$ARG")/$(enc "$ARG2")"
+  exit $?
+fi
+
+# --- Exists mode: print true|false ---
+# The /api/pages/{project}/{title} endpoint returns 200 even for never-created
+# pages (an auto-generated skeleton). The /text endpoint is the clean signal:
+# 404 iff the page was never persisted.
+if [[ "$EXISTS" == "1" ]]; then
+  : "${SCRAPBOX_SID:?SCRAPBOX_SID required for --exists}"
+  code=$(curl -s -o /dev/null -w '%{http_code}' \
+    "https://scrapbox.io/api/pages/${PROJECT}/$(enc "$ARG")/text" \
+    -H "Cookie: connect.sid=${SCRAPBOX_SID}")
+  if [[ "$code" == "200" ]]; then echo true; else echo false; fi
+  exit 0
+fi
+
+# --- Fetch mode: Smart Context via proxy (raw text), size-guarded ---
+# Scrapbox's smart-context caps output (~110 linked pages), so for a heavily
+# linked entity page even 1hop can be very large. When the result exceeds
+# COSENSE_MAX_BYTES (default 500000; 0 disables), step the hop down (2->1) and,
+# if still too long, fall back to the page's BARE text (no links) — for an
+# entity that bare body is its compact index (conversation links + one-line
+# summaries), so the agent still gets the useful map without the full expansion.
+MAX_BYTES="${COSENSE_MAX_BYTES:-500000}"
+
+# Explicit URL: respect the caller's chosen hop verbatim (no guard).
 if [[ "$ARG" =~ ^https?:// ]]; then
-  URL="$ARG"
-else
-  ENV_FILE="$HOME/Developer/plural-reality/cosense-context-proxy/.env.local"
-  [[ -f "$ENV_FILE" ]] || { echo "missing $ENV_FILE" >&2; exit 1; }
-
-  case "$PROJECT" in
-    plural-reality) VAR="ACCESS_TOKEN" ;;
-    tkgshn-private) VAR="ACCESS_TOKEN_PRIVATE" ;;
-    *) echo "Unknown project: $PROJECT (plural-reality | tkgshn-private)" >&2; exit 1 ;;
-  esac
-
-  TOKEN=$(grep -E "^${VAR}=" "$ENV_FILE" | head -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'\$//")
-  [[ -z "${TOKEN:-}" ]] && { echo "${VAR} not found in ${ENV_FILE}" >&2; exit 1; }
-
-  # base64url encode the UTF-8 page title
-  B64=$(printf '%s' "$ARG" | base64 | tr '+/' '-_' | tr -d '=\n')
-  URL="https://cosense-context-proxy.vercel.app/r/${TOKEN}?b=${B64}&h=${HOP}"
+  if [[ -n "$OUTPUT" ]]; then curl -sfL "$ARG" -o "$OUTPUT"; else curl -sfL "$ARG"; fi
+  exit $?
 fi
 
-if [[ -n "$OUTPUT" ]]; then
-  curl -sfL "$URL" -o "$OUTPUT"
-else
-  curl -sfL "$URL"
+ENV_FILE="$HOME/Developer/plural-reality/cosense-context-proxy/.env.local"
+[[ -f "$ENV_FILE" ]] || { echo "missing $ENV_FILE" >&2; exit 1; }
+case "$PROJECT" in
+  plural-reality) VAR="ACCESS_TOKEN" ;;
+  tkgshn-private) VAR="ACCESS_TOKEN_PRIVATE" ;;
+  takalog) VAR="ACCESS_TOKEN_TAKALOG" ;;
+  *) echo "Unknown project: $PROJECT (plural-reality | tkgshn-private | takalog)" >&2; exit 1 ;;
+esac
+TOKEN=$(grep -E "^${VAR}=" "$ENV_FILE" | head -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'\$//")
+[[ -z "${TOKEN:-}" ]] && { echo "${VAR} not found in ${ENV_FILE}" >&2; exit 1; }
+
+B64=$(printf '%s' "$ARG" | base64 | tr '+/' '-_' | tr -d '=\n')
+proxy_hop() { curl -sfL "https://cosense-context-proxy.vercel.app/r/${TOKEN}?b=${B64}&h=${1}"; }
+bare_page() {
+  curl -sfL "https://scrapbox.io/api/pages/${PROJECT}/$(enc "$ARG")/text" -H "Cookie: connect.sid=${SCRAPBOX_SID:-}"
+}
+
+tmp=$(mktemp); trap 'rm -f "$tmp" "$tmp.b"' EXIT
+proxy_hop "$HOP" > "$tmp" 2>/dev/null || true
+[[ -s "$tmp" ]] || { echo "cosense-fetch: fetch failed (project=$PROJECT page=$ARG)" >&2; exit 1; }
+sz=$(wc -c < "$tmp"); h="$HOP"
+while [[ "$MAX_BYTES" -gt 0 && "$sz" -gt "$MAX_BYTES" && "$h" -gt 1 ]]; do
+  h=$((h - 1))
+  if proxy_hop "$h" > "$tmp.b" 2>/dev/null && [[ -s "$tmp.b" ]]; then
+    mv "$tmp.b" "$tmp"; sz=$(wc -c < "$tmp")
+    echo "cosense-fetch: 長すぎ(>${MAX_BYTES}B) → hop=${h} に降格 (${sz}B)" >&2
+  else break; fi
+done
+if [[ "$MAX_BYTES" -gt 0 && "$sz" -gt "$MAX_BYTES" && -n "${SCRAPBOX_SID:-}" ]]; then
+  if bare_page > "$tmp.b" 2>/dev/null && [[ -s "$tmp.b" ]]; then
+    mv "$tmp.b" "$tmp"; sz=$(wc -c < "$tmp")
+    echo "cosense-fetch: h=1 でも長すぎ → 単一ページ(リンク無し)に縮退 (${sz}B)" >&2
+  fi
 fi
+if [[ -n "$OUTPUT" ]]; then cp "$tmp" "$OUTPUT"; else cat "$tmp"; fi
