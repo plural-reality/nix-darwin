@@ -71,12 +71,15 @@ const readJsonFile = <T>(path: string): Result<T> =>
     ? tryResult(() => JSON.parse(readFileSync(path, "utf8")) as T)
     : err(`missing file: ${path}`);
 
+const asRequest = (value: unknown): Result<FreeeRequest> =>
+  isRecord(value) && typeof value.path === "string"
+    ? ok(value as FreeeRequest)
+    : err("each request must be a JSON object with a string path");
+
 const parseInput = (text: string): Result<FreeeRequest> =>
   ((parsed) =>
     parsed.ok
-      ? isRecord(parsed.value) && typeof parsed.value.path === "string"
-        ? ok(parsed.value as FreeeRequest)
-        : err("input must be a JSON object with a string path")
+      ? asRequest(parsed.value)
       : err("stdin must be valid JSON"))(tryResult(() => JSON.parse(text)));
 
 const normalizeService = (service: unknown): Result<Service> =>
@@ -273,8 +276,105 @@ const callFreee = (
     )
     .catch((error) => err(`freee request failed: ${messageOf(error)}`));
 
+// Transport for one already-parsed request. Token refresh is hoisted to the
+// caller so a batch refreshes once, not per record.
+const executeOne = (
+  request: FreeeRequest,
+  config: FreeeConfig,
+  tokens: FreeeTokens,
+): Promise<Result<JsonValue>> =>
+  ((serviceResult, methodResult) =>
+    serviceResult.ok && methodResult.ok
+      ? ((urlResult) =>
+          urlResult.ok
+            ? callFreee(
+                request,
+                serviceResult.value,
+                methodResult.value,
+                urlResult.value,
+                tokens,
+              )
+            : Promise.resolve(urlResult))(
+          buildUrl(request, serviceResult.value, config),
+        )
+      : Promise.resolve(serviceResult.ok ? methodResult : serviceResult))(
+    normalizeService(request.service),
+    normalizeMethod(request.method),
+  );
+
+// Input mode is a value, not a branch of control flow: a single JSON object
+// (possibly pretty-printed across lines) stays byte-for-byte backward
+// compatible; a top-level JSON array OR an NDJSON stream becomes a batch whose
+// per-record parse/exec errors are isolated so one bad line never aborts the
+// rest of the close.
+type Parsed = Readonly<{
+  batch: boolean;
+  requests: ReadonlyArray<Result<FreeeRequest>>;
+}>;
+
+const parseNdjson = (text: string): Parsed => ({
+  batch: true,
+  requests: text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) =>
+      ((parsed) =>
+        parsed.ok
+          ? asRequest(parsed.value)
+          : err(`invalid JSON line: ${line.slice(0, 80)}`))(
+        tryResult(() => JSON.parse(line) as unknown),
+      ),
+    ),
+});
+
+const parseRequests = (text: string): Parsed =>
+  ((whole) =>
+    whole.ok
+      ? Array.isArray(whole.value)
+        ? { batch: true, requests: whole.value.map(asRequest) }
+        : { batch: false, requests: [asRequest(whole.value)] }
+      : parseNdjson(text))(tryResult(() => JSON.parse(text) as unknown));
+
+// HTTP-level failure is carried inside a successful transport Result as a
+// { ok:false, status } value (see callFreee); flatten both layers into one
+// boolean for the batch line's top-level `ok` and the process exit code.
+const succeeded = (value: JsonValue): boolean =>
+  !(isRecord(value) && value.ok === false);
+
+type Indexed = Readonly<{ i: number; result: Result<JsonValue> }>;
+
+const lineOk = ({ result }: Indexed): boolean =>
+  result.ok && succeeded(result.value);
+
+const batchLine = ({ i, result }: Indexed): JsonValue =>
+  result.ok
+    ? { i, ok: succeeded(result.value), result: result.value }
+    : { i, ok: false, error: result.error };
+
+// Sequential fold: independent financial writes stay deterministic and gentle
+// on the API (one in flight at a time), and a promise chain over reduce keeps
+// the structure loop-free and immutable.
+const executeBatch = (
+  requests: ReadonlyArray<Result<FreeeRequest>>,
+  config: FreeeConfig,
+  tokens: FreeeTokens,
+): Promise<ReadonlyArray<Indexed>> =>
+  requests.reduce(
+    (acc, reqResult, i) =>
+      acc.then((done) =>
+        (reqResult.ok
+          ? executeOne(reqResult.value, config, tokens)
+          : Promise.resolve(reqResult as Result<JsonValue>)
+        ).then((result) => [...done, { i, result }]),
+      ),
+    Promise.resolve([] as ReadonlyArray<Indexed>),
+  );
+
 const usage = {
   usage: "printf '%s\\n' '{\"service\":\"accounting\",\"path\":\"/api/1/companies\"}' | freee-call",
+  batch:
+    "NDJSON (one JSON request per line) or a top-level JSON array on stdin runs a sequential batch and emits NDJSON {i,ok,result|error}; one bad line never aborts the rest. Idempotency is the caller's job: GET existing records, diff by natural key, pipe only the new requests.",
   input: {
     service: "accounting | hr | invoice | pm | sm",
     method: "GET | POST | PUT | PATCH | DELETE",
@@ -286,67 +386,84 @@ const usage = {
 } as const;
 
 const render = (value: JsonValue): string => `${JSON.stringify(value, null, 2)}\n`;
+const renderLine = (value: JsonValue): string => `${JSON.stringify(value)}\n`;
 
-const run = (): Promise<Result<JsonValue>> =>
+type Output = Readonly<{ code: number; out: string }>;
+
+const readInput = (): string =>
+  process.argv.slice(2).length > 0
+    ? process.argv.slice(2).join(" ")
+    : process.stdin.isTTY
+      ? ""
+      : readFileSync(0, "utf8");
+
+const runSingle = (
+  request: Result<FreeeRequest>,
+  config: FreeeConfig,
+  tokens: FreeeTokens,
+): Promise<Output> =>
+  request.ok
+    ? executeOne(request.value, config, tokens).then((result) => ({
+        code: result.ok ? 0 : 1,
+        out: render(result.ok ? result.value : { ok: false, error: result.error }),
+      }))
+    : Promise.resolve({ code: 1, out: render({ ok: false, error: request.error }) });
+
+const runBatch = (
+  requests: ReadonlyArray<Result<FreeeRequest>>,
+  config: FreeeConfig,
+  tokens: FreeeTokens,
+): Promise<Output> =>
+  executeBatch(requests, config, tokens).then((rows) => ({
+    code: rows.every(lineOk) ? 0 : 1,
+    out: rows.map((row) => renderLine(batchLine(row))).join(""),
+  }));
+
+const runWithTokens = (
+  text: string,
+  config: FreeeConfig,
+  tokens: FreeeTokens,
+): Promise<Output> =>
+  ((parsed) =>
+    parsed.batch
+      ? runBatch(parsed.requests, config, tokens)
+      : runSingle(parsed.requests[0], config, tokens))(parseRequests(text));
+
+const main = (): Promise<Output> =>
   process.argv.slice(2).includes("--help")
-    ? Promise.resolve(ok(usage))
+    ? Promise.resolve({ code: 0, out: render(usage) })
     : ((text) =>
         text.trim() === ""
-          ? Promise.resolve(err("missing JSON input on stdin or argv"))
-          : ((requestResult, configResult, tokensResult) =>
-              requestResult.ok && configResult.ok && tokensResult.ok
-                ? ((serviceResult, methodResult) =>
-                    serviceResult.ok && methodResult.ok
-                      ? ((urlResult) =>
-                          urlResult.ok
-                            ? validTokens(
-                                configResult.value,
-                                tokensResult.value,
-                              ).then((validTokenResult) =>
-                                validTokenResult.ok
-                                  ? callFreee(
-                                      requestResult.value,
-                                      serviceResult.value,
-                                      methodResult.value,
-                                      urlResult.value,
-                                      validTokenResult.value,
-                                    )
-                                  : Promise.resolve(validTokenResult),
-                              )
-                            : Promise.resolve(urlResult))(
-                          buildUrl(
-                            requestResult.value,
-                            serviceResult.value,
-                            configResult.value,
-                          ),
-                        )
-                      : Promise.resolve(
-                          serviceResult.ok ? methodResult : serviceResult,
-                        ))(
-                    normalizeService(requestResult.value.service),
-                    normalizeMethod(requestResult.value.method),
+          ? Promise.resolve({
+              code: 1,
+              out: render({ ok: false, error: "missing JSON input on stdin or argv" }),
+            })
+          : ((configResult, tokensResult) =>
+              configResult.ok && tokensResult.ok
+                ? validTokens(configResult.value, tokensResult.value).then(
+                    (fresh) =>
+                      fresh.ok
+                        ? runWithTokens(text, configResult.value, fresh.value)
+                        : Promise.resolve({
+                            code: 1,
+                            out: render({ ok: false, error: fresh.error }),
+                          }),
                   )
-                : Promise.resolve(
-                    requestResult.ok
-                      ? configResult.ok
-                        ? tokensResult
-                        : configResult
-                      : requestResult,
-                  ))(
-              parseInput(text),
+                : Promise.resolve({
+                    code: 1,
+                    out: render({
+                      ok: false,
+                      error: !configResult.ok
+                        ? configResult.error
+                        : !tokensResult.ok
+                          ? tokensResult.error
+                          : "unknown error",
+                    }),
+                  }))(
               readJsonFile<FreeeConfig>(configPath),
               readJsonFile<FreeeTokens>(tokensPath),
-            ))(
-        process.argv.slice(2).length > 0
-          ? process.argv.slice(2).join(" ")
-          : process.stdin.isTTY
-            ? ""
-            : readFileSync(0, "utf8"),
-      );
+            ))(readInput());
 
-run().then((result) => (
-  process.stdout.write(
-    render(result.ok ? result.value : { ok: false, error: result.error }),
-  ),
-  process.exitCode = result.ok ? 0 : 1
+main().then(({ code, out }) => (
+  process.stdout.write(out), (process.exitCode = code)
 ));
