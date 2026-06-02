@@ -34,8 +34,12 @@ while : ; do
          query: ({walletable_type:$wt, walletable_id:$wid, limit:100, offset:$off}
            + (if $s=="" then {} else {start_date:$s} end)
            + (if $e=="" then {} else {end_date:$e} end))}')
-  page=$(printf '%s\n' "$q" | freee-call)
-  if [[ "$(jq 'has("wallet_txns")' <<<"$page")" != "true" ]]; then
+  # `|| true`: freee-call exits non-zero on transport failure (missing OAuth,
+  # token refresh, network). Under `set -e` that would abort at this assignment
+  # before the diagnostic branch below; `page` still captures freee-call's error
+  # JSON, so we let it through and surface it explicitly.
+  page=$(printf '%s\n' "$q" | freee-call) || true
+  if [[ "$(jq 'has("wallet_txns")' <<<"$page" 2>/dev/null)" != "true" ]]; then
     # transport/HTTP error: surface freee's own error object and stop.
     printf '%s\n' "$page" >&2
     exit 1

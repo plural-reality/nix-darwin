@@ -349,6 +349,84 @@ in
           "WebFetch"
         ];
       };
+      # Lifecycle hooks. MUST live here (User scope settings.json): Claude Code does
+      # NOT read ~/.claude/settings.local.json — only project-scope settings.local.json
+      # exists in the precedence chain, so a user-level local file is silently ignored
+      # (verified via `--debug-file`: "Found 0 total hooks in registry"). The hook
+      # scripts under ~/.claude/scripts/*.sh are still hand-managed (野良); promoting
+      # them into this repo's scripts/ is a follow-up. ${homeDir} is interpolated by
+      # Nix; $(…)/$VAR are shell and pass through untouched.
+      hooks =
+        let
+          homeDir = config.home.homeDirectory;
+          script = name: "/bin/bash ${homeDir}/.claude/scripts/${name} 2>/dev/null || true";
+        in
+        {
+          SessionStart = [
+            {
+              matcher = "startup";
+              hooks = [
+                { type = "command"; command = script "nix-darwin-sync-check.sh"; }
+                { type = "command"; command = script "init-prompt-on-new-project.sh"; }
+              ];
+            }
+            {
+              # /new and /clear (and /reset) all fire source="clear".
+              matcher = "clear";
+              hooks = [
+                { type = "command"; command = script "init-prompt-on-new-project.sh"; }
+              ];
+            }
+            {
+              # matcher omitted = all sources (startup/resume/clear/compact).
+              hooks = [
+                { type = "command"; command = script "daily-report-remind.sh"; }
+                { type = "command"; command = script "hook-fire-log.sh SessionStart"; }
+              ];
+            }
+          ];
+          SessionEnd = [
+            {
+              hooks = [
+                { type = "command"; command = script "hook-fire-log.sh SessionEnd"; }
+                { type = "command"; async = true; command = script "daily-report-capture.sh"; }
+                # 終了セッションを LLM 要約・分類し summaries に蓄積 → Scrapbox 日付ページへ反映。
+                # 再帰防止: 要約用 claude は CLAUDE_DAILY_SUMMARY=1 で起動され、本スクリプト先頭で skip。
+                { type = "command"; async = true; command = script "session-summary.sh"; }
+              ];
+            }
+          ];
+          PreCompact = [
+            {
+              hooks = [
+                { type = "command"; command = script "hook-fire-log.sh PreCompact"; }
+                { type = "command"; async = true; command = script "daily-report-capture.sh"; }
+              ];
+            }
+          ];
+          Notification = [
+            {
+              hooks = [
+                {
+                  type = "command";
+                  async = true;
+                  command = ''MSG=$(jq -r '.message // "あなたの操作を待っています"'); SUB=$(printf '%s' "$MSG" | grep -qi permission && echo "🔐 承認が必要です" || echo "⏳ 入力待ちです"); osascript -e 'on run argv' -e 'display notification (item 2 of argv) with title "Claude Code" subtitle (item 1 of argv) sound name "Glass"' -e 'end run' "$SUB" "$MSG" 2>/dev/null || true'';
+                }
+              ];
+            }
+          ];
+          Stop = [
+            {
+              hooks = [
+                {
+                  type = "command";
+                  async = true;
+                  command = ''DIR=$(jq -r '(.cwd // "") | sub("/+$"; "") | sub(".*/"; "")'); osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title "Claude Code" subtitle "✅ 作業完了" sound name "Ping"' -e 'end run' "''${DIR:+''${DIR}の}応答が完了しました" 2>/dev/null || true'';
+                }
+              ];
+            }
+          ];
+        };
     };
 
     # Status line: the script referenced by statusLine.command above. Co-located
