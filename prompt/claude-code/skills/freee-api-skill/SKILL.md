@@ -58,6 +58,37 @@ printf '%s\n' '{"method":"POST","path":"/api/1/partners","body":{"name":"取引�
 
 Replace `123456789` with the current company id from `/api/1/companies`.
 
+### Bulk writes: NDJSON batch (never loop one-by-one)
+
+When you have many same-shape writes (user_matchers, partners, deals, …), do NOT
+call MCP or `freee-call` once per record — that bleeds context. `freee-call` also
+accepts **NDJSON (one request per line) or a top-level JSON array**, runs them
+sequentially, and emits `{i,ok,result|error}` per line. One bad line never aborts
+the rest.
+
+```bash
+jq -nc '["取引先A","取引先B"][]
+  | {method:"POST", path:"/api/1/partners", body:{name:.}}' \
+  | freee-call \
+  | jq -c 'select(.ok|not)'   # show only failures
+```
+
+Idempotency is the caller's job (keep `freee-call` a pure transport): GET existing
+records, diff by natural key, pipe only the new requests. See
+`references/user_matchers.md` for the full bulk + idempotent + reconcile recipe.
+
+### Reconciliation: `freee-reconcile`
+
+Bank balance vs registered deals in one call (no manual jq + mental arithmetic).
+A txn is unregistered (未登録) iff `due_amount > 0`; `current_balance` is the
+latest txn's running `balance`.
+
+```bash
+printf '%s\n' '{"walletable_id":4772220,"start_date":"2026-05-01","end_date":"2026-05-31"}' \
+  | freee-reconcile \
+  | jq '{current_balance, unregistered_count, unregistered_total}'
+```
+
 ## MCP Fallback
 
 Use MCP when:
