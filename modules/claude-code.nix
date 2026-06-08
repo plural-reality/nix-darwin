@@ -314,6 +314,10 @@ in
     };
 
     ".claude/settings.json".text = builtins.toJSON {
+      # ultracode = xhigh effort + standing dynamic-workflow orchestration.
+      # Single canonical source for effort; replaces the old CLAUDE_CODE_EFFORT_LEVEL
+      # env var which used to override (and thus suppress) this setting.
+      ultracode = true;
       env = sharedAgentEnv;
       enableAutoMode = true;
       skipDangerousModePermissionPrompt = true;
