@@ -22,7 +22,7 @@ in
     llm-agents.openclaw
 
     # Development
-    tmux
+    # tmux は下の programs.tmux が導入する (single source なのでここには書かない)
     deno
     nodejs
     bun
@@ -107,6 +107,16 @@ in
     # Anyone who launches fish interactively gets Nix env vars automatically.
     fish = {
       enable = true;
+    };
+
+    # tmux: base が teammateMode="tmux" を全員に課す以上、base で「スクロールできる tmux」を保証する。
+    # 既定は mouse off + history 2000 行で、Claude Code の長い出力がすぐ流れて見返せなくなる。
+    # mouse on でホイール/ドラッグから copy-mode に入りスクロール、history は大幅に拡張。
+    tmux = {
+      enable = true;
+      mouse = true;
+      historyLimit = 50000;
+      escapeTime = 0; # home-manager 既定の 500ms は nvim の ESC を遅延させるため 0
     };
 
     direnv = {

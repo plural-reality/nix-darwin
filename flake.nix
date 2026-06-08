@@ -142,7 +142,10 @@
                 system.defaults = {
                   CustomSystemPreferences."com.apple.security"."com.apple.security.authorization.ignoreArd" = true;
                 };
-                security.pam.services.sudo_local.touchIdAuth = true;
+                security.pam.services.sudo_local = {
+                  touchIdAuth = true;
+                  reattach = true; # tmux/screen の中でも TouchID を効かせる (pam_reattach)。これが無いと tmux 内 sudo はパスワードに落ちる
+                };
 
                 homebrew = {
                   enable = true;
