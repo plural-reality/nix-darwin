@@ -3,8 +3,11 @@
 # Stream in (Claude Code statusLine JSON on stdin) -> one status line out.
 #
 # Layout:
-#   <cwd> (branch)  #<session-hash>
+#   <cwd> (branch)  <name> #<session-hash>
 #    ctx:N%  5h ▕████░░░░░░▏ N% ↻Hh MMm  [model]
+#
+# <name> is the /rename label; it precedes the hash and collapses to nothing
+# when the session was never renamed.
 #
 # 5h segment is the rolling 5-hour usage limit, taken straight from the
 # canonical source Claude Code already hands us: .rate_limits.five_hour
@@ -36,8 +39,21 @@ git_branch=$(GIT_OPTIONAL_LOCKS=0 git -C "$cwd" symbolic-ref --short HEAD 2>/dev
   || echo "")
 branch_part=$([ -n "$git_branch" ] && printf " \033[34m(%s)\033[0m" "$git_branch" || echo "")
 
-# Session hash — first 8 hex of the (UUID) session_id, git-short-sha style.
-hash_part=$([ -n "$session_id" ] && printf "  \033[2m#%s\033[0m" "${session_id:0:8}" || echo "")
+# Session name (set via /rename) + hash. The statusLine stdin JSON carries no
+# session name field, so it is read from its only canonical home:
+# ~/.claude/sessions/<pid>.json (keyed by sessionId). A renamed session sets
+# .name there; un-renamed ones omit it. Slurp every pid file and take the
+# freshest match so a stale pid file can't shadow the live name.
+session_name=$([ -n "$session_id" ] && jq -rs --arg sid "$session_id" \
+  'map(select(.sessionId == $sid)) | max_by(.updatedAt) | .name // empty' \
+  "$HOME"/.claude/sessions/*.json 2>/dev/null || echo "")
+
+# Render "<name> #<hash>": name (bold) first, hash (dim, 8-hex git-short-sha
+# style) after. The hash is always present; the name segment — and its trailing
+# space — vanishes entirely when the session has no /rename label.
+name_str=$([ -n "$session_name" ] && printf "\033[1m%s\033[0m " "$session_name" || echo "")
+hash_str=$([ -n "$session_id" ] && printf "\033[2m#%s\033[0m" "${session_id:0:8}" || echo "")
+id_part=$([ -n "$session_id" ] && printf "  %s%s" "$name_str" "$hash_str" || echo "")
 
 # Context usage percentage (pre-calculated by Claude Code)
 ctx_part=$([ -n "$used_pct" ] \
@@ -76,5 +92,5 @@ fi
 model_part=$([ -n "$model" ] && printf " \033[2m[%s]\033[0m" "$model" || echo "")
 
 printf "\033[36m%s\033[0m%s%s\n%s%s%s\n" \
-  "$display_dir" "$branch_part" "$hash_part" \
+  "$display_dir" "$branch_part" "$id_part" \
   "$ctx_part" "$five_part" "$model_part"
