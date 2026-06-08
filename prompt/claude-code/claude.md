@@ -39,4 +39,5 @@
 @[engineering]
 @[context-compression]
 @[local-installation]
+@[shell-environment]
 @[architectual-decision]

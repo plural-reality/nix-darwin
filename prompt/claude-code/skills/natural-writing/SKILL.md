@@ -17,6 +17,22 @@ description: >
 
 目的は「AI検出を回避する」ことではなく、**読み手にとって具体的で、信頼でき、人間が考えた文章だと伝わる文体で書く**ことです。
 
+## 関連スキル（媒体別）
+
+| スキル | 媒体 / トリガー |
+|---|---|
+| `save-to-scrapbox` | Scrapbox に書く時の **canonical な規約**（箇条書き構造化、`[( …]` LLM マーク、`[claude code.icon]` アイコン、provenance） |
+| `scrapbox-context` | Scrapbox に書く前の既存ページ検索 |
+| `scrapbox-llm-marking` | Scrapbox の LLM 装飾（薄表示 CSS / UserScript）の仕組み |
+
+Scrapbox に書く場合は、本ガイドの 24 項目に加えて以下を必ず守る:
+
+- 段落（地の文）を書かない。要素ごとに改行・ネストで箇条書きにする
+- 文の途中に強調 `[* …]` を使わない。構造はネストで表現する
+- LLM（あなた）が書いた行は必ず `[( …]` で薄表示にする
+- 複数行の LLM ブロックは先頭に `[claude code.icon]` を一度だけ付ける
+- provenance: `[YYYY/MM/DD]` 日付ブロック → `> [tkgshn.icon] による指示: 「…」` 引用 → `[( …]` 本文 の順で書く
+
 ---
 
 ## 原則：なぜAIの文章は「AIっぽい」のか

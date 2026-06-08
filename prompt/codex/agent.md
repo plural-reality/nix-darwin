@@ -20,8 +20,15 @@
 - Do not use the Codex in-app Browser or Playwright's default Chromium/Chrome for Testing unless the user explicitly asks for an isolated browser.
 - If Playwright MCP is unavoidable, run it with the real Chrome channel (`--browser chrome`) rather than its bundled browser.
 
+## スケジュール・空き時間の確認
+
+- 本人の予定や空き時間を見るとき（「いつ空いてる?」「日程入れて」等）は、**Apple Calendar を必ず読む**。Google Calendar だけだとほぼ空に見えるが、予定の実体は Apple/iCloud 側にある。
+- 本人の予定は Apple Calendar の **「☑️ チェック付き」カレンダーだけ**: `Taka の予定` / `takagi@plural-reality.com` / `Shunsuke Takagi (General)` / `Business` / `ルーティーン` / `Intervals.icu`(トレーニング計画=可動) / `日本の祝日`。チェックの無い `Univ` / `勤務先` / `Personal` / `Exercise` / `惟の居住地` / `目黒区民プール` / `Yui` / `Ryu` 等は **共有=他人の予定**なので空き判定から除外する。
+- 読取りは osascript で全カレンダーを日付範囲フィルタ → 上記リストの `name of cal` だけ残す。書込みは apple-calendar skill（iCloud固定・位置情報つき・時刻指定）を唯一の窓口にし、直接 osascript で作らない。
+
 @[unix-principal]
 @[engineering]
 @[context-compression]
 @[local-installation]
+@[shell-environment]
 @[architectual-decision]

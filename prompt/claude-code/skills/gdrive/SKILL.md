@@ -53,6 +53,72 @@ OAuth は plural-reality.com 組織配下の Internal 設定なので、`*@plura
 }
 ```
 
+## native Google Docs をゼロから作成する（`create`）
+
+新規の正式文書（申入書・提案書など）は、最初から **native Google Docs** で作る。`.docx` を経由しない（Golden Rule 1）。
+
+### Step 1: フォルダ ID を確定 → 空の native Doc を作成
+
+`gws docs create` という**サブコマンドは存在しない**。native Doc は Drive API の `files.create` で `mimeType` を指定して作る。
+
+```bash
+# 置き場所(共有ドライブ等)のフォルダIDを先に検索
+gws drive files list --params '{"q":"name = '\''フォルダ名'\'' and mimeType='\''application/vnd.google-apps.folder'\'' and trashed=false","fields":"files(id,name)","supportsAllDrives":true,"includeItemsFromAllDrives":true,"corpora":"allDrives"}'
+
+# 空の native Doc を作成（webViewLink が共有/閲覧URL。documentId はこの id）
+gws drive files create --json '{"name":"ドキュメント名","mimeType":"application/vnd.google-apps.document","parents":["FOLDER_ID"]}' --params '{"fields":"id,name,webViewLink,parents","supportsAllDrives":true}'
+```
+
+> **共有ドライブ内に置いた瞬間、そのフォルダの共有メンバー全員に見える。** 作成直後に `drive.permissions.list` で公開範囲を確認すること。「まだ見せたくない相手」がメンバーにいたら個人フォルダへ作る。anyone-link が付いていなくても、named member には見える。
+
+### Step 2: 本文を「構造＋装飾」で投入する（プレーンテキスト全流し込みは禁止）
+
+**やってはいけない**: `insertText` で全文をベタ流しするだけ。見出し・リンク・上付きなどの装飾がすべて失われ、ただのテキストの塊になる（過去にこれをやって「もともとの装飾が失われている」と指摘された）。
+
+**正しい手順（2 ステージ）**: ① プレーンテキストを流し込む → ② **テキスト長を変えない装飾リクエスト**を `batchUpdate` でまとめて当てる。装飾はテキスト長を変えないので、流し込み時に計算した index がそのまま使える。
+
+装飾は Python でセグメント配列（各段落に `heading` / `link` / `superscript` 属性）を組み、`doc index = 1 + 文字オフセット` で range を算出して一括投入する。要点だけ:
+
+```jsonc
+// ② batchUpdate の requests（index は ① 投入後の 1+offset）
+// 見出し: 段落テキスト範囲に namedStyleType（改行は含めない＝その段落だけに効く）
+{"updateParagraphStyle":{"range":{"startIndex":S,"endIndex":E},"paragraphStyle":{"namedStyleType":"HEADING_2"},"fields":"namedStyleType"}}
+// ハイパーリンク: 表示テキストに link を張る（生 URL は本文に出さない）。青+下線で見た目も締まる
+{"updateTextStyle":{"range":{"startIndex":S,"endIndex":E},"textStyle":{"link":{"url":"https://..."},"foregroundColor":{"color":{"rgbColor":{"red":0.067,"green":0.333,"blue":0.8}}},"underline":true},"fields":"link,foregroundColor,underline"}}
+// 上付き脚注番号: Unicode の ¹²³ ではなく、通常数字 "1" に baselineOffset=SUPERSCRIPT を当てる（フォント崩れを防ぐ）
+{"updateTextStyle":{"range":{"startIndex":S,"endIndex":E},"textStyle":{"baselineOffset":"SUPERSCRIPT"},"fields":"baselineOffset"}}
+```
+
+> 既存の native Doc を**編集**するとき（作成ではなく）は、全消去→全挿入をしてはいけない。他者の書式・コメントが飛ぶ。`push`（batchUpdate でセクション単位差し替え、Golden Rule 3）に従う。本「全流し込み」が許されるのは**自分が今 Step 1 で作った空 Doc の初回投入**のときだけ。
+
+### コメントは native Docs に「アンカーできない」
+
+Drive API `drive.comments.create` に `quotedFileContent.value`（引用文）を渡しても、**native Google Docs では本文にハイライト固定されず「元のコンテンツは削除されました」になる**（API は成功し `id` も返るので気づきにくい）。SKILL の旧版にあった「anchor は `quotedFileContent.value` から自動逆引きされる」は、移行済み .docx 等の限定ケースの話で、**新規 native Doc の本文には効かない**。
+
+→ **計算ロジック・出典・補足は、コメントではなく本文側に入れる**。具体的には**脚注方式**（本文の数値の直後に上付き番号、文末に「脚注（算定根拠・参照資料）」セクションを作り、計算式＋ハイパーリンクを置く）。コメントは「相手にレビューしてほしい問い」専用と割り切る。
+
+### 検証は「API の戻り値」ではなく「実際に適用された構造」で
+
+`comments.create` の戻り値に `quotedFileContent` が入っていても、表示はアンカー切れになりうる。**作業後は必ず `documents.get` で読み戻し、`paragraphStyle.namedStyleType`(見出し) / `textStyle.link`(リンク) / `textStyle.baselineOffset`(上付き) を数え、期待数と一致するか確認する。** 「API が 200 を返した」を完了の根拠にしない。
+
+### 対外文書を書くときの中身ルール（今回の学び）
+
+- **数値には必ず算定根拠と出典リンクを添える**（参照透過性）。読み手が一次資料へ辿れる丁寧さが信頼になる。
+- リンクは**相手に共有済みの安全な資料だけ**を貼る。社内の交渉戦略メモ（例: 何を交換材料にするか等）が書かれた Scrapbox 等は絶対に貼らない。社内版と対外版で参照先を分ける。
+- 既に相手へ送ったメッセージ（過去の共有・報告）がある文脈では、**その文言・数字と地続きになるよう書く**（「先日ご報告のとおり〜」で接続し、同じ数字を使う）。新規に書き起こさない。
+
+### 文体ルール（ユーザーが初稿をこう直した＝この形で最初から書く）
+
+AI が書きがちな「いかにも文書」を、ユーザーは毎回そぎ落とす。下記は実際の添削差分から抽出。**最初からこの形で書けば手直しが要らない。**
+
+- **「件名：」ラベルを付けない。** タイトル行はラベルなしで件名そのものを置く（見出しスタイルは付けてよい）。
+- **拝啓・時候・前口上を入れない。** 「拝啓　平素より格別のご高配を賜り…」のような定型挨拶段落は丸ごと不要。事実（財務状況の報告など）から入る。
+- **「記」を使わない。** 記書きの体裁にしない。番号セクションを直接続ける。
+- **一文一行。** 一段落に複数の文を詰めない。文が変わったら改行する。意味のまとまりの切れ目には空行を入れる。
+- **行頭の記号マーカーをベタ打ちしない。** `・`、`(a)`/`(b)`、`1.`/`2.` のような記号を生テキストで置かない。箇条書きが要るなら Docs のリスト機能（`createParagraphBullets`）で付ける。本文の各項目はプレーンな一文一行で並べる。
+- **社内ジャーゴンを対外文では平易語に。** 「次の谷でも現金フロアを保てる」→「現金 6,000,000円 を保てる」のように、社内モデル用語（谷・フロア・予実 等）は相手に通じる言葉へ。脚注の計算根拠も同様。
+- 総じて、**装飾の薄い・前置きの無い・一文一行の素直な文**を好む。丁寧さは挨拶句ではなく「数値＋根拠リンク」で担保する。
+
 ## コマンド体系
 
 ### `clone` — Drive ファイルをローカルに初回取得
