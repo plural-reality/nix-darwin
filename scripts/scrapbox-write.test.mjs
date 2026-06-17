@@ -9,7 +9,28 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { markGrayText, grayCore, grayBodyLines, isAlreadyGray, leadingDeco } from "./scrapbox-write.mjs";
+import { markGrayText, grayCore, grayBodyLines, isAlreadyGray, leadingDeco, matchClose } from "./scrapbox-write.mjs";
+
+// Faithful port of the canonical ungray() in tkgshn-extension/llm-auto-humanize: melt every
+// gray deco token (chars include '('), keep bare links and non-gray decorations, recurse into
+// nested content and the remainder. Used to prove markGrayText round-trips (humanize(grayify(x))===x).
+const ungrayRef = (s) => {
+  const open = s.indexOf("[");
+  const rel = open < 0 ? -1 : matchClose(s.slice(open));
+  if (rel < 0) return s;
+  const before = s.slice(0, open);
+  const token = s.slice(open, open + rel + 1);
+  const after = s.slice(open + rel + 1);
+  const inner = token.slice(1, -1);
+  const sp = inner.indexOf(" ");
+  const chars = sp < 0 ? "" : inner.slice(0, sp);
+  const content = sp < 0 ? "" : inner.slice(sp + 1);
+  const grayDeco = /^[(*\/_-]+$/.test(chars) && chars.includes("(");
+  const melted = !grayDeco ? token
+    : chars === "(" ? ungrayRef(content)
+    : `[${chars.replace("(", "")} ${ungrayRef(content)}]`;
+  return before + melted + ungrayRef(after);
+};
 
 // Reference implementation = canonical gray() from llm-auto-humanize, verbatim. markGrayText
 // must agree with it on any single-segment (no backtick) line.
@@ -104,4 +125,27 @@ test("grayBodyLines is idempotent (round-trip stable)", () => {
   const once = grayBodyLines(input);
   const twice = grayBodyLines(once);
   assert.deepEqual(twice, once, "applying grayBodyLines twice equals applying it once");
+});
+
+test("mid-line decoration: '(' merges into a deco found ANYWHERE (sibling, not nested)", () => {
+  // The regression this fixes: a mid-line [* bold] used to be wrapped whole as
+  // "[( 実態は [* X] に変更]", which kills the bold (Scrapbox won't render a deco inside a deco).
+  assert.equal(markGrayText("実態は [* X] に変更"), "[( 実態は] [(* X] [( に変更]");
+  assert.equal(markGrayText("a [* b] c [/ d] e"), "[( a] [(* b] [( c] [(/ d] [( e]");
+  assert.equal(markGrayText("締切は [* 11月]"), "[( 締切は] [(* 11月]");
+  assert.notEqual(markGrayText("実態は [* X] に変更"), "[( 実態は [* X] に変更]");
+});
+
+test("mid-line decoration round-trips: ungray(markGrayText(x)) === x", () => {
+  for (const x of [
+    "実態は [* X] に変更",
+    "a [* b] c [/ d] e",
+    "締切は [* 11月]",
+    "関与は [* 紐付け] にシフト。[* もう一つ] も",
+    "[Page] 参照",
+    "結果 [* 太字] と [Link] と plain",
+    "散文だけ",
+  ]) {
+    assert.equal(ungrayRef(markGrayText(x)), x, `round-trip on ${x}`);
+  }
 });
