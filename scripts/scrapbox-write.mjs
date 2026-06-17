@@ -178,18 +178,42 @@ const grayCore = (core) => {
     : d ? `[(${d.chars} ${d.content}]${d.rest}`
     : `[( ${core}]`;
 };
-// Backtick code spans stay OUTSIDE the deco (they don't render monospace inside it);
-// each plain segment's core is greyed, leading/trailing space (incl. Scrapbox indent)
-// kept outside so spacing/indent survive. Only the first plain segment can carry a
-// leading decoration; later segments parse as plain and wrap as [( … ].
+// A plain run (no code; bare links [Page] DO render inside a deco so they stay here) wraps
+// as [( run], keeping leading/trailing space OUTSIDE so adjacent siblings read cleanly.
+const grayPlainRun = (t) => {
+  const [, lead, core, trail] = /^(\s*)([\s\S]*?)(\s*)$/.exec(t);
+  return core === "" ? t : `${lead}[( ${core}]${trail}`;
+};
+// Grey a code-span-free segment by WALKING it so a decoration token ([* X], [/ y] …) found
+// ANYWHERE — not just at the start (the old grayCore only handled a LEADING deco) — becomes
+// a sibling [(* X] with '(' merged into the deco chars, never nested inside [( … ]. Scrapbox
+// does not render a decoration that sits inside a deco bracket (same reason code spans are
+// kept outside), so a mid-line [* bold] wrapped as [( … [* bold] … ] silently loses its
+// bold; emitting [(* bold] as a sibling keeps BOTH gray (deco-`(`) and bold (deco-`*`).
+// Inverse-stable with canonical ungray, which melts sibling [(* X] → [* X] and
+// [( a][(* X][( b] → a[* X]b, so humanize(grayify(x)) === x still holds.
+const grayInline = (seg) => {
+  const walk = (rest, plain) => {
+    const open = rest.indexOf("[");
+    const close = open < 0 ? -1 : matchClose(rest.slice(open));
+    if (close < 0) return grayPlainRun(plain + rest);
+    const token = rest.slice(open, open + close + 1);
+    const after = rest.slice(open + close + 1);
+    const d = leadingDeco(token);
+    return d === null
+      ? walk(after, plain + rest.slice(0, open) + token)
+      : grayPlainRun(plain + rest.slice(0, open)) +
+        (d.chars.includes("(") ? token : `[(${d.chars} ${d.content}]`) +
+        walk(after, "");
+  };
+  return walk(seg, "");
+};
+// Backtick code spans stay OUTSIDE the deco (they don't render monospace inside it); every
+// other segment is walked by grayInline so mid-line decorations survive as siblings.
 const markGrayText = (text) =>
   text
     .split(/(`[^`]+`)/)
-    .map((seg) => {
-      if (isCodeSpan(seg)) return seg;
-      const [, lead, core, trail] = /^(\s*)([\s\S]*?)(\s*)$/.exec(seg);
-      return core === "" ? seg : `${lead}${grayCore(core)}${trail}`;
-    })
+    .map((seg) => (isCodeSpan(seg) ? seg : grayInline(seg)))
     .join("");
 const indentLen = (line) => /^(\s*)/.exec(line)[1].length;
 const isStructuralHeader = (line) => /^\s*(code:|table:)\S/.test(line);
