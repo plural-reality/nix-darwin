@@ -257,6 +257,18 @@ let
     cp -Lf "$SBDIR/scrapbox-write.mjs" "$SBDIR/_run.mjs" 2>/dev/null || true
     exec ${pkgs.nodejs}/bin/node "$SBDIR/_run.mjs" "$@"
   '';
+
+  # ── Scrapbox renamer ────────────────────────────────────
+  # Sibling of scrapbox-write: renames a page in place (preserving its ID &
+  # history) and repoints every backlink form — plain, deep ([#anchor]), icon,
+  # and #hashtag — to the new title. Reuses the same managed @cosense/std
+  # node_modules, and the same writable-copy dance to dodge ESM symlink resolution.
+  scrapbox-rename = pkgs.writeScriptBin "scrapbox-rename" ''
+    #!${pkgs.bash}/bin/bash
+    SBDIR="$HOME/.local/share/scrapbox-write"
+    cp -Lf "$SBDIR/scrapbox-rename.mjs" "$SBDIR/_run_rename.mjs" 2>/dev/null || true
+    exec ${pkgs.nodejs}/bin/node "$SBDIR/_run_rename.mjs" "$@"
+  '';
 in
 {
   home.packages = [
@@ -280,6 +292,7 @@ in
 
     # Scrapbox writer
     scrapbox-write
+    scrapbox-rename
 
     # CLI tools used by scripts
     pkgs.python313Packages.markitdown
@@ -302,6 +315,8 @@ in
 
   # Deploy scrapbox-write.mjs to ~/.local/share/scrapbox-write/
   home.file.".local/share/scrapbox-write/scrapbox-write.mjs".source = ../scripts/scrapbox-write.mjs;
+  # scrapbox-rename shares the same dir (and its @cosense/std node_modules).
+  home.file.".local/share/scrapbox-write/scrapbox-rename.mjs".source = ../scripts/scrapbox-rename.mjs;
   home.file.".local/share/scrapbox-write/package.json".text = builtins.toJSON {
     name = "scrapbox-write";
     version = "1.0.0";
