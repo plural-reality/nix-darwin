@@ -300,6 +300,14 @@ in
     executable = true;
   };
 
+  # wip-crawl: detects the unprocessed [claude code WIP.icon] queue across the
+  # 3 Scrapbox projects (pure filter; node shebang, shells out to cosense-fetch).
+  # Source: scripts/wip-crawl.mjs. Tested by scripts/wip-crawl.test.mjs.
+  home.file.".local/bin/wip-crawl" = {
+    source = ../scripts/wip-crawl.mjs;
+    executable = true;
+  };
+
   # Deploy scrapbox-write.mjs to ~/.local/share/scrapbox-write/
   home.file.".local/share/scrapbox-write/scrapbox-write.mjs".source = ../scripts/scrapbox-write.mjs;
   home.file.".local/share/scrapbox-write/package.json".text = builtins.toJSON {
