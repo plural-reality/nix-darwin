@@ -25,10 +25,11 @@ The agent environment under `~/.claude` is reproduced from this repo by three pi
 - `~/.config/beeper-to-scb/threads.json` — watched-group map for `beeper-to-scb`.
 - SOPS-managed secrets stay in the secrets flow; never inline a secret value into `scripts/claude/`.
 
-**External runtime deps assumed on PATH** (not all yet nix-provided — promote incrementally):
-- `python3` (vendored scripts use stdlib only + local `scripts/claude/lib/normalize.py`).
-- `node` for `pw.mjs` (its `playwright-core` dep is intentionally not vendored; `pw.mjs` is also known-broken — prefer the real-Chrome channel path).
-- CLIs the scripts shell out to: `himalaya`, `cosense-fetch`, `scrapbox-write`, `jq`.
+**External runtime deps** — the agent CLIs are now nix-provided so a fresh machine has them:
+- `python3` (stdlib only + local `scripts/claude/lib/normalize.py`), `node`, `ffmpeg`, `imagemagick`, `poppler`(pdftotext), `ripgrep`, `fzf` — `modules/base.nix`.
+- `jq`, `himalaya`, `pandoc` — added to `modules/base.nix` (were system/Homebrew-only).
+- `cosense-fetch`, `scrapbox-write`, `scrapbox-rename`, `scb-lint`, `codex-name` — `modules/shared-scripts.nix`.
+- Still not nix-managed (add per-skill-need, not forced into the base closure): `tesseract`/`tesseract-lang` (OCR), `terminal-notifier`, `whisper-cpp`, and `pw.mjs`'s `playwright-core` (`pw.mjs` is known-broken anyway — prefer the real-Chrome channel). The broader Homebrew dev/infra stack (mariadb, nginx, supabase, stripe, tailscale, go, rust, …) is **not** an agent-env dep and is out of scope here.
 
 **This-machine convergence caveat (`.hmbak`):** on a machine that already has real files/dirs at the live targets (e.g. tkgshn's primary), Home Manager backs the pre-existing copy up to `*.hmbak` before symlinking. Fresh machines (bluemo) have no such conflict and link cleanly. Periodically clean accumulated `*.hmbak` to keep activation unblocked. This is separate from the migration above.
 - Downstream flakes may import this repo from GitHub or from a local `path:` checkout while agent tooling is being tested. Keep that binding in the downstream flake, not in shared modules.
