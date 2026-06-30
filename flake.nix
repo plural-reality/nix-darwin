@@ -179,6 +179,7 @@
                     ./modules/base.nix
                     ./modules/claude-code.nix
                     ./modules/shared-scripts.nix
+                    ./modules/claude-agent-scripts.nix
                   ]
                   ++ (nixpkgs.lib.optional (secretsFile != null) inputs.sops-nix.homeManagerModules.sops);
 

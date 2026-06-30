@@ -6,8 +6,31 @@ Read this before changing Nix/Home Manager, Claude/Codex prompts, skills, or sha
 
 - Shared skills live at `prompt/claude-code/skills/<name>/`.
 - Shared scripts live at `scripts/` and are wired by `modules/shared-scripts.nix`.
+- The raw `~/.claude/scripts/*` runtime payload lives at `scripts/claude/` and is wired by `modules/claude-agent-scripts.nix` (recursive symlink → `~/.claude/scripts/`).
 - Agent prompt/config projection is owned by `modules/claude-code.nix`.
 - Live files under `~/.claude/*` and `~/.codex/*` are generated outputs.
+
+## ~/.claude Agent Environment Reproduction (for teammates, e.g. bluemo)
+
+The agent environment under `~/.claude` is reproduced from this repo by three pieces:
+
+| Live target | Repo source | Wiring |
+|---|---|---|
+| `~/.claude/skills/<name>/` | `prompt/claude-code/skills/<name>/` | auto-detected by `builtins.readDir` in `modules/claude-code.nix` |
+| `~/.claude/scripts/*` (hook helpers, lifelog, daily-report, session tooling, Scrapbox/Beeper adapters, `lib/` + `calendar/` `reminders/` `meguro-pool/` `zwift-mode/`) | `scripts/claude/` | `modules/claude-agent-scripts.nix` (`home.file."./.claude/scripts"`, `recursive = true`) |
+| nix-built CLIs (`scb-lint`, `codex-name`, statusline, Haskell stream tools) | `scripts/*.{mjs,ts,hs,sh}` | `modules/shared-scripts.nix` (`writeShellApplication` / `home.file."./.local/bin/X"`) |
+
+**Per-user runtime state — NOT vendored, each machine provides its own:**
+- `~/.config/beeper/token` — Beeper local-API bearer (Beeper Desktop must be running).
+- `~/.config/beeper-to-scb/threads.json` — watched-group map for `beeper-to-scb`.
+- SOPS-managed secrets stay in the secrets flow; never inline a secret value into `scripts/claude/`.
+
+**External runtime deps assumed on PATH** (not all yet nix-provided — promote incrementally):
+- `python3` (vendored scripts use stdlib only + local `scripts/claude/lib/normalize.py`).
+- `node` for `pw.mjs` (its `playwright-core` dep is intentionally not vendored; `pw.mjs` is also known-broken — prefer the real-Chrome channel path).
+- CLIs the scripts shell out to: `himalaya`, `cosense-fetch`, `scrapbox-write`, `jq`.
+
+**This-machine convergence caveat (`.hmbak`):** on a machine that already has real files/dirs at the live targets (e.g. tkgshn's primary), Home Manager backs the pre-existing copy up to `*.hmbak` before symlinking. Fresh machines (bluemo) have no such conflict and link cleanly. Periodically clean accumulated `*.hmbak` to keep activation unblocked. This is separate from the migration above.
 - Downstream flakes may import this repo from GitHub or from a local `path:` checkout while agent tooling is being tested. Keep that binding in the downstream flake, not in shared modules.
 
 ## Skill Change Fast Path

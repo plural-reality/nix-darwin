@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+# imsg-send — iMessage を送って「本当に送信できたか」を chat.db で確認するまでを一本化するヘルパー。
+#
+# 設計（IO は Stream として扱う）:
+#   本文は stdin から受け取る。宛先は引数。結果は stdout に JSON 1 行で吐く。
+#   これにより「本文の供給元（手打ち / ファイル / 別コマンドの出力）」と送信ロジックが分離する。
+#
+# 使い方:
+#   printf '%s' "本文" | imsg-send "<宛先>"
+#   imsg-send --dry-run "<宛先>"        # 宛先解決だけして送信しない（本文不要）
+#   imsg-send -m "本文" "<宛先>"         # 本文を引数で渡す（stdin の代わり）
+#
+# <宛先> は次のどちらでもよい:
+#   - 連絡先名（例: "Chanju" / "ちゃんじゅ"）→ Contacts.app を複数パターンで検索
+#   - 生のハンドル（例: "+819091150163" / "foo@example.com"）→ そのまま使う
+#
+# 出力（stdout, 1 行 JSON）:
+#   {"ok":true,"handle":"+819091150163","rowid":111781}
+#   {"ok":false,"error":"..."}            # 解決失敗・送信失敗・着地未確認
+#
+# 落とし穴メモ（このスクリプトで吸収済み）:
+#   1. Contacts の AppleScript で `set phones to ""` のように予約語と同名の変数を作ると
+#      `Can't set every phone to ""` (-10006) で落ちる → プロパティは (phones of p) と括る。
+#   2. 近年の macOS は message.text が NULL で attributedBody に本文が入る → 着地確認は
+#      text の中身ではなく「送信直後に is_from_me=1 の新規行が増えたか」で判定する。
+#   3. 日本の番号の "+81 (0) 90 ..." 表記の (0) を素朴に消すと番号が壊れる → +数字のみの
+#      候補を優先採用し、無ければ末尾10桁一致で照合する。
+
+set -uo pipefail
+
+DB="$HOME/Library/Messages/chat.db"
+DRY=0
+MSG=""
+MSG_SET=0
+
+emit_err() { printf '{"ok":false,"error":"%s"}\n' "$1"; exit "${2:-1}"; }
+
+# --- args ---
+ARGS=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --dry-run|-n) DRY=1; shift ;;
+    -m|--message) MSG="$2"; MSG_SET=1; shift 2 ;;
+    --) shift; while [ "$#" -gt 0 ]; do ARGS+=("$1"); shift; done ;;
+    -*) emit_err "unknown option: $1" 2 ;;
+    *) ARGS+=("$1"); shift ;;
+  esac
+done
+[ "${#ARGS[@]}" -ge 1 ] || emit_err "recipient required" 2
+RECIPIENT="${ARGS[0]}"
+
+# --- recipient → handle ---
+# エイリアス（ニックネーム→ハンドル）はスキル本体に持たず、ローカル設定に分離する。
+#   ~/.config/imsg-send/aliases.tsv  各行: <別名><TAB><ハンドル>  (# 始まりはコメント)
+# これでスキルは汎用のまま配布でき、個人の連絡先はリポジトリ外に置ける。
+ALIASES="${IMSG_ALIASES:-$HOME/.config/imsg-send/aliases.tsv}"
+lookup_alias() {
+  # bash のバイト厳密比較で引く。macOS awk はマルチバイトの $1==q を誤判定し、
+  # 無関係な名前を別名にマッチさせてしまう（＝誤送信）ため awk は使わない。
+  [ -f "$ALIASES" ] || return 1
+  local a h
+  while IFS=$'\t' read -r a h || [ -n "$a" ]; do
+    case "$a" in ''|\#*) continue ;; esac
+    [ "$a" = "$1" ] && { printf '%s' "$h"; return 0; }
+  done < "$ALIASES"
+  return 1
+}
+
+looks_like_handle() { [[ "$1" == +* || "$1" == *@* || "$1" =~ ^[0-9][0-9\ \(\)\-]+$ ]]; }
+
+normalize_phone() {
+  # 電話番号の整形: "(0)" 等の括弧注記を除去 → 先頭 + と数字だけ残す。
+  # 例 "+81 (0) 90 9115 0163" → "+819091150163"
+  local s; s="$(printf '%s' "$1" | sed -E 's/\([^)]*\)//g' | tr -cd '0-9+')"
+  s="${s//+/}"
+  case "$1" in +*) printf '+%s' "$s" ;; *) printf '%s' "$s" ;; esac
+}
+
+resolve_candidates() {
+  # 連絡先名で検索 → 電話・メールの value を改行区切りで返す。予約語衝突を避けて (phones of p) と括る。
+  osascript <<OSA 2>/dev/null
+tell application "Contacts"
+  set hits to (every person whose name contains "$1")
+  if (count of hits) is 0 then return ""
+  set p to item 1 of hits
+  set acc to ""
+  repeat with ph in (phones of p)
+    set acc to acc & (value of ph) & linefeed
+  end repeat
+  repeat with em in (emails of p)
+    set acc to acc & (value of em) & linefeed
+  end repeat
+  return acc
+end tell
+OSA
+}
+
+pick_handle() {
+  # stdin の候補から「+数字のみ」を最優先、無ければ最初の非空をそのまま採用。
+  local clean="" line s
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    s="$(printf '%s' "$line" | tr -d '[:space:]')"
+    if [[ "$s" =~ ^\+?[0-9]+$ ]]; then printf '%s' "$s"; return 0; fi
+    [ -z "$clean" ] && clean="$s"
+  done
+  printf '%s' "$clean"
+}
+
+if ALIAS_HIT="$(lookup_alias "$RECIPIENT")"; then
+  HANDLE="$(printf '%s' "$ALIAS_HIT" | tr -d '[:space:]')"
+elif looks_like_handle "$RECIPIENT"; then
+  case "$RECIPIENT" in
+    *@*) HANDLE="$(printf '%s' "$RECIPIENT" | tr -d '[:space:]')" ;;   # email はそのまま
+    *)   HANDLE="$(normalize_phone "$RECIPIENT")" ;;                    # phone は (0) 除去＋整形
+  esac
+else
+  HANDLE="$(resolve_candidates "$RECIPIENT" | pick_handle)"
+fi
+[ -n "$HANDLE" ] || emit_err "could not resolve recipient: $RECIPIENT (Contacts未ヒット。生ハンドルか aliases.tsv を使う)" 3
+
+if [ "$DRY" -eq 1 ]; then
+  printf '{"ok":true,"dry_run":true,"recipient":"%s","handle":"%s"}\n' "$RECIPIENT" "$HANDLE"
+  exit 0
+fi
+
+# --- body (stdin or -m) ---
+[ "$MSG_SET" -eq 1 ] || MSG="$(cat)"
+[ -n "$MSG" ] || emit_err "empty message body" 2
+
+# --- baseline → send → verify ---
+BASE="$(sqlite3 "$DB" 'SELECT IFNULL(MAX(ROWID),0) FROM message;' 2>/dev/null || echo 0)"
+
+# 本文・ハンドルは argv で AppleScript に渡す（スクリプト本文に埋め込まないので引用符・絵文字・改行が安全）。
+SEND_ERR="$(osascript /dev/stdin "$HANDLE" "$MSG" 2>&1 <<'OSA'
+on run {h, m}
+  tell application "Messages"
+    set svc to (1st account whose service type = iMessage)
+    send m to participant h of svc
+  end tell
+end run
+OSA
+)"
+[ -z "$SEND_ERR" ] || emit_err "osascript send failed: $(printf '%s' "$SEND_ERR" | tr '\n' ' ' | sed 's/\"/\x27/g')" 4
+
+# 末尾10桁（メールならローカル＋ドメイン）で、送信直後に増えた is_from_me=1 行を照合。
+DIGITS="$(printf '%s' "$HANDLE" | tr -cd '0-9')"
+LAST10="${DIGITS: -10}"
+NEEDLE="${LAST10:-$HANDLE}"
+
+ROWID=0
+for _ in 1 2 3 4 5 6 7 8; do
+  ROWID="$(sqlite3 "$DB" "
+    SELECT IFNULL(MAX(m.ROWID),0)
+    FROM message m JOIN handle hh ON m.handle_id=hh.ROWID
+    WHERE m.is_from_me=1 AND m.ROWID > $BASE
+      AND REPLACE(REPLACE(REPLACE(REPLACE(hh.id,' ',''),'(',''),')',''),'-','') LIKE '%${NEEDLE}%';
+  " 2>/dev/null || echo 0)"
+  [ "${ROWID:-0}" -gt 0 ] && break
+  sleep 1
+done
+
+if [ "${ROWID:-0}" -gt 0 ]; then
+  printf '{"ok":true,"handle":"%s","rowid":%s}\n' "$HANDLE" "$ROWID"
+else
+  printf '{"ok":false,"handle":"%s","error":"sent command ran but no outgoing row verified within 8s (may have sent; check Messages)"}\n' "$HANDLE"
+  exit 5
+fi

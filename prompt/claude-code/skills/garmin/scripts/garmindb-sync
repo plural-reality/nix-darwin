@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# GarminDB sync — full-history / incremental import into ~/HealthData + ~/.GarminDb/*.db.
+# Token-only: materializes the canonical SOPS token into GarminDB's token store
+# (no password in GarminConnectConfig.json), then runs garmindb_cli.py.
+#
+#   garmindb-sync --all --download --import --analyze            # full history
+#   garmindb-sync --all --download --import --analyze --latest   # incremental update
+#   garmindb-sync --activities --download --import --latest      # quick validate
+set -euo pipefail
+
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SECRET="$SKILL_DIR/secrets/garmin.enc.yaml"
+
+# 1) refresh GarminDB's token store from the single canonical SOPS secret.
+sops exec-env "$SECRET" \
+  "uv run --quiet --with garminconnect python $(printf '%q' "$SKILL_DIR/scripts/materialize_token.py")"
+
+# 2) run GarminDB (reads the materialized token; needs no further secret).
+exec uv run --quiet --with garmindb garmindb_cli.py "$@"
