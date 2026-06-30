@@ -50,6 +50,11 @@ let
     ];
   };
 
+  context7McpServer = {
+    command = "${pkgs.context7-mcp}/bin/context7-mcp";
+    args = [ ];
+  };
+
   sharedAgentEnvNames = [
     "GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND"
     "SCRAPBOX_SID"
@@ -83,6 +88,8 @@ let
     managed_path = Path(sys.argv[1])
     config_path = Path(sys.argv[2])
 
+    pruned_mcp_servers = {"apple-events", "beeper", "playwright"}
+
     def merge(target, source):
         for key, value in source.items():
             if isinstance(value, dict):
@@ -106,6 +113,10 @@ let
         config_path.rename(backup_path)
         print(f"warning: moved invalid Codex config to {backup_path}: {exc}", file=sys.stderr)
         document = tomlkit.document()
+
+    for server_name in pruned_mcp_servers:
+        if isinstance(document.get("mcp_servers"), MutableMapping):
+            document["mcp_servers"].pop(server_name, None)
 
     config_path.write_text(tomlkit.dumps(merge(document, managed)))
   '';
@@ -239,6 +250,35 @@ let
 
   agentFiles = builtins.foldl' (acc: profile: acc // (mkAgentAttrs profile)) { } agentProfiles;
 
+  codexNotifyMacos = pkgs.writeShellApplication {
+    name = "codex-notify-macos";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.gnused
+      pkgs.jq
+      pkgs.llm-agents.codex
+    ];
+    text = ''
+      set -u
+
+      INPUT_JSON="''${1:-{}}"
+
+      ${pkgs.nodejs_22}/bin/node --experimental-strip-types ${../scripts/codex-name.ts} --auto >/dev/null 2>&1 || true
+
+      MSG="$(${pkgs.jq}/bin/jq -r '."last-assistant-message" // "Codex task completed"' <<<"$INPUT_JSON" 2>/dev/null || echo "Codex task completed")"
+      MSG_SINGLE="$(printf "%s" "$MSG" | tr '\n\r\t' '   ' | sed -E 's/[[:space:]]+/ /g' | cut -c1-180)"
+      TITLE="Codex"
+
+      /usr/bin/osascript - "$MSG_SINGLE" "$TITLE" <<'APPLESCRIPT'
+      on run argv
+        set msg to item 1 of argv
+        set ttl to item 2 of argv
+        display notification msg with title ttl
+      end run
+      APPLESCRIPT
+    '';
+  };
+
   codexManagedConfig = {
     approval_policy = "never";
     sandbox_mode = "danger-full-access";
@@ -248,9 +288,23 @@ let
     model_reasoning_effort = "xhigh";
     personality = "pragmatic";
     notify = [
-      "bash"
-      "${config.home.homeDirectory}/.codex/notify_macos.sh"
+      "${codexNotifyMacos}/bin/codex-notify-macos"
     ];
+
+    tui = {
+      status_line = [
+        "model-name"
+        "thread-id"
+        "current-dir"
+        "context-used"
+        "five-hour-limit"
+      ];
+      terminal_title = [
+        "spinner"
+        "thread"
+        "project"
+      ];
+    };
 
     shell_environment_policy = {
       "inherit" = "core";
@@ -273,6 +327,7 @@ let
     mcp_servers = {
       XcodeBuildMCP = xcodeBuildMcpServer;
       freee = freeeMcpServer;
+      context7 = context7McpServer;
     };
 
     plugins = {
@@ -353,58 +408,100 @@ in
           "WebFetch"
         ];
       };
-      # Lifecycle hooks. MUST live here (User scope settings.json): Claude Code does
-      # NOT read ~/.claude/settings.local.json — only project-scope settings.local.json
-      # exists in the precedence chain, so a user-level local file is silently ignored
-      # (verified via `--debug-file`: "Found 0 total hooks in registry"). The hook
-      # scripts under ~/.claude/scripts/*.sh are still hand-managed (野良); promoting
-      # them into this repo's scripts/ is a follow-up. ${homeDir} is interpolated by
-      # Nix; $(…)/$VAR are shell and pass through untouched.
+      # Lifecycle hooks. Canonical home for SHARED hooks (User scope settings.json).
+      # NOTE (corrected 2026-06-22): current Claude Code DOES read user-level
+      # ~/.claude/settings.local.json, and hooks from both files MERGE ADDITIVELY
+      # (no dedup) — empirically verified: the local-only Stop hook stop-reflect-nudge.py
+      # writes ~/.claude/.reflect-nudge-*.done markers, and the local-only SessionStart
+      # inject-world-model.sh injects the world model each session. So a hook registered
+      # in BOTH files fires TWICE. Therefore: define each hook in exactly ONE place. Keep
+      # shared/reproducible hooks here; do not duplicate them in settings.local.json.
+      # ${homeDir} is interpolated by Nix; $(…)/$VAR are shell and pass through untouched.
       hooks =
         let
           homeDir = config.home.homeDirectory;
           script = name: "/bin/bash ${homeDir}/.claude/scripts/${name} 2>/dev/null || true";
+          nodeScript =
+            name:
+            "${pkgs.nodejs_22}/bin/node --experimental-strip-types ${homeDir}/.claude/scripts/${name} 2>/dev/null || true";
         in
         {
           SessionStart = [
             {
               matcher = "startup";
               hooks = [
-                { type = "command"; command = script "nix-darwin-sync-check.sh"; }
-                { type = "command"; command = script "init-prompt-on-new-project.sh"; }
+                {
+                  type = "command";
+                  command = script "nix-darwin-sync-check.sh";
+                }
+                {
+                  type = "command";
+                  command = script "init-prompt-on-new-project.sh";
+                }
               ];
             }
             {
               # /new and /clear (and /reset) all fire source="clear".
               matcher = "clear";
               hooks = [
-                { type = "command"; command = script "init-prompt-on-new-project.sh"; }
+                {
+                  type = "command";
+                  command = script "init-prompt-on-new-project.sh";
+                }
               ];
             }
             {
               # matcher omitted = all sources (startup/resume/clear/compact).
               hooks = [
-                { type = "command"; command = script "daily-report-remind.sh"; }
-                { type = "command"; command = script "hook-fire-log.sh SessionStart"; }
+                {
+                  type = "command";
+                  command = script "daily-report-remind.sh";
+                }
+                {
+                  type = "command";
+                  command = script "sid-freshness-check.sh";
+                }
+                {
+                  type = "command";
+                  command = script "hook-fire-log.sh SessionStart";
+                }
               ];
             }
           ];
           SessionEnd = [
             {
               hooks = [
-                { type = "command"; command = script "hook-fire-log.sh SessionEnd"; }
-                { type = "command"; async = true; command = script "daily-report-capture.sh"; }
+                {
+                  type = "command";
+                  command = script "hook-fire-log.sh SessionEnd";
+                }
+                {
+                  type = "command";
+                  async = true;
+                  command = script "daily-report-capture.sh";
+                }
                 # 終了セッションを LLM 要約・分類し summaries に蓄積 → Scrapbox 日付ページへ反映。
                 # 再帰防止: 要約用 claude は CLAUDE_DAILY_SUMMARY=1 で起動され、本スクリプト先頭で skip。
-                { type = "command"; async = true; command = script "session-summary.sh"; }
+                {
+                  type = "command";
+                  async = true;
+                  command = script "session-summary.sh";
+                }
               ];
             }
           ];
           PreCompact = [
             {
               hooks = [
-                { type = "command"; command = script "hook-fire-log.sh PreCompact"; }
-                { type = "command"; async = true; command = script "daily-report-capture.sh"; }
+                {
+                  type = "command";
+                  command = script "hook-fire-log.sh PreCompact";
+                }
+                {
+                  type = "command";
+                  async = true;
+                  command = script "daily-report-capture.sh";
+                }
               ];
             }
           ];
@@ -419,9 +516,23 @@ in
               ];
             }
           ];
+          UserPromptSubmit = [
+            {
+              hooks = [
+                {
+                  type = "command";
+                  command = script "prompt-context-inject.sh";
+                }
+              ];
+            }
+          ];
           Stop = [
             {
               hooks = [
+                {
+                  type = "command";
+                  command = nodeScript "claude-codex-handoff-on-toolcall-leak.ts";
+                }
                 {
                   type = "command";
                   async = true;
@@ -438,6 +549,21 @@ in
     # truth (was previously a hand-written, Nix-unmanaged file under ~/.claude).
     ".claude/statusline-command.sh" = {
       source = ../scripts/statusline-command.sh;
+      executable = true;
+    };
+
+    ".claude/scripts/claude-codex-handoff-on-toolcall-leak.ts" = {
+      source = ../scripts/claude-codex-handoff-on-toolcall-leak.ts;
+      executable = true;
+    };
+
+    ".claude/scripts/prompt-context-inject.sh" = {
+      source = ../scripts/prompt-context-inject.sh;
+      executable = true;
+    };
+
+    ".claude/scripts/sid-freshness-check.sh" = {
+      source = ../scripts/sid-freshness-check.sh;
       executable = true;
     };
 
@@ -496,6 +622,13 @@ in
     mkdir -p "$HOME/.codex"
     ${codexConfigPython}/bin/python ${codexConfigMergeScript} ${codexManagedConfigFile} "$CODEX_CONFIG"
   '';
+
+  # (removed 2026-06-27) sharedAgentMemories: this used to symlink
+  # ~/.claude/memories -> ~/.codex/memories. Claude's self-learning memory is the
+  # harness-native auto-memory under ~/.claude/projects/<project>/memory/, which
+  # Claude reads directly; ~/.claude/memories was a dead store that no Claude path
+  # reads. Codex keeps ~/.codex/memories as its own store natively. The stale live
+  # symlink is removed out-of-band (rm ~/.claude/memories).
 
   home.activation.xcodeAgentSymlinks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     XCODE_DIR="$HOME/${xcodeAgentConfigDir}"

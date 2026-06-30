@@ -5,6 +5,7 @@ Read this before changing Nix/Home Manager, Claude/Codex prompts, skills, or sha
 ## Source Of Truth
 
 - Shared skills live at `prompt/claude-code/skills/<name>/`.
+- Claude memory = harness-native `~/.claude/projects/<project>/memory/` (canonical, auto-injected at SessionStart). Codex's own store = `~/.codex/memories`. Separate stores; never route Claude writes into `~/.codex/memories`.
 - Shared scripts live at `scripts/` and are wired by `modules/shared-scripts.nix`.
 - Agent prompt/config projection is owned by `modules/claude-code.nix`.
 - Live files under `~/.claude/*` and `~/.codex/*` are generated outputs.
@@ -47,6 +48,10 @@ Confirm the ZIP exists when relevant:
 ```bash
 ls -1 "$(nix build .#desktop-skills --no-link --print-out-paths)" | rg '^<skill>\.zip$'
 ```
+
+## Memory Change Fast Path
+
+Claude's self-learning memory is the harness-native auto-memory at `~/.claude/projects/<project>/memory/` (canonical, auto-injected at SessionStart). It is NOT Nix-managed: it is mutated only through the `self-learn` skill, which writes one fact per file plus a one-line `MEMORY.md` pointer and reads back to verify. Do not hand-edit it from Nix activation, and do not route Claude memory writes into `~/.codex/memories` (Claude never reads that path, so writes there never reach it). `~/.codex/memories` is Codex's own store only.
 
 ## Downstream Refresh
 
@@ -106,6 +111,7 @@ If live links are shadowed by local directories, do not edit generated files. Mo
 
 - Do not duplicate a skill under both Claude and Codex trees. One canonical source feeds both.
 - Do not edit `~/.codex/skills` or `~/.claude/skills` as source.
+- Claude memory is the harness-native store under `~/.claude/projects/<project>/memory/` (mutated via the `self-learn` skill); do not route Claude writes into `~/.codex/memories`.
 - Do not use `nix flake update` without an input name unless the task is dependency refresh.
 - Do not use familiarity or DX as a reason to add another config boundary.
 - Keep local path assumptions in the downstream launcher layer; shared modules should express the abstract contract.

@@ -241,6 +241,18 @@ let
     text = builtins.readFile ../scripts/freee-reconcile.sh;
   };
 
+  # Codex thread naming adapter: argv -> app-server protocol -> thread name.
+  codexName = pkgs.writeShellApplication {
+    name = "codex-name";
+    runtimeInputs = [
+      pkgs.nodejs_22
+      pkgs.llm-agents.codex
+    ];
+    text = ''
+      exec ${pkgs.nodejs_22}/bin/node --experimental-strip-types ${../scripts/codex-name.ts} "$@"
+    '';
+  };
+
   # ── Scrapbox writer ─────────────────────────────────────
   # @cosense/std is not in nixpkgs, so we use a managed node_modules
   # directory under ~/.local/share/scrapbox-write/ with activation-time
@@ -289,6 +301,7 @@ in
     ch
     freeeCall
     freeeReconcile
+    codexName
 
     # Scrapbox writer
     scrapbox-write
@@ -318,6 +331,15 @@ in
   # Source: scripts/wip-crawl.mjs. Tested by scripts/wip-crawl.test.mjs.
   home.file.".local/bin/wip-crawl" = {
     source = ../scripts/wip-crawl.mjs;
+    executable = true;
+  };
+
+  # scb-lint: mechanical health Lint of the 3 Scrapbox projects (orphan / duplicate /
+  # empty-stub concept pages) from page metadata (pure filter; shells out to cosense-fetch).
+  # Semantic Lint + WIP filing is the /scb-lint skill. Source: scripts/scb-lint.mjs.
+  # Tested by scripts/scb-lint.test.mjs.
+  home.file.".local/bin/scb-lint" = {
+    source = ../scripts/scb-lint.mjs;
     executable = true;
   };
 
