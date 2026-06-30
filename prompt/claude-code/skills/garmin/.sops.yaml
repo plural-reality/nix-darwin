@@ -1,0 +1,5 @@
+# Garmin skill — personal credential, encrypted to the personal age key only.
+# Role granularity = "me" (personal). NOT the project KMS used by baisoku-survey.
+creation_rules:
+  - path_regex: secrets/garmin\.enc\.yaml$
+    age: age13ld8gy634vgv4dxrwfh2scl92w4rr580dg43ae7a75as0eplcygq8ul9r0

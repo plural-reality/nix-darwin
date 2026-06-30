@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Garmin skill entrypoint. The ONLY decryption boundary: sops exec-env injects
+# the canonical GARMINTOKENS into a hermetic `uv` run. The python client holds
+# no credential knowledge — it just reads the token from the env we inject.
+#
+# Usage: garmin <subcommand> [args...]   (run `garmin help` for the list)
+set -euo pipefail
+
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SECRET="$SKILL_DIR/secrets/garmin.enc.yaml"
+PY="$SKILL_DIR/scripts/garmin.py"
+
+[ "${1:-}" = "help" ] && {
+  echo "garmin <cmd> [args]  — recent [n] | last | activity <id> | details <id> | splits <id> |"
+  echo "  weather <id> | fit <id> | sleep [date] | stress [date] | steps [date] | hrv [date] |"
+  echo "  rhr [date] | bodybattery [start] [end] | stats [date] | summary [date] | readiness [date] |"
+  echo "  status [date] | spo2 [date] | respiration [date] | weight [start] [end] | devices |"
+  echo "  profile | raw <connectapi-path>      (dates: YYYY-MM-DD, default today)"
+  exit 0
+}
+
+# Build a safely-quoted inner command (sops exec-env runs it via the shell).
+CMD="uv run --quiet --with garminconnect --with garmin-fit-sdk python $(printf '%q' "$PY")"
+for a in "$@"; do CMD+=" $(printf '%q' "$a")"; done
+
+exec sops exec-env "$SECRET" "$CMD"
