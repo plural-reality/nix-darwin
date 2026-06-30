@@ -1,0 +1,5 @@
+#!/bin/bash
+# pw - Playwright CLI shortcut
+# Usage: pw text https://example.com
+#        pw screenshot https://example.com /tmp/shot.png
+exec node "$HOME/.claude/scripts/pw.mjs" "$@"
