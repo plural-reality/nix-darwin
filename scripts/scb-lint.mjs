@@ -25,6 +25,14 @@ import { fileURLToPath } from "node:url";
 
 export const PROJECTS_DEFAULT = ["plural-reality", "tkgshn-private", "takalog"];
 
+// orphan(孤立ページ)検知を有効にする project。
+//   ponytail: tkgshn-private / takalog は claude 会話ログ・自動取込ログ・URL題の貼付けページが多数を占め、
+//   それらは本質的に被リンク0で当然(=偽陽性)。メタデータだけでログか知識ページかを判別できないため、
+//   キュレーションされた plural-reality にのみ orphan 検知をかける(空スタブ/重複は全 project で精度が高いので据え置き)。
+//   upgrade path: cosense-fetch に「2行目が from [claude codeセッション] か」等の content シグナルを足せば
+//   ログpage を除外して tkgshn-private / takalog も再有効化できる。
+export const ORPHAN_PROJECTS = ["plural-reality"];
+
 // しきい値(調整しやすいよう一箇所に集約)
 export const LIMIT = 1000; // --list 取得件数/project
 export const ORPHAN_MIN_CHARS = 280; // この文字数以上の孤立ページだけを「繋ぐ価値あり」として拾う
@@ -36,8 +44,24 @@ const DAY = 86400;
 
 // --- 純粋判定 ---------------------------------------------------------------
 
-// 日付ページ(日報) 2026/6/25 等
-export const isDatePage = (title) => /^\d{4}\/\d{1,2}\/\d{1,2}/.test(title);
+// 日付ページ(日報) 2026/6/25 等。スラッシュ区切りに加えハイフン区切り(2026-04-09 …)も日付扱い。
+//   メール索引ページが "2026-04-09 Re: …" 形式で orphan 誤検知されていたのを防ぐ。
+export const isDatePage = (title) => /^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}/.test(title);
+
+// 自動生成 / ログ / メール転記 / 貼付けページ: 本質的に leaf(被リンク0で当然)なので orphan にしない。
+//   メタデータだけで判別できる範囲の deterministic なパターンのみ(誤除外を避け保守的に)。
+export const isLogPage = (title) => {
+  const t = title.replace(/^[\s　]+/, "");
+  return (
+    /(?:^|\s)(?:Re:|RE:|Fwd:|FW:|返信:|転送:)/.test(t) || // メール返信/転送チェーン
+    /【External】/.test(t) || // 外部メールマーカー
+    /\([0-9a-f]{6}\)\s*$/.test(t) || // "… (b0bf9c)" メール message-id 由来の末尾ハッシュ
+    /(?:官公需)?クローリング結果/.test(t) || // 自動クローリング結果ログ
+    /思考ログ/.test(t) || // 思考ログのダンプ
+    /\/20\d\d\/\d/.test(t) || // 階層的な日付サブログ  foo/2026/4/25
+    /^(?:https?:|www\.|```|\/Users|b\/Users|Image[ :#]|Base directory)/.test(t) // URL/コードフェンス/パス/画像題の貼付けログ
+  );
+};
 
 // システム / index / アイコン / Lint キュー自身 など、孤立して当然のページ
 export const isSystemPage = (title) =>
@@ -52,7 +76,9 @@ export const isSystemPage = (title) =>
 export const isTransactionalPage = (title) =>
   /^[\s　]*[☑✅⬜⬛⏹⏳🔖🔲💬▶◀🟢🔴🟡⚠✔❌🆕📌🗑🚧⭕]/u.test(title);
 
-// 全 Lint タイプ共通の除外(日付ページ / システム / 取引・タスクページ)
+// 全 Lint タイプ共通の除外(日付ページ / システム / 取引・タスクページ)。
+//   isLogPage は orphan 専用(下記 isOrphan)で使う。duplicate/empty-stub は貼付け事故ページも
+//   統合候補として拾う価値があるため、ここには含めない(=既存挙動を保つ)。
 export const isExcluded = (title) => isDatePage(title) || isSystemPage(title) || isTransactionalPage(title);
 
 // タイトル正規化(重複検出用): NFKC で全角半角統一 → 小文字 → 空白・記号除去
@@ -63,7 +89,8 @@ export const normalizeTitle = (title) =>
     .replace(/[\s　]+/g, "")
     .replace(/[!-/:-@[-`{-~、。「」（）・…ー－—]/g, "");
 
-// 1ページが orphan か(被リンク0・本体あり・新規/日付/pin/system/取引 除外)
+// 1ページが orphan か(被リンク0・本体あり・新規/日付/pin/system/取引/自動生成ログ 除外)
+//   自動生成ログ(isLogPage)は本質的に被リンク0で当然なので orphan から外す(orphan 専用の除外)。
 export const isOrphan = (page, nowSec) => {
   const ageOk = nowSec - (page.created || 0) > ORPHAN_MIN_AGE_DAYS * DAY;
   return (
@@ -71,7 +98,8 @@ export const isOrphan = (page, nowSec) => {
     (page.pin || 0) === 0 &&
     (page.charsCount || 0) >= ORPHAN_MIN_CHARS &&
     ageOk &&
-    !isExcluded(page.title)
+    !isExcluded(page.title) &&
+    !isLogPage(page.title)
   );
 };
 
@@ -115,7 +143,8 @@ const mkFinding = (type, project, subject, question, signal) => ({
 
 // 1 project のページ一覧 → 機械的 findings
 export const detect = (project, pages, nowSec) => {
-  const orphans = pages
+  // orphan は ORPHAN_PROJECTS(=plural-reality)でのみ検知(ログ主体の他 project はノイズ源)。
+  const orphans = (ORPHAN_PROJECTS.includes(project) ? pages : [])
     .filter((p) => isOrphan(p, nowSec))
     .map((p) =>
       mkFinding(

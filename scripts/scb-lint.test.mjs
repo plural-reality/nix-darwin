@@ -5,6 +5,8 @@ import {
   isDatePage,
   isSystemPage,
   isTransactionalPage,
+  isLogPage,
+  isExcluded,
   normalizeTitle,
   isOrphan,
   isEmptyStub,
@@ -32,7 +34,30 @@ const NEW = NOW - 3 * 86400; // 新しすぎ
 // --- isDatePage ---
 T("date page detected", () => assert.equal(isDatePage("2026/6/25"), true));
 T("date page with suffix detected", () => assert.equal(isDatePage("2026/06/25 日報"), true));
+T("hyphen date page detected (email index)", () => assert.equal(isDatePage("2026-04-09 Re: ご挨拶"), true));
 T("non-date title", () => assert.equal(isDatePage("LLM"), false));
+
+// --- isLogPage (自動生成/ログ/メール転記/貼付け) ---
+T("email reply chain is log", () => assert.equal(isLogPage("Re: 地域活性化起業人に係る申請等について"), true));
+T("external mail marker is log", () =>
+  assert.equal(isLogPage("2026-04-08 【External】Re: ご挨拶 - 高木俊輔"), true));
+T("mail message-id hash suffix is log", () =>
+  assert.equal(isLogPage("2026-04-09 Re: ご挨拶 - 秋葉杏介 (5e4973)"), true));
+T("crawl-result log is log", () => assert.equal(isLogPage("官公需クローリング結果（2026/6/8）"), true));
+T("thought-log dump is log", () => assert.equal(isLogPage("akiba思考ログ/2026/4/25"), true));
+T("hierarchical date sublog is log", () => assert.equal(isLogPage("foo/2026/4/25"), true));
+T("url-titled paste is log", () => assert.equal(isLogPage("https://cosense-context-proxy.vercel.app/r/abc"), true));
+T("code-fence paste is log", () => assert.equal(isLogPage("```Last login: Tue May 12"), true));
+T("ordinary knowledge title is NOT log", () => assert.equal(isLogPage("動的合意形成"), false));
+T("ordinary person title is NOT log", () => assert.equal(isLogPage("遠藤貴幸"), false));
+
+// --- isExcluded: ハイフン日付メール索引は日付ページ扱いで全タイプ除外 / 実知識ページは通す ---
+T("isExcluded covers hyphen-date email index", () =>
+  assert.equal(isExcluded("2026-04-09 Re: ご挨拶 - 高木俊輔 (b0bf9c)"), true));
+T("isExcluded lets real knowledge page through", () => assert.equal(isExcluded("動的合意形成"), false));
+// duplicate/empty-stub は貼付け事故(コードフェンス題)も統合候補として拾うため isExcluded しない
+T("isExcluded does NOT drop code-fence paste page (still dedupable)", () =>
+  assert.equal(isExcluded("```次の100年のための統治技術"), false));
 
 // --- isSystemPage ---
 T("icon page is system", () => assert.equal(isSystemPage("tkgshn.icon"), true));
@@ -63,6 +88,10 @@ T("orphan: too new is not orphan", () => assert.equal(isOrphan({ ...orphan, crea
 T("orphan: date page excluded", () => assert.equal(isOrphan({ ...orphan, title: "2026/6/1" }, NOW), false));
 T("orphan: transactional (☑️) excluded", () =>
   assert.equal(isOrphan({ ...orphan, title: "☑️音威子府村への返信" }, NOW), false));
+T("orphan: auto-generated log (crawl result) excluded", () =>
+  assert.equal(isOrphan({ ...orphan, title: "官公需クローリング結果（2026/6/8）" }, NOW), false));
+T("orphan: url-titled paste log excluded", () =>
+  assert.equal(isOrphan({ ...orphan, title: "https://scrapbox.io/foo/bar" }, NOW), false));
 
 // --- isEmptyStub ---
 const stub = { title: "未記述の概念", linesCount: 1, linked: 5, pin: 0 };
@@ -84,17 +113,30 @@ T("duplicate: date pages not deduped", () =>
   assert.equal(findDuplicates([{ title: "2026/6/1" }, { title: "2026/6/1 " }]).length, 0));
 
 // --- detect (統合) ---
-T("detect: mixes types and stamps fingerprint/url", () => {
+T("detect: mixes types and stamps fingerprint/url (plural-reality)", () => {
   const pages = [
     { title: "孤立した良ページ", linked: 0, pin: 0, charsCount: 500, created: OLD, updated: OLD },
     { title: "未記述の概念", linesCount: 1, linked: 5, pin: 0 },
   ];
-  const fs = detect("tkgshn-private", pages, NOW);
+  const fs = detect("plural-reality", pages, NOW);
   const types = fs.map((f) => f.type).sort();
   assert.deepEqual(types, ["empty-stub", "orphan"]);
-  assert.ok(fs.every((f) => f.fingerprint.startsWith(f.type + "|tkgshn-private|")));
-  assert.ok(fs.every((f) => f.url.startsWith("https://scrapbox.io/tkgshn-private/")));
+  assert.ok(fs.every((f) => f.fingerprint.startsWith(f.type + "|plural-reality|")));
+  assert.ok(fs.every((f) => f.url.startsWith("https://scrapbox.io/plural-reality/")));
   assert.ok(fs.every((f) => f.question.includes("？")));
+});
+
+// --- orphan scope: ORPHAN_PROJECTS 以外では orphan を出さない(ログ主体の project のノイズ抑制) ---
+T("detect: orphan suppressed outside ORPHAN_PROJECTS", () => {
+  const pages = [
+    { title: "孤立した良ページ", linked: 0, pin: 0, charsCount: 500, created: OLD, updated: OLD },
+    { title: "未記述の概念", linesCount: 1, linked: 5, pin: 0 },
+  ];
+  const fsPriv = detect("tkgshn-private", pages, NOW).map((f) => f.type).sort();
+  const fsLog = detect("takalog", pages, NOW).map((f) => f.type).sort();
+  // empty-stub は全 project で出るが、orphan は plural-reality 以外では出ない
+  assert.deepEqual(fsPriv, ["empty-stub"]);
+  assert.deepEqual(fsLog, ["empty-stub"]);
 });
 
 // --- severity policy: stub/duplicate=file, orphan=digest ---

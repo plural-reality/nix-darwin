@@ -28,5 +28,14 @@ CLAUDE_BIN="/etc/profiles/per-user/${USER}/bin/claude"
 
 echo "$(date '+%F %T') start (claude=$CLAUDE_BIN)" >> "$LOG"
 # autonomous 書き込みのため skip-permissions。灰色[( ]は可逆・digest と再フェッチ検証は skill 側で担保。
-"$CLAUDE_BIN" -p "/scb-lint" --dangerously-skip-permissions >> "$LOG" 2>&1 || echo "$(date '+%F %T') claude exited $?" >> "$LOG"
+# headless 自律契約をプロンプトに直接埋め込む(SKILL.md が stale でも効く belt-and-suspenders)。
+# 過去バグ: headless で AskUserQuestion が auto-skip → 「別 run に譲る/何もしない」に倒れて filing 0 だった。
+PROMPT='/scb-lint
+
+【headless 自律実行の契約(最重要)】これは launchd 経由・人間不在の実行。この run.sh が既に .lock を取得済み＝並行する scb-lint run は存在しない。あなたがその唯一の run。
+- AskUserQuestion を絶対に使わない(headless では auto-skip され「安全側=何もしない」に倒れる)。確認・承認待ちをしない。
+- 「別の run が担当中だから譲る/重複を避けて検知だけで止まる」という判断を絶対にしない(そんな run は無い)。
+- 次を最後まで実行して終了する: (1)機械的 filing(empty-stub/duplicate, ≤8) (2)意味パス(recent∪rotation の部分集合, seen.json の rotateCursor を必ず前進させる) (3)orphan surfacing(plural-reality の孤立ページをレビュー節へ集約＋上位を WIP 化) (4)digest 追記 (5)seen.json 更新。
+- 途中で迷っても、skill の既定値で進める。'
+"$CLAUDE_BIN" -p "$PROMPT" --dangerously-skip-permissions >> "$LOG" 2>&1 || echo "$(date '+%F %T') claude exited $?" >> "$LOG"
 echo "$(date '+%F %T') done" >> "$LOG"
