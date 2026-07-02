@@ -23,6 +23,10 @@ set -euo pipefail
 
 API_BASE="http://localhost:23373"
 TOKEN_FILE="$HOME/.config/beeper/token"
+# Beeper CRM gateway (shared per-person style guide + learning loop). All calls
+# here are best-effort / fail-open: if the gateway is down the send path is
+# unaffected. See docs/SHARED_STYLE_GUIDE.md in beeper-scrapbox-crm.
+CRM_BASE="${BEEPER_CRM_GATEWAY:-http://localhost:8787}"
 
 # ショートカット → Chat ID 変換
 resolve_shortcut() {
@@ -186,6 +190,76 @@ PY
     rm -f "$tmp"
     ;;
 
+  style)
+    # 起草前に、この相手の共有文体ガイド(Scrapbox [** CRM 文体ガイド] 由来)を
+    # CRM gateway から引く。gateway が唯一の join/parse 実装なので、ここでは
+    # chatID を渡すだけ。fail-open: 取得できなければ memory の文体メモに戻る。
+    chat_id="${2:?Usage: beeper-send.sh style CHAT_ID}"
+    enc=$(url_encode_chat_id "$chat_id")
+    resp=$(curl -g -s --max-time 5 "${CRM_BASE}/api/style?chat=$enc" || true)
+    CRM_STYLE_RESP="$resp" python3 <<'PY'
+import os, json, sys
+raw = os.environ.get("CRM_STYLE_RESP", "").strip()
+if not raw:
+    print("(no style guide: CRM gateway unreachable — fall back to memory tone guide)"); sys.exit(0)
+try:
+    d = json.loads(raw)
+except Exception:
+    print("(no style guide: non-JSON response — fall back to memory tone guide)"); sys.exit(0)
+if isinstance(d, dict) and d.get("code"):
+    print(f"(no style guide: {d.get('code')} — {str(d.get('message',''))[:80]})"); sys.exit(0)
+print(f"contactId={d.get('contactId','')}")
+print(f"memoTitle={d.get('memoTitle','')}")
+rules = d.get("rules", [])
+if rules:
+    print("# 文体ルール (human=人間承認・優先 / auto=学習済)")
+    for r in rules:
+        print(f"- [{r.get('origin')}] {r.get('text')}")
+else:
+    print("# 文体ルール: (未登録)")
+if str(d.get("userVoice", "")).strip():
+    print("# 送信者voice(全体)\n" + d["userVoice"].strip())
+if str(d.get("relationshipGoal", "")).strip():
+    print("# 関係性ゴール\n" + d["relationshipGoal"].strip())
+PY
+    ;;
+
+  report-edit)
+    # 送信した文面が AI 下書きと違った(=人間が直した)ときだけ呼ぶ。差分を
+    # external.edited として CRM に報告し、双方向学習ループに乗せる。
+    # contactId は直前の `style` 出力の contactId= 行から取る。fail-open。
+    contact_id="${2:?Usage: beeper-send.sh report-edit CONTACT_ID @original @final [CHAT_ID]}"
+    orig="${3:?Usage: report-edit CONTACT_ID @original @final [CHAT_ID]  (AI下書き)}"
+    final="${4:?Usage: report-edit CONTACT_ID @original @final [CHAT_ID]  (実際に送った文面)}"
+    chat_id="${5:-}"
+    pf=$(mktemp)
+    CONTACT_ID="$contact_id" CHAT_ID="$chat_id" ORIG_SPEC="$orig" FINAL_SPEC="$final" python3 - "$pf" <<'PY'
+import os, json, sys, datetime
+def read_spec(s):
+    return open(s[1:], encoding="utf-8").read().rstrip("\n") if s.startswith("@") else s
+obj = {
+    "type": "external.edited",
+    "contactId": os.environ["CONTACT_ID"],
+    "source": "beeper-send",
+    "originalText": read_spec(os.environ["ORIG_SPEC"]),
+    "finalText": read_spec(os.environ["FINAL_SPEC"]),
+    "occurredAt": datetime.datetime.now(datetime.timezone.utc)
+        .isoformat().replace("+00:00", "Z"),
+}
+cid = os.environ.get("CHAT_ID", "").strip()
+if cid:
+    obj["chatId"] = cid
+with open(sys.argv[1], "w", encoding="utf-8") as o:
+    o.write(json.dumps(obj, ensure_ascii=False))
+PY
+    code=$(curl -g -s -o /dev/null -w "%{http_code}" --max-time 5 -X POST \
+      -H "Content-Type: application/json" \
+      "${CRM_BASE}/api/promptops/events" --data-binary "@$pf" || echo "000")
+    rm -f "$pf"
+    echo "report-edit -> HTTP $code (contactId=$contact_id)"
+    [[ "$code" == "200" ]] || echo "(non-200: best-effort learning skipped — safe to ignore)"
+    ;;
+
   send)
     chat_id="${2:?Usage: beeper-send.sh send CHAT_ID BODY}"
     body="${3:?Usage: beeper-send.sh send CHAT_ID BODY  (BODY=@file or text)}"
@@ -243,8 +317,10 @@ Commands:
   chats [LIMIT]              最近のチャット一覧
   messages CHAT_ID [LIMIT]   直近メッセージ(新しい順, id/reply->親/sender/ts/本文)
   thread CHAT_ID MSG_ID      MSG_ID のスレッド(返信チェーン)を復元
+  style CHAT_ID              この相手の共有文体ガイド(CRM)を引く(起草前・fail-open)
   send  CHAT_ID  BODY        新規送信(スレッドなし)
   reply CHAT_ID REPLY_TO_ID BODY   元メッセージへスレッド返信(既定はこちら)
+  report-edit CONTACT_ID @orig @final [CHAT_ID]  人間が直した差分をCRMに報告(学習)
   delete CHAT_ID MSG_ID      自分の投稿を取り消し
   send-to SHORTCUT BODY      ショートカット宛に新規送信
 
