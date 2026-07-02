@@ -241,6 +241,18 @@ let
     text = builtins.readFile ../scripts/freee-reconcile.sh;
   };
 
+  # Codex thread naming adapter: argv -> app-server protocol -> thread name.
+  codexName = pkgs.writeShellApplication {
+    name = "codex-name";
+    runtimeInputs = [
+      pkgs.nodejs_22
+      pkgs.llm-agents.codex
+    ];
+    text = ''
+      exec ${pkgs.nodejs_22}/bin/node --experimental-strip-types ${../scripts/codex-name.ts} "$@"
+    '';
+  };
+
   # ── Scrapbox writer ─────────────────────────────────────
   # @cosense/std is not in nixpkgs, so we use a managed node_modules
   # directory under ~/.local/share/scrapbox-write/ with activation-time
@@ -256,6 +268,18 @@ let
     # (Nix symlinks into the store break ESM resolution)
     cp -Lf "$SBDIR/scrapbox-write.mjs" "$SBDIR/_run.mjs" 2>/dev/null || true
     exec ${pkgs.nodejs}/bin/node "$SBDIR/_run.mjs" "$@"
+  '';
+
+  # ── Scrapbox renamer ────────────────────────────────────
+  # Sibling of scrapbox-write: renames a page in place (preserving its ID &
+  # history) and repoints every backlink form — plain, deep ([#anchor]), icon,
+  # and #hashtag — to the new title. Reuses the same managed @cosense/std
+  # node_modules, and the same writable-copy dance to dodge ESM symlink resolution.
+  scrapbox-rename = pkgs.writeScriptBin "scrapbox-rename" ''
+    #!${pkgs.bash}/bin/bash
+    SBDIR="$HOME/.local/share/scrapbox-write"
+    cp -Lf "$SBDIR/scrapbox-rename.mjs" "$SBDIR/_run_rename.mjs" 2>/dev/null || true
+    exec ${pkgs.nodejs}/bin/node "$SBDIR/_run_rename.mjs" "$@"
   '';
 in
 {
@@ -277,9 +301,11 @@ in
     ch
     freeeCall
     freeeReconcile
+    codexName
 
     # Scrapbox writer
     scrapbox-write
+    scrapbox-rename
 
     # CLI tools used by scripts
     pkgs.python313Packages.markitdown
@@ -308,8 +334,19 @@ in
     executable = true;
   };
 
+  # scb-lint: mechanical health Lint of the 3 Scrapbox projects (orphan / duplicate /
+  # empty-stub concept pages) from page metadata (pure filter; shells out to cosense-fetch).
+  # Semantic Lint + WIP filing is the /scb-lint skill. Source: scripts/scb-lint.mjs.
+  # Tested by scripts/scb-lint.test.mjs.
+  home.file.".local/bin/scb-lint" = {
+    source = ../scripts/scb-lint.mjs;
+    executable = true;
+  };
+
   # Deploy scrapbox-write.mjs to ~/.local/share/scrapbox-write/
   home.file.".local/share/scrapbox-write/scrapbox-write.mjs".source = ../scripts/scrapbox-write.mjs;
+  # scrapbox-rename shares the same dir (and its @cosense/std node_modules).
+  home.file.".local/share/scrapbox-write/scrapbox-rename.mjs".source = ../scripts/scrapbox-rename.mjs;
   home.file.".local/share/scrapbox-write/package.json".text = builtins.toJSON {
     name = "scrapbox-write";
     version = "1.0.0";

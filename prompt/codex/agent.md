@@ -1,3 +1,7 @@
+## 言語
+
+常に日本語で返答してください。コード・コミットメッセージ・識別子・ログなど、技術的に英語が適切なものは英語のままで構いません。
+
 常に、並行でこなせる作業は、チームを組んで最大効率で作業してください。
 
 ## Routing Table
@@ -14,6 +18,13 @@
 - Claude-specific commands, permission syntax, and `.claude/agents` definitions are not Codex settings. Translate them to Codex profiles, skills, plugins, or built-in subagents only when the semantics match.
 - Prefer built-in Codex `explorer` and `worker` subagents for parallelizable work. Do not create role names unless they encode a real boundary.
 
+## Shared Agent Skills And Memory
+
+- Managed shared skills live only in `~/Developer/plural-reality/nix-darwin/prompt/claude-code/skills/<name>/`. Home Manager projects that canonical source into both `~/.claude/skills` and `~/.codex/skills`; do not copy skill contents between runtime directories.
+- Claude's self-learning memory canonical store is the harness-native auto-memory under `~/.claude/projects/<project>/memory/` (home/personal agent context = `~/.claude/projects/-Users-tkgshn/memory/`). Codex has no SessionStart auto-injection, so to use it READ `~/.claude/projects/-Users-tkgshn/memory/MEMORY.md` first (one-line pointer index), then open only the relevant `feedback_/reference_/project_*.md` topic file.
+- WRITE: to add/update memory, use the `self-learn` skill against that store (one fact per file + one-line MEMORY.md pointer). Do NOT write to `~/.codex/memories` — Claude does not read it, so writes there never reach Claude.
+- `~/.codex/memories` stays Codex's own native store if Codex keeps one, but it is NOT the shared/canonical Claude memory.
+
 ## Browser Verification
 
 - For visual or interactive verification, prefer the Codex Chrome plugin connected to the user's installed Google Chrome profile.
@@ -28,6 +39,7 @@
 
 @[unix-principal]
 @[engineering]
+@[ponytail]
 @[context-compression]
 @[local-installation]
 @[shell-environment]

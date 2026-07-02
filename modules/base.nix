@@ -114,6 +114,11 @@ in
       mouse = true;
       historyLimit = 50000;
       escapeTime = 0; # home-manager 既定の 500ms は nvim の ESC を遅延させるため 0
+      terminal = "tmux-256color"; # "screen" だと OSC エスケープが剥ぎ取られ URL がクリック不能になる
+      extraConfig = ''
+        # OSC 8 ハイパーリンク(クリッカブルURL)を外側ターミナルに透過させる (tmux 3.3+)
+        set -g allow-passthrough on
+      '';
     };
 
     direnv = {
