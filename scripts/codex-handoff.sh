@@ -21,6 +21,7 @@ code_block() {
   local label="$1"
   shift
   printf '### %s\n\n```text\n' "$label"
+  # shellcheck disable=SC2016  # リテラルのバッククォート置換が意図(展開させない)
   "$@" | sed 's/```/` ` `/g'
   printf '```\n\n'
 }
