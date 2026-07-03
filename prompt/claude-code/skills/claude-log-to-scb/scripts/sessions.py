@@ -16,6 +16,9 @@ Subcommands:
 
 Real session = cwd outside tmp/var-folders AND >= MIN real user turns. Probe /
 summarizer / one-shot sessions are skipped.
+
+Self-check:
+  bash prompt/claude-code/skills/claude-log-to-scb/scripts/sessions-sync.sh --dry-run
 """
 import sys
 import os
@@ -24,6 +27,7 @@ import glob
 import subprocess
 import time
 import argparse
+import re
 
 from common import msg_text  # noqa: F401  (kept for parity / future use)
 from ingest import clean_title, jst, render, load_seen, save_seen, upsert as page_upsert
@@ -36,6 +40,14 @@ EXTRACTED = os.path.join(CACHE_DIR, "extracted-sessions.jsonl")
 SEEN = os.path.join(CACHE_DIR, "seen-sessions.json")
 HUB = "claude codeセッション"
 LABEL = "Claude Code セッション(claude-log-to-scb 自動取り込み)。ユーザー入力=全文 / Claudeの作業=要点のみ"
+SKILL_OMITTED = "[( Skill注入テキスト省略]"
+SKILL_OMITTED_ESCAPED = "［( Skill注入テキスト省略］"
+SKILL_INJECTION_PREFIXES = (
+    "<command-name>",
+    "<command-name",
+    "Base directory for this skill",
+)
+BAD_TITLE_PREFIX_RE = re.compile(r"^[\s`?？!！:：、。・／/\\|<>\[\]{}()（）]+")
 
 # cwd substring -> canonical [project] link (from the local project map).
 PROJECT_BY_PATH = [
@@ -76,15 +88,39 @@ def ev_text(o):
     return ""
 
 
-def is_real_user(o):
+def is_tool_result_only(o):
     m = o.get("message") or {}
     c = m.get("content")
-    if isinstance(c, list) and not any(isinstance(b, dict) and b.get("type") == "text" for b in c):
-        return False  # tool_result-only — not human input
+    return isinstance(c, list) and c and all(
+        isinstance(b, dict) and b.get("type") == "tool_result" for b in c
+    )
+
+
+def is_skill_injection_text(text):
+    t = (text or "").lstrip()
+    return any(t.startswith(prefix) for prefix in SKILL_INJECTION_PREFIXES)
+
+
+def is_real_user(o):
     t = ev_text(o)
-    if not t or len(t) < 3 or t.startswith("<"):
+    if is_tool_result_only(o):
+        return False
+    if not t or len(t) < 3 or t.startswith("<") or is_skill_injection_text(t):
         return False  # empty / system-reminder / command wrapper
     return True
+
+
+def sanitized_title_seed(text):
+    t = BAD_TITLE_PREFIX_RE.sub("", (text or "").strip())
+    return t[:48].strip()
+
+
+def title_from_summary(ext, fallback, uuid):
+    summary = ((ext or {}).get("ja_summary") or "").strip()
+    source = " ".join(line.strip() for line in summary.splitlines() if line.strip())
+    first_sentence = source.split("。", 1)[0] if source else ""
+    title = sanitized_title_seed(first_sentence)
+    return clean_title(title or fallback, f"claude code {uuid[:8]}")
 
 
 def parse_session(path):
@@ -108,7 +144,9 @@ def parse_session(path):
             first_ts = first_ts or ts
             last_ts = ts
         t = o.get("type")
-        if t == "user" and is_real_user(o):
+        if t == "user" and is_skill_injection_text(ev_text(o)):
+            msgs.append({"sender": "human", "text": SKILL_OMITTED})
+        elif t == "user" and is_real_user(o):
             msgs.append({"sender": "human", "text": ev_text(o)})
             real_user += 1
         elif t == "assistant":
@@ -203,7 +241,11 @@ def render_cmd(args):
         if not args.force and seen.get(uuid) == updated:
             skipped += 1
             continue
-        title, body, ents = render(conv, ext.get(uuid), ARCHIVE, today)
+        extracted = ext.get(uuid)
+        render_conv = dict(conv)
+        render_conv["name"] = title_from_summary(extracted, conv.get("name"), uuid)
+        title, body, ents = render(render_conv, extracted, ARCHIVE, today)
+        body = body.replace(SKILL_OMITTED_ESCAPED, SKILL_OMITTED)
         if title in used:
             used[title] += 1
             title = f"{title} ({used[title]})"
