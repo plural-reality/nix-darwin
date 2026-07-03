@@ -267,6 +267,11 @@ let
     text = builtins.readFile ../scripts/codex-handoff.sh;
   };
 
+  correctionMiner = pkgs.writeScriptBin "correction-miner" ''
+    #!${pkgs.python313}/bin/python
+    ${builtins.readFile ../scripts/correction-miner.py}
+  '';
+
   # ── Scrapbox writer ─────────────────────────────────────
   # @cosense/std is not in nixpkgs, so we use a managed node_modules
   # directory under ~/.local/share/scrapbox-write/ with activation-time
@@ -317,6 +322,7 @@ in
     freeeReconcile
     codexName
     codexHandoff
+    correctionMiner
 
     # Scrapbox writer
     scrapbox-write

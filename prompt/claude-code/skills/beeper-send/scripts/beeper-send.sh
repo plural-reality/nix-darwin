@@ -17,6 +17,9 @@ set +H 2>/dev/null  # bash history expansion を無効化（! の問題を回避
 #     @/path/to/file   ファイルから UTF-8 で読む(日本語は必ずこれ。argv 経由は agent zsh で文字化け)
 #     "literal text"    ASCII 向けのリテラル
 #
+# Self-check:
+#   bash -n prompt/claude-code/skills/beeper-send/scripts/beeper-send.sh
+#
 # send/reply は受理後に自動 read-back し、反映 (reply は linkedMessageID=親) を表示する。
 
 set -euo pipefail
@@ -44,6 +47,21 @@ if [[ ! -f "$TOKEN_FILE" ]]; then
   exit 1
 fi
 TOKEN=$(tr -d '[:space:]' < "$TOKEN_FILE")
+
+cmd="${1:-help}"
+if [[ $# -gt 0 ]]; then
+  shift
+fi
+ACK=0
+args=()
+for arg in "$@"; do
+  if [[ "$arg" == "--ack" ]]; then
+    ACK=1
+  else
+    args+=("$arg")
+  fi
+done
+set -- "$cmd" "${args[@]}"
 
 # Chat ID を URL エンコード（! と : をエスケープ）
 url_encode_chat_id() {
@@ -111,6 +129,16 @@ for i in items:  # API は新しい順(先頭=newest)で返す
 print("\n(%d 件・新しい順。reply-> は親メッセージID=スレッド)" % len(items))
 PY
   rm -f "$tmp"
+}
+
+require_send_ack() {
+  local enc="$1"
+  echo "== 送信前 read-back: 直近5件 =="
+  print_messages "$enc" 5 || true
+  if [[ "$ACK" -ne 1 ]]; then
+    echo "履歴を確認してから--ackを付けて再実行してください。" >&2
+    exit 1
+  fi
 }
 
 case "${1:-help}" in
@@ -261,9 +289,10 @@ PY
     ;;
 
   send)
-    chat_id="${2:?Usage: beeper-send.sh send CHAT_ID BODY}"
-    body="${3:?Usage: beeper-send.sh send CHAT_ID BODY  (BODY=@file or text)}"
+    chat_id="${2:?Usage: beeper-send.sh send CHAT_ID BODY --ack}"
+    body="${3:?Usage: beeper-send.sh send CHAT_ID BODY --ack  (BODY=@file or text)}"
     enc=$(url_encode_chat_id "$chat_id")
+    require_send_ack "$enc"
     pf=$(build_payload_file "$body")
     api_post "/v1/chats/$enc/messages" "$pf"; echo
     rm -f "$pf"
@@ -272,10 +301,11 @@ PY
     ;;
 
   reply)
-    chat_id="${2:?Usage: beeper-send.sh reply CHAT_ID REPLY_TO_ID BODY}"
-    reply_to="${3:?Usage: beeper-send.sh reply CHAT_ID REPLY_TO_ID BODY}"
-    body="${4:?Usage: beeper-send.sh reply CHAT_ID REPLY_TO_ID BODY  (BODY=@file or text)}"
+    chat_id="${2:?Usage: beeper-send.sh reply CHAT_ID REPLY_TO_ID BODY --ack}"
+    reply_to="${3:?Usage: beeper-send.sh reply CHAT_ID REPLY_TO_ID BODY --ack}"
+    body="${4:?Usage: beeper-send.sh reply CHAT_ID REPLY_TO_ID BODY --ack  (BODY=@file or text)}"
     enc=$(url_encode_chat_id "$chat_id")
+    require_send_ack "$enc"
     pf=$(build_payload_file "$body" "$reply_to")
     api_post "/v1/chats/$enc/messages" "$pf"; echo
     rm -f "$pf"
@@ -293,14 +323,15 @@ PY
     ;;
 
   send-to)
-    shortcut="${2:?Usage: beeper-send.sh send-to SHORTCUT BODY}"
-    body="${3:?Usage: beeper-send.sh send-to SHORTCUT BODY}"
+    shortcut="${2:?Usage: beeper-send.sh send-to SHORTCUT BODY --ack}"
+    body="${3:?Usage: beeper-send.sh send-to SHORTCUT BODY --ack}"
     chat_id=$(resolve_shortcut "$shortcut")
     if [[ -z "$chat_id" ]]; then
       echo "ERROR: Unknown shortcut '$shortcut'. Available: tagen, tanaka, zos" >&2
       exit 1
     fi
     enc=$(url_encode_chat_id "$chat_id")
+    require_send_ack "$enc"
     pf=$(build_payload_file "$body")
     api_post "/v1/chats/$enc/messages" "$pf"; echo
     rm -f "$pf"
