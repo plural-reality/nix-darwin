@@ -253,6 +253,20 @@ let
     '';
   };
 
+  codexHandoff = pkgs.writeShellApplication {
+    name = "codex-handoff";
+    runtimeInputs = with pkgs; [
+      coreutils
+      findutils
+      gawk
+      git
+      gnugrep
+      gnused
+      jq
+    ];
+    text = builtins.readFile ../scripts/codex-handoff.sh;
+  };
+
   # ── Scrapbox writer ─────────────────────────────────────
   # @cosense/std is not in nixpkgs, so we use a managed node_modules
   # directory under ~/.local/share/scrapbox-write/ with activation-time
@@ -302,6 +316,7 @@ in
     freeeCall
     freeeReconcile
     codexName
+    codexHandoff
 
     # Scrapbox writer
     scrapbox-write
