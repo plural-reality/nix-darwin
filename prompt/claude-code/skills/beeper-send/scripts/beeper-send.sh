@@ -61,7 +61,8 @@ for arg in "$@"; do
     args+=("$arg")
   fi
 done
-set -- "$cmd" "${args[@]}"
+# bash 3.2(macOS /bin/bash)では空配列の"${args[@]}"がset -uでunboundになるため${args[@]+...}ガード必須
+set -- "$cmd" ${args[@]+"${args[@]}"}
 
 # Chat ID を URL エンコード（! と : をエスケープ）
 url_encode_chat_id() {
