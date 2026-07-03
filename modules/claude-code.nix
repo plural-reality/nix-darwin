@@ -129,6 +129,13 @@ let
   sharedAgentsDir = ../prompt/claude-code/agents;
   sharedCommandsDir = ../prompt/claude-code/commands;
 
+  mkClaudeAgentSource =
+    relPath:
+    if upstreamPath != null then
+      config.lib.file.mkOutOfStoreSymlink "${upstreamPath}/prompt/claude-code/agents/${relPath}"
+    else
+      sharedAgentsDir + "/${relPath}";
+
   # Enumerate files recursively under a directory, returning relative paths.
   # e.g. agents/cl/foo.md → ".claude/agents/cl/foo.md"
   mkDirFileAttrs =
@@ -151,6 +158,30 @@ let
         );
     in
     builtins.foldl' (acc: ns: acc // (mkNamespaceAttrs ns)) { } namespaces;
+
+  mkClaudeAgentAttrs =
+    let
+      topEntries = builtins.readDir sharedAgentsDir;
+      topFiles = builtins.filter (n: topEntries.${n} == "regular") (builtins.attrNames topEntries);
+      namespaceDirs = builtins.filter (n: topEntries.${n} == "directory") (builtins.attrNames topEntries);
+      namespaceFiles = builtins.concatLists (
+        map (
+          ns:
+          let
+            nsEntries = builtins.readDir (sharedAgentsDir + "/${ns}");
+          in
+          map (f: "${ns}/${f}") (
+            builtins.filter (f: nsEntries.${f} == "regular") (builtins.attrNames nsEntries)
+          )
+        ) namespaceDirs
+      );
+    in
+    builtins.listToAttrs (
+      map (relPath: {
+        name = ".claude/agents/${relPath}";
+        value.source = mkClaudeAgentSource relPath;
+      }) (topFiles ++ namespaceFiles)
+    );
 
   # Shared skill source: Claude Code skillpack is wired to both Claude and Codex.
   sharedSkillsDir = ../prompt/claude-code/skills;
@@ -590,7 +621,7 @@ in
     };
   }
   // agentFiles
-  // (mkDirFileAttrs ".claude/agents" sharedAgentsDir)
+  // mkClaudeAgentAttrs
   // (mkDirFileAttrs ".claude/commands" sharedCommandsDir);
 
   # Symlink ~/.claude/{commands,skills} → Xcode Agent config dir
