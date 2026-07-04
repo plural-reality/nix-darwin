@@ -4,7 +4,7 @@ description: >
   形式D: サービス定義書 (A4) デザイントークンとパターン集。
   最もフォーマル。両端揃え、番号付きセクション、点線TOC、黒クロージング。
   「サービス定義書」「仕様書」「RFP」「公的調達」で発動。
-  参考: ~/Desktop/plural-reality-service-definition-style.html
+  参考: ~/Desktop/plural-reality/plural-reality-service-definition-style.html
 ---
 
 # 形式D: サービス定義書（A4 縦）
@@ -119,5 +119,5 @@ body { background: var(--bg); line-height: 1.7; }
 5. **クロージング**: 全面黒 + プロダクトロゴ + タグライン + URL
 
 ## 参考ファイル
-- テンプレート: `~/Desktop/plural-reality-service-definition-style.html`
-- 適用例: `~/Desktop/kokumyaku-service-definition.html`
+- テンプレート: `~/Desktop/plural-reality/plural-reality-service-definition-style.html`
+- 適用例: Drive「デザインシステム/kokumyaku/」フォルダ(ローカル無し・原典置き場) https://drive.google.com/drive/folders/1ZqSxWJVCbVu1uQ0ZsFGcNSXFnt3Liq3H
