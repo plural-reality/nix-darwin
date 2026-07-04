@@ -91,6 +91,21 @@ fi
 # Model display name
 model_part=$([ -n "$model" ] && printf " \033[2m[%s]\033[0m" "$model" || echo "")
 
+# context 使用率が閾値超なら compact-prep 警告 marker を書く（cooldown 中でなければ）。
+# UserPromptSubmit hook (hook-compact-prep-reminder.sh) が拾い、区切りで /compact-prep を促す。
+# 閾値 60% は 1M context 前提で約 600K。自動 compact (~90%) の十分手前で手動誘導する。
+if [ -n "$used_pct" ] && [ -n "$session_id" ]; then
+  int_pct=$(printf '%.0f' "$used_pct" 2>/dev/null || echo 0)
+  if [ "$int_pct" -ge 60 ] 2>/dev/null; then
+    warned_dir="${TMPDIR:-/tmp}/claude-compact-warned"
+    if [ ! -f "$warned_dir/$session_id" ]; then
+      warn_dir="${TMPDIR:-/tmp}/claude-compact-warn"
+      mkdir -p "$warn_dir" 2>/dev/null || true
+      printf '%s\n' "$int_pct" > "$warn_dir/$session_id" 2>/dev/null || true
+    fi
+  fi
+fi
+
 printf "\033[36m%s\033[0m%s%s\n%s%s%s\n" \
   "$display_dir" "$branch_part" "$id_part" \
   "$ctx_part" "$five_part" "$model_part"
