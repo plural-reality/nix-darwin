@@ -8,6 +8,8 @@ description: >
 ---
 
 > **系統**: 用途特化フォーマット。ブランド基調・canonical・用途→skill 対応は傘 skill `plural-reality-design-system` §0 が単一の正本。本フォーマットのパレットは Palantir 原典準拠で傘（白・角丸0px）と異なる場合がある（用途で使い分ける）。
+>
+> **出力の既知の断絶**: この 16:9 HTML は スクショ / print-PDF が最終形。HTML デザイン → 実 Google Slides への自動経路は無い（Slides は HTML インポート非対応＝手動で作り直し）。`.pptx` 専用ツールも無い。`gws slides` は既存ネイティブ Slides の inplace 編集（get/batchUpdate）専用。
 
 # 形式A: IRスライド（16:9）
 

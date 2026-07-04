@@ -108,27 +108,33 @@ gws drive about get --params '{"fields":"user/emailAddress"}'
 
 新規の正式文書（申入書・提案書など）は、最初から **native Google Docs** で作る。`.docx` を経由しない（Golden Rule 1）。
 
-### Step 1: フォルダ ID を確定 → 空の native Doc を作成
+### Step 1: フォルダ ID を確定 → HTML を書いて native Doc にインポート（canonical）
 
-`gws docs create` という**サブコマンドは存在しない**。native Doc は Drive API の `files.create` で `mimeType` を指定して作る。
+**正本は HTMLインポート**。`.docx`/pandoc は使わない（pandoc は見出しに `w:bookmarkStart`＝青リボンを残し、Doc 変換後も残ってユーザーが嫌う）。HTML で本文を書き、`files.create` に `--upload x.html --upload-content-type "text/html"` を付けて native Doc に変換すると、`<h2>`→HEADING_2 / `<ol>`→自動採番 と **semantic** に入り、番号ベタ打ちも手動 index 計算も不要、ブックマークも付かない（`gws docs create` サブコマンドは存在しない）。区切り線が要らなければ `<hr>` を入れない。
 
 ```bash
 # 置き場所(共有ドライブ等)のフォルダIDを先に検索
 gws drive files list --params '{"q":"name = '\''フォルダ名'\'' and mimeType='\''application/vnd.google-apps.folder'\'' and trashed=false","fields":"files(id,name)","supportsAllDrives":true,"includeItemsFromAllDrives":true,"corpora":"allDrives"}'
 
-# 空の native Doc を作成（webViewLink が共有/閲覧URL。documentId はこの id）
-gws drive files create --json '{"name":"ドキュメント名","mimeType":"application/vnd.google-apps.document","parents":["FOLDER_ID"]}' --params '{"fields":"id,name,webViewLink,parents","supportsAllDrives":true}'
+# 新規: HTML を native Doc としてインポート（webViewLink=共有URL / id=documentId）
+gws drive files create --upload x.html --upload-content-type "text/html" --params '{"fields":"id,name,webViewLink,parents","supportsAllDrives":true}' --json '{"name":"ドキュメント名","parents":["FOLDER_ID"],"mimeType":"application/vnd.google-apps.document"}'
+
+# 既存Docの中身だけ差し替え（同じ fileId/リンク維持・Docのまま再変換）
+gws drive files update --upload x.html --upload-content-type "text/html" --params '{"fileId":"<id>","supportsAllDrives":true}'
+
+# pageless（ページ分けなし）は Docs API で設定
+gws docs documents batchUpdate --params '{"documentId":"<id>"}' --json '{"requests":[{"updateDocumentStyle":{"documentStyle":{"documentFormat":{"documentMode":"PAGELESS"}},"fields":"documentFormat.documentMode"}}]}'
 ```
 
 > **共有ドライブ内に置いた瞬間、そのフォルダの共有メンバー全員に見える。** 作成直後に `drive.permissions.list` で公開範囲を確認すること。「まだ見せたくない相手」がメンバーにいたら個人フォルダへ作る。anyone-link が付いていなくても、named member には見える。
 
-### Step 2: 本文を「構造＋装飾」で投入する（プレーンテキスト全流し込みは禁止）
+### Step 2: HTML で表現しづらい細部だけ batchUpdate で補正
 
 **やってはいけない**: `insertText` で全文をベタ流しするだけ。見出し・リンク・上付きなどの装飾がすべて失われ、ただのテキストの塊になる（過去にこれをやって「もともとの装飾が失われている」と指摘された）。
 
-**正しい手順（2 ステージ）**: ① プレーンテキストを流し込む → ② **テキスト長を変えない装飾リクエスト**を `batchUpdate` でまとめて当てる。装飾はテキスト長を変えないので、流し込み時に計算した index がそのまま使える。
+**HTMLインポートで構造（見出し・採番・リンク）は自動で入る。** HTML で表現しづらい細部（上付き脚注番号など）だけ、インポート後に **テキスト長を変えない装飾リクエスト**を `batchUpdate` で当てる（テキスト長を変えないので index が保たれる）。空 Doc に insertText 全流し込み→手動 index 計算する旧手順は index が壊れやすく、HTMLインポートで代替できる限り使わない。
 
-装飾は Python でセグメント配列（各段落に `heading` / `link` / `superscript` 属性）を組み、`doc index = 1 + 文字オフセット` で range を算出して一括投入する。要点だけ:
+細部の装飾を batchUpdate で当てる場合は、Python でセグメント配列（`heading` / `link` / `superscript` 属性）を組み、`doc index = 1 + 文字オフセット` で range を算出する。要点だけ:
 
 ```jsonc
 // ② batchUpdate の requests（index は ① 投入後の 1+offset）
