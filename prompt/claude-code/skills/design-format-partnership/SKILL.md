@@ -4,7 +4,7 @@ description: >
   形式C: パートナーシップ資料 (A4) デザイントークンとパターン集。
   完全モノクロ、引用ページ、目次、タイムラインテーブル、テスティモニアル、写真グリッドオーバーレイ。
   「協業」「パートナーシップ」「ケーススタディ」「協業資料」「導入事例」で発動。
-  参考: ~/Desktop/plural-reality-partnership-style.html
+  参考: ~/Desktop/plural-reality/plural-reality-partnership-style.html
   原典: Palantir & Airbus Partnership Overview (2020)
 ---
 
@@ -258,7 +258,7 @@ b.CAP('キャプション')
 - リスト区切り: グレー細線(sz=2,color=E0E0E0)
 
 ## 参考ファイル
-- テンプレート (HTML): `~/Desktop/plural-reality-partnership-style.html`
+- テンプレート (HTML): `~/Desktop/plural-reality/plural-reality-partnership-style.html`
 - テンプレート (python-docx): `~/.claude/skills/design-format-partnership/partnership_docx_template.py`
-- 適用例 (HTML): `~/Desktop/kokumyaku-partnership.html`
+- 適用例 (HTML): Drive「デザインシステム/kokumyaku/」フォルダ(ローカル無し・原典置き場) https://drive.google.com/drive/folders/1ZqSxWJVCbVu1uQ0ZsFGcNSXFnt3Liq3H
 - 原典PDF: Palantir & Airbus Partnership Overview (Google Drive > デザインシステム > presentations > Partnerships)
