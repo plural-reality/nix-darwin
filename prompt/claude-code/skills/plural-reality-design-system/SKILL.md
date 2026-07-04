@@ -18,6 +18,33 @@ description: >
 
 ---
 
+## 0. canonical・系統・用途（統一方針 / 2026-07-04）
+
+### canonical（source of truth）
+- **正本 = この Claude skill 群**（nix-darwin 管理: `plural-reality-design-system`（傘）+ `design-format-*`）。デザイントークンの唯一の定義元。
+- **Drive「デザインシステム」フォルダ = 原典 / エクスポート置き場**（人間可読の 01–07 スタイルHTML・INDEX.md・kokumyaku 適用例・Palantir 原典PDF）。canonical ではない派生・参照物。
+- `~/Desktop/plural-reality/*.html` = ローカルプレビュー（各 skill が参照）。トークンは各 SKILL.md に inline 済みのため、プレビュー欠損でも再現性は保たれる。
+
+### 2系統（用途で使い分ける — 統合しない）
+| 系統 | 何 | パレット / 形 | 用途 |
+|---|---|---|---|
+| **傘（本 skill）** | 多元現実ブランド基調 | 白 `#FFFFFF` / Teal `#0F766E` / **角丸 0px** | Web・LP・メール・名刺・汎用ブランド資料 |
+| **形式A–E（`design-format-*`）** | 用途特化フォーマット | 各 Palantir 原典準拠（傘と異なる場合あり） | 下表 |
+
+**原則**: 傘と形式A–E は *別のデザイン言語*。無理に統合せず、用途で明示的に分ける（「対外ブランド = 傘 / IR・写経 = 形式」）。違うものに違う名前。
+
+### 用途 → skill 対応（INDEX ↔ skill）
+| 用途 | skill | Drive スタイル | 例パレット |
+|---|---|---|---|
+| Web / LP / デジタル | `design-format-web`（＝傘系） | 01 | 白・0px |
+| IR / 決算 / ピッチ / 千人会議 | `design-format-ir-slides` | 03・07 | グレー `#C5C5C5`・16px |
+| ホワイトペーパー / 技術文書 | `design-format-whitepaper` | 04 | 白 A4・2カラム |
+| 協業 / パートナーシップ / ケーススタディ | `design-format-partnership` | 05 | 白 A4・完全モノクロ |
+| サービス定義 / 調達 / 仕様書 | `design-format-service-def` | 06 | 白 A4・両端揃え |
+| 汎用ブランド・横断 | `plural-reality-design-system`（傘・本 skill） | 01 | 白・0px・Teal |
+
+---
+
 ## 1. カラーパレット
 
 ### プライマリカラー（白背景モード = デフォルト）
