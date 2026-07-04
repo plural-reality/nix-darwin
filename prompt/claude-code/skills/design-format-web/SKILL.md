@@ -4,8 +4,10 @@ description: >
   形式E: Web / LP / デジタルコンテンツ用デザイントークンとパターン集。
   角丸0px、ライト/ダーク切替、7:5グリッド、KPI 80px。
   「Webサイト」「LP」「ランディングページ」「Webデザイン」「デジタルコンテンツ」で発動。
-  参考: ~/Desktop/plural-reality-design-preview.html
+  参考: ~/Desktop/plural-reality/plural-reality-design-preview.html
 ---
+
+> **系統**: 用途特化フォーマット。ブランド基調・canonical・用途→skill 対応は傘 skill `plural-reality-design-system` §0 が単一の正本。本フォーマットのパレットは Palantir 原典準拠で傘（白・角丸0px）と異なる場合がある（用途で使い分ける）。
 
 # 形式E: Web（LP・デジタルコンテンツ）
 
@@ -115,5 +117,5 @@ description: >
 8. **フッター**: caption copyright + tech-label version
 
 ## 参考ファイル
-- テンプレート: `~/Desktop/plural-reality-design-preview.html`
-- 適用例: `~/Desktop/kokumyaku-web.html`
+- テンプレート: `~/Desktop/plural-reality/plural-reality-design-preview.html`
+- 適用例: Drive「デザインシステム/kokumyaku/」フォルダ(ローカル無し・原典置き場) https://drive.google.com/drive/folders/1ZqSxWJVCbVu1uQ0ZsFGcNSXFnt3Liq3H

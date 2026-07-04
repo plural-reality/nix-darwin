@@ -4,8 +4,12 @@ description: >
   形式A: IRスライド (16:9) デザイントークンとパターン集。
   ウォームグレーキャンバス、チャコールカード (16px角丸)、バッジ、チャート、テーブル。
   「スライド」「プレゼン」「事業報告」「決算」「ピッチ」で発動。
-  参考: ~/Desktop/plural-reality-ir-style-preview.html
+  参考: ~/Desktop/plural-reality/plural-reality-ir-style-preview.html
 ---
+
+> **系統**: 用途特化フォーマット。ブランド基調・canonical・用途→skill 対応は傘 skill `plural-reality-design-system` §0 が単一の正本。本フォーマットのパレットは Palantir 原典準拠で傘（白・角丸0px）と異なる場合がある（用途で使い分ける）。
+>
+> **出力の既知の断絶**: この 16:9 HTML は スクショ / print-PDF が最終形。HTML デザイン → 実 Google Slides への自動経路は無い（Slides は HTML インポート非対応＝手動で作り直し）。`.pptx` 専用ツールも無い。`gws slides` は既存ネイティブ Slides の inplace 編集（get/batchUpdate）専用。
 
 # 形式A: IRスライド（16:9）
 
@@ -240,7 +244,7 @@ body { background: #E8E8E8; }
 - **最小解像度**: 1920x1080（フルブリード時）
 - **色調**: 高コントラスト、彩度控えめ。ダーク背景に自然に溶ける暗めのトーンを選ぶ
 - **被写体**: プロダクト UI、実際の業務風景、インフラ。人物は実在のチーム・顧客のみ
-- **参考素材**: `/Users/tkgshn/palantir-presentations/Q4_2024_Feb2025/` の slide_001, slide_015, slide_040 が典型
+- **参考素材**: Drive「デザインシステム/presentations/」フォルダ(Palantir Q4 2024 決算スライド原典・ローカル無し) https://drive.google.com/drive/folders/11jv3sktyzhvCRoWl1m_EOea-hksMrROm
 
 ## 8枚スライドパターン
 
@@ -254,5 +258,5 @@ body { background: #E8E8E8; }
 8. **プロダクト概要**: ダークカード全面。grid 3col。各プロダクト = border card (12px radius)
 
 ## 参考ファイル
-- テンプレート: `~/Desktop/plural-reality-ir-style-preview.html`
-- 適用例: `~/Desktop/kokumyaku-ir.html`
+- テンプレート: `~/Desktop/plural-reality/plural-reality-ir-style-preview.html`
+- 適用例: Drive「デザインシステム/kokumyaku/」フォルダ(ローカル無し・原典置き場) https://drive.google.com/drive/folders/1ZqSxWJVCbVu1uQ0ZsFGcNSXFnt3Liq3H

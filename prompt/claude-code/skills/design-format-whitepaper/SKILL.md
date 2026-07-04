@@ -7,6 +7,8 @@ description: >
   「ホワイトペーパー」「技術文書」「導入ガイド」で発動。
 ---
 
+> **系統**: 用途特化フォーマット。ブランド基調・canonical・用途→skill 対応は傘 skill `plural-reality-design-system` §0 が単一の正本。本フォーマットのパレットは Palantir 原典準拠で傘（白・角丸0px）と異なる場合がある（用途で使い分ける）。
+
 # 形式B: ホワイトペーパー（A4 縦）
 
 技術文書・導入ガイド・事例紹介（詳細版）に使用。
@@ -760,4 +762,4 @@ a:hover {
 
 ## 参考ファイル
 - 参照元PDF: `~/Library/CloudStorage/GoogleDrive-takagi@plural-reality.com/Shared drives/plural-reality/plural-reality/デザインシステム/presentations/Whitepapers/Supply_Chain_Construction_Whitepaper_2022.pdf`
-- テンプレート: `~/Desktop/plural-reality-whitepaper-style.html`
+- テンプレート: `~/Desktop/plural-reality/plural-reality-whitepaper-style.html`
