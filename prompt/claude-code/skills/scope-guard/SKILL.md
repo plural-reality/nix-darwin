@@ -1,8 +1,8 @@
 ---
 name: scope-guard
 description: >
-  PROACTIVELY TRIGGER THIS SKILL. Prevents scope creep by decomposing work into focused Issues
-  and branches. Trigger on ANY of these:
+  PROACTIVELY TRIGGER THIS SKILL. Prevents scope creep by decomposing sprawling work into focused
+  units — code into Issues/branches, and long chat threads into spun-off threads. Trigger on ANY of:
   - ANY task that involves writing/modifying code (even "small" changes)
   - User describes work: "I want to...", "...を作りたい", "...を追加", "...を修正", "...を変更"
   - Commit/PR: "commit", "push", "PR", "プルリク", "マージ", "コミット"
@@ -11,6 +11,11 @@ description: >
   - When git diff shows changes spanning multiple concerns
   - When the conversation has produced >200 lines of changes without a commit
   - At the START of every new coding session
+  - Conversation drift: when ONE thread has accumulated multiple INDEPENDENT topics/workstreams,
+    propose /spin-off to carve the divergent topic into its own cleanly-seeded thread.
+    CALIBRATION — this fires rarely: a single topic explored deeply (a long brainstorm / design
+    / debug session) is DEPTH, not drift. Do NOT propose spin-off per-tangent or per-turn; only
+    when genuinely separate units of work have piled up, and then only once, as advice.
 ---
 
 # Scope Guard — Focused Branch Discipline
@@ -18,16 +23,32 @@ description: >
 You help developers keep branches focused and reviewable. You intervene **constantly and proactively**
 at three stages: planning (before code), monitoring (during work), and completion (commit/PR time).
 
-**IMPORTANT**: This skill should be invoked aggressively. When in doubt, trigger it.
-It is better to over-check scope than to let a branch grow out of control.
+**IMPORTANT**: For **code** scope, invoke aggressively — when in doubt, trigger; it is better to
+over-check than to let a branch grow out of control. For **conversation** scope (spin-off), the bar
+is the opposite: propose rarely and only on real drift (see the calibration in Stage 2). Depth in a
+single topic is never drift.
 
 ## Core Principles
 
 - One branch = one reviewable unit of work
+- One thread = one topic — independent workstreams belong in separate threads, not one sprawling chat
 - A PR should be understandable in under 15 minutes of review
 - Prefer many small PRs over one large PR
 - Unrelated changes belong on separate branches, even if discovered during work
 - Always create a GitHub Issue before starting a branch
+
+## Decomposition targets
+
+Scope Guard's job is one abstraction — *detect sprawl, decompose into focused units* — but the
+**materialization target depends on what is sprawling**:
+
+| What is sprawling | Target |
+|---|---|
+| Code changes / a branch's diff | GitHub Issue + focused branch (Stages 1–3 below) |
+| A chat thread carrying independent topics | Spun-off thread via `/spin-off` — distill the divergent topic's context into a seed and open it clean in a new tab. Unlike `/duplicate` (full copy) it carries NO parent history. |
+| Durable knowledge worth keeping | A Scrapbox page (defer to the relevant scrapbox skill) |
+
+One concept, several outputs. Pick the target by the nature of the sprawl; do not invent a new one.
 
 ## Stage 1: Planning — Issue Decomposition
 
@@ -127,6 +148,35 @@ something new), briefly confirm:
 
 Keep this lightweight — one line, not a wall of text. Skip if the work clearly
 fits the current scope.
+
+### Conversation drift → spin-off
+
+Separately from code, watch the **shape of the thread itself**. Over a long session a chat can
+accumulate several independent topics; the context gets crowded and each topic loses its thread.
+
+**When to propose (all must hold — this fires rarely):**
+
+- The thread now carries **≥2 genuinely independent workstreams** (each would get its own branch,
+  doc, or session — not sub-parts of one task).
+- The user is about to go deep on one of them, or keeps toggling between them.
+- It is a natural breakpoint (a topic just wrapped, or a new one is clearly starting).
+
+**When NOT to propose (this is most of the time):**
+
+- A single topic explored deeply — a long brainstorm, design discussion, or debugging session.
+  **Depth is not drift.** Do not offer spin-off just because the thread is long.
+- Per-tangent or per-turn. A brief digression that folds back into the main topic is normal.
+- Mid-flow when the user is clearly focused. Never interrupt momentum to suggest housekeeping.
+
+**How to intervene** — one line, advisory, offered once:
+
+> 🧵 This thread now holds a couple of separate topics (<A> and <B>). Want to **spin off** <B>
+> into its own tab? I'll distill just its context as the seed so this thread stays clean.
+> (`/spin-off <B>`)
+
+If the user agrees, run `/spin-off <topic>` (distills that topic's context into a seed and opens a
+fresh, cleanly-seeded tab; the parent thread continues here). If they decline, drop it and don't
+re-ask for that topic. Never spin off automatically — the split is the user's call.
 
 ## Stage 3: Completion — Commit & PR Discipline
 
