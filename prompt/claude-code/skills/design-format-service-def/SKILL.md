@@ -7,6 +7,8 @@ description: >
   参考: ~/Desktop/plural-reality/plural-reality-service-definition-style.html
 ---
 
+> **系統**: 用途特化フォーマット。ブランド基調・canonical・用途→skill 対応は傘 skill `plural-reality-design-system` §0 が単一の正本。本フォーマットのパレットは Palantir 原典準拠で傘（白・角丸0px）と異なる場合がある（用途で使い分ける）。
+
 # 形式D: サービス定義書（A4 縦）
 
 公的調達対応・RFP回答・サービス仕様書に使用。最もフォーマル。
