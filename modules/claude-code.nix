@@ -55,9 +55,13 @@ let
     args = [ ];
   };
 
+  # SCRAPBOX_SID is deliberately NOT here: the SID is a rotating session cookie
+  # whose canonical source is the logged-in Chrome profile (self-healed into
+  # ~/.claude/settings.local.json by scrapbox-sid-refresh.sh). Projecting it here
+  # bakes a plaintext credential into the world-readable /nix/store settings.json
+  # (leaked once already). cosense-fetch resolves the SID at runtime instead.
   sharedAgentEnvNames = [
     "GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND"
-    "SCRAPBOX_SID"
     "SOPS_AGE_KEY_FILE"
   ];
 
@@ -69,10 +73,9 @@ let
   );
 
   # One semantic environment, projected into each agent's native config format.
-  sharedAgentEnv = {
-    CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1";
-  }
-  // inheritedAgentEnv;
+  # Agent teams are intentionally not enabled globally: their panel competes with
+  # the working terminal. Opt into teams only from a one-off launch environment.
+  sharedAgentEnv = inheritedAgentEnv;
 
   codexConfigPython = pkgs.python313.withPackages (ps: [ ps.tomlkit ]);
 
@@ -352,14 +355,15 @@ in
     pkgs.llm-agents.claude-code # Claude Code CLI
   ];
 
-  # Default every Claude Code session to ultracode (xhigh reasoning + automatic
-  # workflow orchestration). ultracode is session-only and explicitly NOT read
-  # from settings.json by design, so the only declarative way to make it the
-  # default is to inject it at launch via --settings (merged onto settings.json,
-  # not overriding it). Replaces the former always-on CLAUDE_CODE_EFFORT_LEVEL=max
-  # env, which would have overridden any per-session /effort choice anyway.
-  # Escape hatch: `command claude` / `\claude` runs the un-aliased binary.
-  home.shellAliases.claude = "claude --settings '{\"ultracode\":true}'";
+  # Claude Code launches LIGHT by default — no standing ultracode. ultracode
+  # (xhigh reasoning + automatic multi-agent workflow orchestration) is opt-in
+  # per session via `ccx`; reserve it for review / hard tasks, not every turn.
+  # Model and effort stay flexible per session — `/model`, or
+  # `claude --model … --effort …` at launch — and are NOT pinned here.
+  # `ccx` = heavy mode: same binary with ultracode injected at launch (merged
+  # onto settings.json, not overriding it). tkgshn's personal layer re-points
+  # `ccx` through the tmux launcher `cc` (see personal.nix).
+  home.shellAliases.ccx = "claude --settings '{\"ultracode\":true}'";
 
   home.file = {
     # Gemini
@@ -369,14 +373,13 @@ in
     };
 
     ".claude/settings.json".text = builtins.toJSON {
-      # ultracode = xhigh effort + standing dynamic-workflow orchestration.
-      # Single canonical source for effort; replaces the old CLAUDE_CODE_EFFORT_LEVEL
-      # env var which used to override (and thus suppress) this setting.
-      ultracode = true;
+      # ultracode is intentionally NOT set here — it is opt-in per session via the
+      # `ccx` alias above, not a standing default. Effort and model are likewise
+      # chosen per session (`/model`, `--effort`) and are not pinned in this file.
       env = sharedAgentEnv;
       enableAutoMode = true;
+      disableAgentView = true;
       skipDangerousModePermissionPrompt = true;
-      teammateMode = "tmux";
       statusLine = {
         type = "command";
         command = "bash ${config.home.homeDirectory}/.claude/statusline-command.sh";
@@ -461,6 +464,18 @@ in
                   type = "command";
                   command = script "sid-freshness-check.sh";
                 }
+                # 世界モデル注入(2026-07-05 settings.local.json から昇格)。注入配線は nix 管理、
+                # 中身 ~/.claude/context/world-model.md は「生きた状態ファイル」として意図的に
+                # nix 外(MEMORY.md と同格)。ファイル不在なら fail-open。
+                {
+                  type = "command";
+                  command = script "inject-world-model.sh";
+                }
+                # CRM 能動トリガ注入(同上昇格)。beeper-scrapbox-crm gateway(:8787)必須、停止時 fail-open。
+                {
+                  type = "command";
+                  command = script "crm-due-inject.sh";
+                }
                 {
                   type = "command";
                   command = script "hook-fire-log.sh SessionStart";
@@ -502,6 +517,13 @@ in
                   async = true;
                   command = script "daily-report-capture.sh";
                 }
+                # 圧縮復旧: 圧縮の直前に marker を書く（現行 Claude Code に PostCompact
+                # は無いので PreCompact を使う）。圧縮後 最初の UserPromptSubmit で
+                # hook-compaction-recovery-restore.sh が拾い、plan/state file の再読込を促す。
+                {
+                  type = "command";
+                  command = script "hook-compaction-recovery.sh";
+                }
               ];
             }
           ];
@@ -523,6 +545,18 @@ in
                   type = "command";
                   command = script "prompt-context-inject.sh";
                 }
+                # 圧縮復旧: PreCompact が残した marker を検出し、圧縮直後の 1 ターン目に
+                # plan/state file の再読込・TaskList 確認を additionalContext で注入する（one-shot）。
+                {
+                  type = "command";
+                  command = script "hook-compaction-recovery-restore.sh";
+                }
+                # 60% 通知: statusline が書いた warn marker を検出し、区切りでの
+                # /compact-prep 実行提案を注入する（one-shot）。自動 compact を先回りで回避。
+                {
+                  type = "command";
+                  command = script "hook-compact-prep-reminder.sh";
+                }
               ];
             }
           ];
@@ -532,6 +566,22 @@ in
                 {
                   type = "command";
                   command = nodeScript "claude-codex-handoff-on-toolcall-leak.ts";
+                }
+                # Blocking gate: refuse to Stop while created tasks are still open
+                # (pending/in_progress). Deliberately NOT wrapped in `|| true` / 2>/dev/null
+                # — a non-zero exit (2) with a stderr reason is how a Stop hook blocks.
+                # The script fails open on any error so it cannot wedge Stop, and fires at
+                # most once per session (loud gate; the second Stop passes through).
+                {
+                  type = "command";
+                  command = "${pkgs.python313}/bin/python3 ${homeDir}/.claude/scripts/stop-task-reconcile-gate.py";
+                }
+                # 自己学習 nudge(2026-07-05 settings.local.json から昇格)。実質的な作業をした
+                # ターンの Stop を一度だけ block して self-learn skill を促す。手順の正本は skill。
+                # decision JSON を stdout で返すため `script` ラッパ(stderr 抑制のみ)相当の素起動。
+                {
+                  type = "command";
+                  command = "${pkgs.python313}/bin/python3 ${homeDir}/.claude/scripts/stop-reflect-nudge.py";
                 }
                 {
                   type = "command";
@@ -567,9 +617,10 @@ in
       executable = true;
     };
 
-    # MCP servers: ~/.claude.json is writable by Claude Code at runtime
-    # (startup counts, tips history, caches, etc.) so we cannot manage it
-    # as a read-only symlink. Instead, merge mcpServers via activation script.
+    # Claude CLI global MCP is intentionally empty. Each Claude tmux tab forks
+    # global servers, so heavyweight MCPs belong in task-specific tools instead.
+    # ~/.claude.json is writable by Claude Code at runtime (startup counts, tips
+    # history, caches, etc.) so keep it mutable and only replace mcpServers.
 
     # Xcode Agent MCP config (absolute Nix store paths required)
     # Xcode Agent ignores ~/.claude.json and ~/.claude/settings.json.
@@ -601,12 +652,7 @@ in
     # Idempotent: replaces .mcpServers entirely (not deep-merge) so removals
     # from Nix propagate correctly. All other keys are preserved.
     CLAUDE_JSON="$HOME/.claude.json"
-    MCP='${
-      builtins.toJSON {
-        XcodeBuildMCP = xcodeBuildMcpServer;
-        freee = freeeMcpServer;
-      }
-    }'
+    MCP='${builtins.toJSON { }}'
 
     if [ -f "$CLAUDE_JSON" ]; then
       ${pkgs.jq}/bin/jq --argjson mcp "$MCP" '.mcpServers = $mcp' "$CLAUDE_JSON" \

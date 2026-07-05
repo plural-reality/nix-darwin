@@ -32,6 +32,8 @@ import sys
 import os
 import json
 import re
+import glob
+import time
 
 MARKER_DIR = os.path.expanduser("~/.claude")
 
@@ -50,21 +52,13 @@ MUTATING_BASH_RE = re.compile(
     re.IGNORECASE,
 )
 
+# The reason is BOTH the model instruction AND the on-screen text (same channel),
+# so it must stay short or it buries the turn's real summary. This hook owns only
+# the TRIGGER; the full procedure is the SSOT in the `self-learn` skill — name it,
+# don't inline it (see docstring). Keep to ~1 line.
 REFLECT_REASON = (
-    "[self-learning nudge] このターンで実質的な作業(ファイル編集 / 外部書き込み等)を行いました。"
-    "停止する前に self-learn skill を一度だけ実施してください(詳細手順は self-learn skill が正本):\n"
-    "1) 補正: 今セッションで*依拠した注入メモリが現実と矛盾していた*ら、その1ファイルを直接 修正/削除し、"
-    "MEMORY.md ポインタも整合させ、readback 検証する(確認は取らない)。\n"
-    "2) 追加: 再発防止に値する一般化可能な学びを洗い出す(既に code/git/hook/memory が encode 済みは除外)。"
-    "(A)基本的な学び(ツールの落とし穴/手順/規約)は確認せず即 append。"
-    "(B)『一度叩けば恒久キャッシュできる高レバレッジな外部情報』(保管場所/canonical title/ID・"
-    "アカウント帰属/APIエンドポイント・認証経路/毎回聞き直す前提 等)だけ AskUserQuestion で取得＆保存の"
-    "可否を確認する(その場で値を尋ねる＝ユーザーをAPIとして叩くのも可)。\n"
-    "3) 保存先は canonical store(~/.claude/projects/-Users-tkgshn/memory/)・frontmatter 付き1ファイル・"
-    "MEMORY.md に1行ポインタ・readback 検証。❌ ~/.codex/memories には書かない"
-    "(Claude Code に自動注入されない＝次の自分に届かない)。\n"
-    "4) 一般化できる学びが無ければ『今回の学び: なし』とだけ述べて停止してよい。\n"
-    "(このnudgeはセッション1回限り。後から出た学びは『振り返って』で self-learn を再実行できます。)"
+    "[self-learn] 実質的な作業をしたので、停止前に self-learn skill を一度だけ実施"
+    "(手順は skill が正本)。学びが無ければ『今回の学び: なし』で停止可・セッション1回限り。"
 )
 
 # MEMORY.md の SessionStart 注入は「先頭200行 OR 25KB の早い方」までで、超過分は無言で全セッションから
@@ -73,16 +67,21 @@ REFLECT_REASON = (
 MEMORY_MD = os.path.expanduser("~/.claude/projects/-Users-tkgshn/memory/MEMORY.md")
 MEMORY_LINE_BUDGET = 200
 MEMORY_BYTE_BUDGET = 25 * 1024
+# 80% 先回り警告: 上限超過の検知は「脱落が起きた後」で手遅れなので、80% 到達で予防統合を促す。
+MEMORY_LINE_WARN = 160
+MEMORY_BYTE_WARN = 20 * 1024
 
 
-def memory_over_budget():
-    """(lines, bytes) if MEMORY.md exceeds the injection budget, else None."""
+def memory_budget_state():
+    """("over"|"warn", lines, bytes) if MEMORY.md is over / near the injection budget, else None."""
     try:
         with open(MEMORY_MD, "rb") as fh:
             data = fh.read()
         lines = data.count(b"\n") + 1
         if lines > MEMORY_LINE_BUDGET or len(data) > MEMORY_BYTE_BUDGET:
-            return (lines, len(data))
+            return ("over", lines, len(data))
+        if lines >= MEMORY_LINE_WARN or len(data) >= MEMORY_BYTE_WARN:
+            return ("warn", lines, len(data))
     except Exception:
         pass
     return None
@@ -170,6 +169,15 @@ def main():
     if not transcript_path or not os.path.exists(transcript_path):
         sys.exit(0)
 
+    # 掃除: 7日より古い per-session marker を削除(無限蓄積の対策)。fail-open。
+    try:
+        cutoff = time.time() - 7 * 86400
+        for p in glob.glob(os.path.join(MARKER_DIR, ".reflect-nudge-*.done")):
+            if os.path.getmtime(p) < cutoff:
+                os.remove(p)
+    except Exception:
+        pass
+
     marker = os.path.join(MARKER_DIR, ".reflect-nudge-%s.done" % session_id)
     if os.path.exists(marker):
         sys.exit(0)
@@ -191,13 +199,19 @@ def main():
         pass
 
     reason = REFLECT_REASON
-    over = memory_over_budget()
-    if over:
+    state = memory_budget_state()
+    if state and state[0] == "over":
         reason += (
             "\n⚠️ 圧縮必須: MEMORY.md が %d 行 / 約%dKB で SessionStart 注入上限(先頭200行 OR 25KB の"
             "早い方しか読まれない)を超過。超過分は無言で全セッションから脱落している。今ターンで self-learn の"
             "圧縮(重複ポインタ統合 / 陳腐ファイル削除 / 詳細を topic file へ退避)を必ず実施し、"
-            "200行 かつ 25KB 未満へ戻すこと。" % (over[0], over[1] // 1024)
+            "200行 かつ 25KB 未満へ戻すこと。" % (state[1], state[2] // 1024)
+        )
+    elif state and state[0] == "warn":
+        reason += (
+            "\n⚠️ 予防圧縮: MEMORY.md が %d 行 / 約%.1fKB と注入上限(200行/25KB)の80%%圏内。"
+            "脱落が起きる前に self-learn の圧縮(ポインタ統合・完了案件行の退役・関連ファイル統合)を実施すること。"
+            % (state[1], state[2] / 1024)
         )
     print(json.dumps({"decision": "block", "reason": reason}))
     sys.exit(0)

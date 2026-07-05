@@ -34,6 +34,19 @@
 #      (fetch mode); SCRAPBOX_SID (connect.sid cookie — all direct-API modes).
 set -euo pipefail
 
+# SID の実行時解決(2026-07-05): SID は静的シークレットではなく「ログイン済み Chrome
+# セッションの派生キャッシュ」。env 未設定なら (1) settings.local.json のキャッシュ →
+# (2) scrapbox-sid-refresh.sh(Chrome cookie 復号+検証+注入) の順で解決する。
+# これにより launchd / 対話シェル / hook のどの文脈でも env 固定に依存しない
+# (env への平文固定は /nix/store 経由の漏洩経路だったため除去済み)。
+if [[ -z "${SCRAPBOX_SID:-}" ]]; then
+  SCRAPBOX_SID=$(jq -r '.env.SCRAPBOX_SID // empty' "$HOME/.claude/settings.local.json" 2>/dev/null || true)
+  if [[ -z "${SCRAPBOX_SID:-}" && -x "$HOME/.claude/scripts/scrapbox-sid-refresh.sh" ]]; then
+    SCRAPBOX_SID=$(bash "$HOME/.claude/scripts/scrapbox-sid-refresh.sh" 2>/dev/null || true)
+  fi
+  [[ -n "${SCRAPBOX_SID:-}" ]] && export SCRAPBOX_SID
+fi
+
 PROJECT="plural-reality"
 HOP=1
 OUTPUT=""

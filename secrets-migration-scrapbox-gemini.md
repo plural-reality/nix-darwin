@@ -1,71 +1,39 @@
-# SOPS migration plan — SCRAPBOX_SID / GEMINI_API_KEY
+# SOPS migration — SCRAPBOX_SID / GEMINI_API_KEY
 
-Status: **wiring prepared (not yet activated)**. 2026-06-22.
+Status: **DONE (2026-07-05)** — activated with an architecture correction. 2026-06-22 の当初計画は
+「SID も SOPS へ」だったが、実装時に SID の性質(静的シークレットではなく回転するセッション cookie)
+に合わせて設計を修正した。
 
-## Why
+## Final architecture
 
-Two plaintext secret leaks exist today:
+| Secret | 正本 (canonical) | 消費経路 | 平文の置き場所 |
+|---|---|---|---|
+| `SCRAPBOX_SID` | **ログイン済み Chrome セッション**(cookie) | `scrapbox-sid-refresh.sh` が復号→`/api/users/me` 検証→ `~/.claude/settings.local.json`(0600) へ自己修復注入。`cosense-fetch` / `scrapbox-write` / `scrapbox-rename` は env → settings.local.json → self-heal の順で実行時解決 | settings.local.json のみ(runtime cache・0600・nix 外) |
+| `GEMINI_API_KEY` | **`secrets.yaml` (SOPS/age)** | 消費側(`gemini-image`)が env 未設定時に `sops decrypt --extract` で実行時復号 | なし |
 
-- `SCRAPBOX_SID` is set in `personal.nix` `home.sessionVariables` as plaintext, and
-  `modules/claude-code.nix` projects it into `~/.claude/settings.json` `env` — which is a
-  **world-readable `/nix/store` path**. It is also duplicated (with a DIFFERENT, likely
-  stale value) in the hand-edited `~/.claude/settings.local.json` `env`.
-- `GEMINI_API_KEY` is plaintext in `~/.claude/settings.local.json`.
+SID を SOPS に入れなかった理由: SID は失効・回転するため、SOPS に固定すると「第2の古い正本」になり
+self-heal(Chrome cookie 由来)と二重管理になる。canonical source of truth は1つ —
+静的シークレットは secrets.yaml、セッション cookie は Chrome。
 
-This violates the repo's own SSH-key SOPS doctrine (`prompt/engineering.md`): "鍵はディスクに平文で保存しない".
+## What was removed (the leak paths)
 
-## Existing machinery (already wired, reuse it)
+- `modules/base.nix` `home.sessionVariables.SCRAPBOX_SID`(**公開 repo に平文コミット**、かつ
+  world-readable な /nix/store の settings.json へ投影されていた)→ 削除。
+- `modules/claude-code.nix` `sharedAgentEnvNames` から `SCRAPBOX_SID` → 削除
+  (settings.json / codex config.toml への投影が止まる)。
+- `~/.claude/settings.local.json` の `env.GEMINI_API_KEY` → 削除(SOPS へ)。
+- `~/.codex/config.toml` の `GEMINI_API_KEY` / `SCRAPBOX_SID` 平文 → 削除。
 
-- `sops-nix` HM module is imported (`personal.nix` L103).
-- `secrets.yaml` (repo root + `/etc/nix-darwin/secrets.yaml`) is age-encrypted to
-  recipient `age13ld8gy634vgv4dxrwfh2scl92w4rr580dg43ae7a75as0eplcygq8ul9r0`; age key at
-  `~/.config/sops/age/keys.txt`.
-- Pattern in use: runtime `${pkgs.sops}/bin/sops decrypt --extract '["KEY"]' secrets.yaml`
-  (see the `gws` wrapper, `personal.nix` L136). No plaintext ever hits the store.
+## Rotation record
 
-## Activation steps (do when ready to rotate)
+- 漏洩していた旧 SID セッション(`s:SHE-0nIW…`、base.nix にコミットされていたもの)は
+  2026-07-05 に CSRF 付き `POST https://scrapbox.io/logout` で**失効済み**(`/api/users/me` が
+  `isGuest:true` を返すことを実測確認)。現用セッション(Chrome 由来)は無事。
+- `GEMINI_API_KEY` は現行値を SOPS へ移設。**ローテーション(AI Studio で再発行)は未実施** —
+  過去に平文でディスク/repo に存在した期間があるため、気になるなら再発行して
+  `sops set secrets.yaml '["gemini_api_key"]' '"<new>"'` で差し替える(消費側は無変更で追従)。
 
-1. **Rotate first** (both are already exposed):
-   - SCRAPBOX_SID: log into scrapbox.io in the browser, copy the fresh `connect.sid` cookie
-     (URL-decoded, starts with `s:`).
-   - GEMINI_API_KEY: regenerate in Google AI Studio; revoke the old key.
+## Note on git history
 
-2. **Add to secrets.yaml** (encrypted):
-   ```sh
-   cd /etc/nix-darwin   # or the upstream checkout
-   SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops set secrets.yaml '["scrapbox_sid"]' '"<NEW_SID>"'
-   SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops set secrets.yaml '["gemini_api_key"]' '"<NEW_KEY>"'
-   ```
-
-3. **Wire into nix** — render decrypted secrets to runtime files and export from the shell
-   instead of baking into the store. In `personal.nix` `home-manager.users.tkgshn`:
-   ```nix
-   sops.age.keyFile = "${config.home.homeDirectory}/.config/sops/age/keys.txt";
-   sops.defaultSopsFile = /etc/nix-darwin/secrets.yaml;
-   sops.secrets.scrapbox_sid = { };   # → renders to a 0400 file outside the store
-   sops.secrets.gemini_api_key = { };
-   ```
-   Then export at shell init (fish) so Claude Code / Codex / hooks inherit it at runtime:
-   ```nix
-   programs.fish.shellInit = ''
-     test -r "${config.sops.secrets.scrapbox_sid.path}"; and set -gx SCRAPBOX_SID (cat ${config.sops.secrets.scrapbox_sid.path})
-     test -r "${config.sops.secrets.gemini_api_key.path}"; and set -gx GEMINI_API_KEY (cat ${config.sops.secrets.gemini_api_key.path})
-   '';
-   ```
-
-4. **Remove the plaintext sources**:
-   - Delete `SCRAPBOX_SID` from `home.sessionVariables` in `personal.nix` (so it stops being
-     projected into the world-readable store `settings.json`). Remove it from
-     `sharedAgentEnvNames` in `modules/claude-code.nix` if present.
-   - Delete the `env` block (`GEMINI_API_KEY`, `SCRAPBOX_SID`) from
-     `~/.claude/settings.local.json`.
-
-5. `cd /etc/nix-darwin && ./apply`, then verify:
-   - `grep -c SCRAPBOX_SID ~/.claude/settings.json` → 0 (no longer in store).
-   - new shell: `echo $SCRAPBOX_SID | head -c 8` shows the rotated value.
-   - `cosense-fetch --me` succeeds (Scrapbox auth still works).
-
-## Note
-
-Until step 4 runs, Scrapbox auth keeps working off the current plaintext value, so this can
-be activated in one deliberate pass without an intermediate broken state.
+base.nix の平文 SID は git 履歴には残っている(HEAD からは除去済み・セッション自体は失効済みなので
+実害はない)。履歴スクラブは費用対効果が低いので不要([[reference_git_history_scrub_gotchas]])。

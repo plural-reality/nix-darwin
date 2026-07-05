@@ -106,9 +106,8 @@ in
       enable = true;
     };
 
-    # tmux: base が teammateMode="tmux" を全員に課す以上、base で「スクロールできる tmux」を保証する。
-    # 既定は mouse off + history 2000 行で、Claude Code の長い出力がすぐ流れて見返せなくなる。
-    # mouse on でホイール/ドラッグから copy-mode に入りスクロール、history は大幅に拡張。
+    # tmux: used by long-lived local sessions and Claude Code launch wrappers.
+    # Keep scrollback usable when attaching to existing work.
     tmux = {
       enable = true;
       mouse = true;
@@ -266,7 +265,10 @@ in
     PAGER = "less";
     LESS = "-R";
     SOPS_AGE_KEY_FILE = "${config.home.homeDirectory}/.config/sops/age/keys.txt";
-    SCRAPBOX_SID = "s:SHE-0nIW3e5263L9Hm4BeQf0aRSSQpFC.uVtaUJ7Wwu+6HtCS8tPE7Zb0CuAlLCtmNMWUGWp49Yo";
+    # SCRAPBOX_SID は置かない(2026-07-05 除去): 回転するセッション cookie を公開 repo +
+    # world-readable な /nix/store に固定するのが漏洩経路だった。正本はログイン済み Chrome
+    # (scrapbox-sid-refresh.sh が settings.local.json へ自己修復注入)。消費側の
+    # cosense-fetch が実行時に解決する。
     # gws encryption key in ~/.config/gws/, not macOS Keychain.
     # Why: Keychain ACL blocks GUI-subprocess access (Claude Code / Cursor), forcing re-auth.
     GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND = "file";

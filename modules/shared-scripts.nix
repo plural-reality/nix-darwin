@@ -261,9 +261,21 @@ let
   # The mjs file is a Nix symlink in the same dir, and node resolves imports
   # relative to the realpath of the script, so we copy it to a temp location
   # alongside node_modules to ensure correct resolution.
+# SID runtime resolution (shared by scrapbox-write / scrapbox-rename): the SID
+  # is a rotating Chrome-session cookie, not a static secret. Resolve
+  # env → settings.local.json cache → Chrome self-heal; never bake into the store.
+  scrapboxSidResolve = ''
+    if [ -z "''${SCRAPBOX_SID:-}" ]; then
+      SCRAPBOX_SID=$(${pkgs.jq}/bin/jq -r '.env.SCRAPBOX_SID // empty' "$HOME/.claude/settings.local.json" 2>/dev/null || true)
+      [ -z "$SCRAPBOX_SID" ] && SCRAPBOX_SID=$(bash "$HOME/.claude/scripts/scrapbox-sid-refresh.sh" 2>/dev/null || true)
+      export SCRAPBOX_SID
+    fi
+  '';
+
   scrapbox-write = pkgs.writeScriptBin "scrapbox-write" ''
     #!${pkgs.bash}/bin/bash
     SBDIR="$HOME/.local/share/scrapbox-write"
+    ${scrapboxSidResolve}
     # Ensure a writable copy of the script exists next to node_modules
     # (Nix symlinks into the store break ESM resolution)
     cp -Lf "$SBDIR/scrapbox-write.mjs" "$SBDIR/_run.mjs" 2>/dev/null || true
@@ -278,6 +290,7 @@ let
   scrapbox-rename = pkgs.writeScriptBin "scrapbox-rename" ''
     #!${pkgs.bash}/bin/bash
     SBDIR="$HOME/.local/share/scrapbox-write"
+    ${scrapboxSidResolve}
     cp -Lf "$SBDIR/scrapbox-rename.mjs" "$SBDIR/_run_rename.mjs" 2>/dev/null || true
     exec ${pkgs.nodejs}/bin/node "$SBDIR/_run_rename.mjs" "$@"
   '';
