@@ -62,7 +62,11 @@ class Handler(BaseHTTPRequestHandler):
 
 
 server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-threading.Timer(args.ttl, server.shutdown).start()
+# daemon=True: non-daemon だと回収後も TTL 満了までプロセスが残りポートを掴み続ける
+ttl_timer = threading.Timer(args.ttl, server.shutdown)
+ttl_timer.daemon = True
+ttl_timer.start()
 print(f"serving on http://127.0.0.1:{args.port}/ (ttl {args.ttl}s)", file=sys.stderr)
 server.serve_forever()
+server.server_close()
 print("collected" if out_path.exists() else "expired")
