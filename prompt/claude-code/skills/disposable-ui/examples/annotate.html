@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>要素アノテーション（⌘/Ctrl+クリック）</title>
+<style>
+  /* canonical テーマ(screen register)= plural-reality-design-system 単一トークン源を inline */
+  :root{
+    --bg:#0E0E10; --panel:#1C2127; --panel-2:#252A31; --border:#383E47;
+    --fg:#FFFFFF; --muted:#D4D9DF; --accent:#00E599; --accent-ui:#00C868; --accent-fg:#000000;
+    --rev:#FF6B4A; /* アノテーション専用色(ブランド色と分離) */
+    --radius:4px; --radius-panel:16px; --shadow:0 1px 0 rgba(255,255,255,.02), 0 8px 30px rgba(0,0,0,.45);
+    --mono:"Geist Mono","SF Mono",Menlo,monospace;
+    --paper:#FFFFFF; --ink:#111111; --line:#E5E5E5;
+    --num:"Helvetica Neue",Helvetica,Arial,sans-serif; /* 数字=選定フォント */
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:var(--bg);color:var(--fg);}
+  body{font-family:"Helvetica Neue",Helvetica,Arial,"Hiragino Kaku Gothic ProN","Zen Kaku Gothic New",sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1180px;margin:0 auto;padding:26px 20px 140px;display:grid;grid-template-columns:1fr 320px;gap:24px;align-items:start;}
+  .head{grid-column:1/-1;}
+  .kicker{font-size:11px;letter-spacing:.26em;color:var(--accent);font-weight:600;text-transform:uppercase;font-family:var(--mono);}
+  h1{font-size:22px;font-weight:600;margin:6px 0 4px;letter-spacing:.2px;}
+  .lead{color:var(--muted);font-size:13px;margin:0;}
+  .hint{display:inline-flex;gap:8px;align-items:center;margin-top:12px;font-size:12.5px;color:var(--muted);background:var(--panel);border:1px solid var(--border);border-radius:999px;padding:7px 14px;}
+  .kbd{font-family:var(--mono);font-size:11px;background:var(--panel-2);border:1px solid var(--border);border-radius:5px;padding:1px 7px;}
+
+  /* ── 注釈対象=実物アーティファクト(自分のスタイルで描画。ここでは light な資料例) ── */
+  #stage{min-width:0;}
+  .doc{background:var(--paper);color:var(--ink);border:1px solid #b6b6b6;border-radius:8px;box-shadow:var(--shadow);padding:44px 52px;font-size:14.5px;}
+  .doc .brand{display:flex;justify-content:flex-end;text-align:right;line-height:1.35;color:#525252;font-size:12px;margin-bottom:26px;}
+  .doc .brand b{color:#111;font-size:13px;font-weight:600;display:block;}
+  .doc h2{font-size:26px;font-weight:600;letter-spacing:-.01em;margin:0 0 6px;}
+  .doc .sub{color:#525252;font-size:14px;margin:0 0 26px;}
+  .doc h3{font-size:15px;font-weight:600;margin:26px 0 10px;padding-bottom:5px;border-bottom:1px solid var(--line);}
+  .kpis{display:flex;flex-wrap:wrap;gap:12px 40px;align-items:baseline;font-family:var(--num);font-feature-settings:"tnum" 1,"lnum" 1;}
+  .kpi{font-size:44px;font-weight:400;letter-spacing:-.02em;line-height:1;}
+  .kpi .u{font-size:16px;color:#525252;margin-left:5px;}
+  .kpi .cap{display:block;font-family:var(--mono);font-size:9.5px;color:#525252;letter-spacing:.08em;text-transform:uppercase;margin-top:8px;font-feature-settings:normal;}
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:8px;}
+  .card{border:1px solid var(--line);border-radius:6px;padding:16px 18px;}
+  .card .t{font-weight:600;font-size:14px;margin-bottom:4px;}
+  .card .d{font-size:12.5px;color:#525252;line-height:1.6;}
+  /* モノクロ棒(色に依存しない=印刷セーフ) */
+  .chart{display:flex;align-items:flex-end;gap:18px;height:120px;margin-top:8px;padding-bottom:22px;border-bottom:1px solid var(--line);position:relative;}
+  .bar{width:44px;background:#111;position:relative;}
+  .bar.past{background:transparent;border:1px solid #111;}
+  .bar .v{position:absolute;top:-18px;left:0;right:0;text-align:center;font-family:var(--num);font-size:12px;font-feature-settings:"tnum" 1;}
+  .bar .x{position:absolute;bottom:-20px;left:0;right:0;text-align:center;font-family:var(--mono);font-size:10px;color:#525252;}
+
+  /* ── アノテーション UI ── */
+  #anno-layer{position:absolute;inset:0;pointer-events:none;z-index:40;}
+  .anno-pin{position:absolute;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50% 50% 50% 2px;background:var(--rev);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.4);pointer-events:auto;cursor:pointer;font-family:var(--mono);}
+  .anno-hl{outline:2px solid var(--rev)!important;outline-offset:2px;background:rgba(255,107,74,.08);}
+  .anno-pop{position:absolute;z-index:60;width:260px;background:#fff;color:#111;border:1px solid #d0d0d0;border-radius:10px;box-shadow:0 12px 34px rgba(0,0,0,.3);padding:11px;pointer-events:auto;}
+  .anno-pop .loc{font-size:10.5px;color:#8a8a8a;margin-bottom:6px;line-height:1.4;}
+  .anno-pop textarea{width:100%;min-height:64px;border:1px solid #d6d6d6;border-radius:7px;padding:7px 9px;font:inherit;font-size:12.5px;resize:vertical;}
+  .anno-pop .row{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;}
+  .anno-pop button{font:inherit;font-size:12px;border-radius:6px;padding:6px 12px;cursor:pointer;border:1px solid #d0d0d0;background:#fff;}
+  .anno-pop button.pri{background:var(--accent);border-color:var(--accent);color:#000;font-weight:600;}
+
+  /* サイドバー(回収) */
+  #bar{position:sticky;top:20px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-panel);padding:16px;box-shadow:var(--shadow);}
+  #bar .bh{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:600;margin-bottom:10px;}
+  #bar .bh b{color:var(--accent);font-family:var(--mono);}
+  #list{display:flex;flex-direction:column;gap:8px;max-height:46vh;overflow:auto;}
+  .li2{display:flex;gap:9px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:9px 10px;font-size:12px;cursor:pointer;}
+  .li2 .n{flex:none;width:20px;height:20px;border-radius:50% 50% 50% 2px;background:var(--rev);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:var(--mono);}
+  .li2 .lc{color:var(--muted);font-size:10px;display:block;margin-bottom:2px;}
+  .li2 .del{margin-left:auto;color:#8b929b;flex:none;}
+  #list:empty::after{content:"⌘/Ctrl+クリックで注釈を付けてください";color:var(--muted);font-size:11.5px;}
+  .foot{margin-top:12px;}
+  textarea#overall{width:100%;min-height:60px;border:1px solid var(--border);border-radius:var(--radius);background:var(--panel-2);color:var(--fg);padding:8px 10px;font:inherit;font-size:12.5px;resize:vertical;}
+  #send{width:100%;margin-top:10px;background:var(--accent);color:#000;border:0;padding:11px;font-size:14px;font-weight:650;border-radius:var(--radius);cursor:pointer;}
+  #copy{width:100%;margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--muted);padding:9px;font-size:12.5px;border-radius:var(--radius);cursor:pointer;}
+  #status{font-size:11.5px;color:var(--muted);margin-top:8px;text-align:center;}
+  #done{display:none;font-size:12.5px;color:var(--accent);text-align:center;margin-top:10px;}
+  #pasteBox{display:none;width:100%;margin-top:8px;min-height:80px;font-size:11px;}
+  @media(max-width:900px){.wrap{grid-template-columns:1fr;}#bar{position:static;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div class="kicker">disposable-ui / 要素アノテーション</div>
+    <h1>実物を描画して、指してフィードバックする</h1>
+    <p class="lead">説明ではなく実物（下の資料）を描画しています。HTML の強みそのまま。<b>気になる箇所を ⌘/Ctrl＋クリック</b>して、その要素に直接コメントを付けてください。</p>
+    <div class="hint"><span>💬</span><span><span class="kbd">⌘</span>（または <span class="kbd">Ctrl</span>）＋クリック</span> → その要素にピン＋コメント／右の <span class="kbd">送信</span> で回収</div>
+  </div>
+
+  <!-- ==== 注釈対象。ここに実物(資料/デザイン/差分/選択肢)を描画する。data-doc で名前を付けると locator に入る ==== -->
+  <div id="stage">
+    <div class="doc" data-doc="プロダクト概要（サンプル）">
+      <div class="brand"><span><b>多元現実</b>plural-reality.com</span></div>
+      <h2>倍速会議</h2>
+      <p class="sub">自治体の会議プロセスを AI で構造化・効率化する SaaS。</p>
+
+      <h3>主要指標</h3>
+      <div class="kpis">
+        <span class="kpi">¥278<span class="u">M</span><span class="cap">年間経常収益</span></span>
+        <span class="kpi">68<span class="u">件</span><span class="cap">導入自治体</span></span>
+        <span class="kpi">70<span class="u">%</span><span class="cap">会議業務の削減</span></span>
+        <span class="kpi">2.5<span class="u">倍</span><span class="cap">発言量の増加</span></span>
+      </div>
+
+      <h3>成長</h3>
+      <div class="chart">
+        <div class="bar past" style="height:34%"><span class="v">18</span><span class="x">2024</span></div>
+        <div class="bar past" style="height:58%"><span class="v">42</span><span class="x">2025</span></div>
+        <div class="bar" style="height:100%"><span class="v">68</span><span class="x">2026</span></div>
+      </div>
+
+      <h3>提供価値</h3>
+      <div class="cards">
+        <div class="card"><div class="t">とりまとめの自動化</div><div class="d">録音から中間・最終報告書までを生成。作成時間を約1週間から数十秒に短縮。</div></div>
+        <div class="card"><div class="t">対話型の意見収集</div><div class="d">紙の改善提案シートを対話型 AI に置換し、内省を保ったまま多くの情報を集める。</div></div>
+        <div class="card"><div class="t">ファシリテーション支援</div><div class="d">議論の軌道修正と論点提示で、専門技能がなくても会議を運営しやすくする。</div></div>
+        <div class="card"><div class="t">横展開・標準化</div><div class="d">各自治体が自走できる手順書とパッケージを整備し、汎用ノウハウを展開する。</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==== 回収サイドバー ==== -->
+  <div id="bar">
+    <div class="bh"><span>フィードバック <b id="cnt">0</b></span><span class="mono" style="font-size:10px;color:#8b929b;font-family:var(--mono)">⌘/Ctrl+クリック</span></div>
+    <div id="list"></div>
+    <div class="foot">
+      <textarea id="overall" placeholder="全体コメント（任意）"></textarea>
+      <button id="send">送信</button>
+      <button id="copy">回答をコピー</button>
+      <div id="status"></div>
+      <div id="done">回収しました。ターミナルに戻ると続きます。</div>
+      <textarea id="pasteBox" readonly></textarea>
+    </div>
+  </div>
+</div>
+
+<div id="anno-layer"></div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (s) => document.querySelector(s);
+
+  // ── disposable-ui collect(transport 非依存 emit) ──
+  const collect = ({ answers, uiPattern }) => {
+    const payload = { schema_version: "1.0", collected_at: new Date().toISOString(), answers, ...(uiPattern ? { ui_pattern: uiPattern } : {}) };
+    const text = JSON.stringify(payload, null, 2);
+    const submitUrl = (window.__COLLECT__ && window.__COLLECT__.submitUrl) || "/submit";
+    const asPrompt = "以下は disposable-ui(要素アノテーション)の回答です。JSON を回収して反映してください:\n\n```json\n" + text + "\n```";
+    const clip = () => navigator.clipboard.writeText(asPrompt).then(() => ({ ok: true, via: "clipboard" }), () => ({ ok: false, via: "clipboard", text: asPrompt }));
+    return fetch(submitUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: text }).then((r) => (r.ok ? { ok: true, via: "post" } : clip()), () => clip());
+  };
+
+  // ── canonical アノテーションエンジン(再利用可能・任意の root に mount) ──
+  const mountAnnotator = (rootSel) => {
+    const root = $(rootSel), layer = $("#anno-layer"), list = $("#list");
+    let annos = [], seq = 0, pop = null;
+    const locate = (el) => {
+      const doc = el.closest("[data-doc]");
+      let h = "", n = el;
+      while (n && n !== doc && n !== root) {
+        let p = n.previousElementSibling;
+        while (p) { if (/^H[1-6]$/.test(p.tagName)) { h = p.textContent.trim(); break; } p = p.previousElementSibling; }
+        if (h) break; n = n.parentElement;
+      }
+      const name = doc ? doc.getAttribute("data-doc") : "";
+      const snippet = (el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 40);
+      return { path: [name, h].filter(Boolean).join(" › "), snippet, tag: el.tagName.toLowerCase() };
+    };
+    const place = (a) => { const r = a.el.getBoundingClientRect(); a.pin.style.left = (r.left + scrollX + 2) + "px"; a.pin.style.top = (r.top + scrollY + 2) + "px"; };
+    const closeP = () => { if (pop) { pop.remove(); pop = null; } };
+    const render = () => {
+      $("#cnt").textContent = annos.length;
+      list.replaceChildren(...annos.map((a) => {
+        const li = document.createElement("div"); li.className = "li2";
+        li.innerHTML = '<span class="n">' + a.n + '</span><span style="min-width:0"><span class="lc">' + a.loc.path + (a.loc.snippet ? ' › 「' + a.loc.snippet + '」' : '') + '</span><span class="cm"></span></span><span class="del">✕</span>';
+        li.querySelector(".cm").textContent = a.comment;
+        li.onclick = (e) => { if (e.target.classList.contains("del")) { rm(a.n); return; } a.pin.scrollIntoView({ block: "center", behavior: "smooth" }); };
+        return li;
+      }));
+    };
+    const rm = (n) => { const a = annos.find((x) => x.n === n); if (!a) return; a.pin.remove(); a.el.classList.remove("anno-hl"); annos = annos.filter((x) => x.n !== n); render(); };
+    const add = (el, x, y) => {
+      closeP(); const loc = locate(el);
+      pop = document.createElement("div"); pop.className = "anno-pop";
+      pop.style.left = Math.min(x, scrollX + innerWidth - 280) + "px"; pop.style.top = (y + 8) + "px";
+      pop.innerHTML = '<div class="loc">' + loc.path + (loc.snippet ? ' › 「' + loc.snippet + '」' : '') + '</div><textarea placeholder="この箇所へのコメント…"></textarea><div class="row"><button data-x>取消</button><button class="pri" data-ok>追加</button></div>';
+      layer.appendChild(pop); const ta = pop.querySelector("textarea"); ta.focus();
+      pop.querySelector("[data-x]").onclick = closeP;
+      const save = () => { const c = ta.value.trim(); if (!c) { closeP(); return; } seq++; const n = seq; const pin = document.createElement("div"); pin.className = "anno-pin"; pin.textContent = n; layer.appendChild(pin); el.classList.add("anno-hl"); const a = { n, el, comment: c, loc, pin }; annos.push(a); place(a); render(); closeP(); };
+      pop.querySelector("[data-ok]").onclick = save; ta.onkeydown = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") save(); };
+    };
+    document.addEventListener("click", (e) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.target.closest(".anno-pop") || e.target.closest("#bar")) return;
+      const el = e.target.closest(`${rootSel} *`); if (!el) return;
+      e.preventDefault(); e.stopPropagation(); add(el, e.pageX, e.pageY);
+    }, true);
+    addEventListener("scroll", () => annos.forEach(place), { passive: true });
+    addEventListener("resize", () => annos.forEach(place));
+    return { get: () => annos.map((a) => ({ n: a.n, locator: a.loc.path, snippet: a.loc.snippet, comment: a.comment })) };
+  };
+
+  const annotator = mountAnnotator("#stage");
+
+  const showDone = (res) => {
+    $("#send").style.display = "none"; $("#copy").style.display = "none"; $("#overall").style.display = "none";
+    $("#done").style.display = "block"; $("#status").textContent = "";
+    if (res.via === "clipboard") { $("#done").textContent = res.ok ? "クリップボードにコピーしました。貼り戻してください。" : "コピー失敗。下の枠を全選択して貼ってください。"; if (!res.ok) { const b = $("#pasteBox"); b.style.display = "block"; b.value = res.text; b.select(); } }
+  };
+  const submit = () => {
+    const annotations = annotator.get(), overall = $("#overall").value.trim();
+    if (!annotations.length && !overall) { $("#status").textContent = "⌘/Ctrl+クリックでコメントを付けてください"; return; }
+    $("#status").textContent = "送信中…";
+    collect({ answers: { annotations, overall }, uiPattern: "element-annotation" }).then(showDone);
+  };
+  $("#send").onclick = submit;
+  $("#copy").onclick = submit;
+})();
+</script>
+</body>
+</html>
