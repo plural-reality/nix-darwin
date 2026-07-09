@@ -9,7 +9,9 @@
 //                  「第2・第4土曜の前日(金)」は曜日繰り返しで表せない → このモデルが必要。"alarm":{...}
 //   両方未指定なら日付のみ期日（通知はOS既定／不確実）。両方指定すれば「期日時刻＋追加アラーム」。
 //
-// usage:  swift recurring.swift < spec.json
+// usage:  evkit reminders.recurring < spec.json
+//   (直接 `swift recurring.swift` を叩かない。TCC の責任プロセスが呼び出し元になり許可が失効する。
+//    evkitd = 署名済み・Aqua 常駐のヘルパーがこのスクリプトを exec する。詳細は scripts/claude/evkit/)
 // spec:
 // { "marker":"[stable]", "listTitle":"ゴミ捨て", "replaceIncompleteMatchingMarker":true,
 //   "items":[

@@ -9,11 +9,11 @@ description: 目黒区民センター体育館プールの個人利用スケジ�
 
 このスキルは「プールPDF→ルール解釈→汎用イベントJSON」までを担当し、**カレンダー書込みは汎用窓口 [apple-calendar] に委譲**する(iCloud固定・位置情報・洗い替えはそちらの責務)。
 
-パイプライン: `curl PDF → pdftotext → 解釈(このskill) → 汎用JSON → ~/.claude/scripts/calendar/apply.swift`。解釈以外は決定的。
+パイプライン: `curl PDF → pdftotext → 解釈(このskill) → 汎用JSON → evkit calendar`。解釈以外は決定的。
 
 ## 定数
 - カレンダー名: `目黒区民プール`（iCloud。屋内/屋外はイベント名接頭辞 `[屋内]`/`[屋外]` で区別）
-- 書込み: 汎用アプライヤ `~/.claude/scripts/calendar/apply.swift`（apple-calendar スキルのIO境界）
+- 書込み: `evkit calendar`（apple-calendar スキルのIO境界。実装は evkitd が exec する apply.swift）
 - 中間JSON: `~/.claude/scripts/meguro-pool/<YYYY-MM>.json`（出力例: `2026-06.json`）
 - 位置(defaultLocation・確定値): `{ "title": "目黒区民センター体育館プール", "address": "東京都目黒区目黒2-4-36", "lat": 35.635733, "lon": 139.708242 }`
 - 当月: `date +%Y` と `date +%m`
@@ -51,7 +51,7 @@ pdftotext -layout /tmp/meguro-center.pdf /tmp/meguro-center.txt
 
 ### 5. 適用（洗い替え）= apple-calendar に委譲
 - `~/.claude/scripts/meguro-pool/<YYYY-MM>.json` に Write（schema 下記、`mode: "replace-month"`）。
-- `swift ~/.claude/scripts/calendar/apply.swift ~/.claude/scripts/meguro-pool/<YYYY-MM>.json` を実行。
+- `evkit calendar < ~/.claude/scripts/meguro-pool/<YYYY-MM>.json` を実行。返る JSON の `.ok` を確認。
 - 出力 `applied N / removed M / mode=replace-month / source=iCloud` を確認（source が iCloud であること）。
 
 ### 6. 失敗時

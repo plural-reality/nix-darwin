@@ -42,17 +42,20 @@ Use this skill when the user wants reminders that fire near physical places: ban
 
 ## Script
 
-Use the bundled EventKit adapter:
+Always go through `evkit`, never invoke the Swift adapter directly:
 
 ```bash
-swift ~/.codex/skills/apple-reminders-geofence/scripts/geofence_reminders.swift < spec.json
+evkit reminders.geofence < spec.json
 ```
 
-The same script works from the canonical repo path before projection:
+`evkit` forwards the spec to `evkitd`, a signed helper that runs as a LaunchAgent in the MacBook Air's
+Aqua session and owns the Reminders TCC grant. Calling `swift geofence_reminders.swift` directly makes
+the *caller* (Claude Code, whose path changes on every update) the TCC responsible process, so the grant
+silently evaporates; over SSH/tmux there is no Aqua session at all and the request is denied without ever
+showing a prompt. `geofence_reminders.swift` remains the canonical implementation — it is what `evkitd`
+execs — but it is not the entry point.
 
-```bash
-swift prompt/claude-code/skills/apple-reminders-geofence/scripts/geofence_reminders.swift < spec.json
-```
+The response is JSON: check `.ok`, then `.stdout` for the adapter's own verification summary.
 
 Input schema:
 

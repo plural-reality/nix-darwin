@@ -24,12 +24,12 @@ Q2. 「やること(タスク)」で、トリガーは？
 
 ### A. カレンダー（時間で起こる）→ [apple-calendar]
 - 使う時: 会議/予約/イベント、開館・営業の「枠」、締切そのものを時間ブロックで置きたい。
-- 委譲: `apple-calendar` スキル＝`swift ~/.claude/scripts/calendar/apply.swift <json>`。**iCloud固定・位置情報必須・時刻指定**はそちらが担保。
+- 委譲: `apple-calendar` スキル＝`evkit calendar < json`。**iCloud固定・位置情報必須・時刻指定**はそちらが担保。
 - 例: 「来週火曜15時に田中さんと打ち合わせ(渋谷)」「目黒区民プールの個人利用枠」。
 
 ### B. 場所リマインダー（特定地点に着いたら）→ [apple-reminders-geofence]
 - 使う時: 「この銀行に寄ったら/この郵便局の前を通ったら〜する」など**少数の特定地点**(iOS同時ジオフェンス上限 ≈20)。
-- 委譲: `apple-reminders-geofence` スキル＝`swift ~/.claude/skills/apple-reminders-geofence/scripts/geofence_reminders.swift < spec.json`（marker冪等・proximity=enter・既定リスト iCloud「Everything」）。座標は explicit、半径は行動境界から(150-250m建物/300-550m徒歩圏)。
+- 委譲: `apple-reminders-geofence` スキル＝`evkit reminders.geofence < spec.json`（marker冪等・proximity=enter・既定リスト iCloud「Everything」）。座標は explicit、半径は行動境界から(150-250m建物/300-550m徒歩圏)。
 - 時刻だけのリマインダー(場所なし)もここ（Apple Reminders の due）。
 
 ### C. カテゴリ近接（どこかの◯◯に近づいたら）→ [project_geo_reminder_app]（geo-reminder アプリ）

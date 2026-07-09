@@ -5,7 +5,9 @@ description: Apple カレンダーにイベントを「正しく」追加・更�
 
 # apple-calendar — Apple カレンダー書込みの唯一の窓口
 
-Claude / Codex が Apple カレンダーにイベントを追加・更新するときは **必ずこのスキル(＝下の `apply.swift`)を通す**。直接 osascript でイベントを作らない（位置情報の座標ピンを付けられず、新規カレンダーが On My Mac に落ちて iPhone 同期しないため）。
+Claude / Codex が Apple カレンダーにイベントを追加・更新するときは **必ずこのスキル(＝下の `evkit calendar`)を通す**。直接 osascript でイベントを作らない（位置情報の座標ピンを付けられず、新規カレンダーが On My Mac に落ちて iPhone 同期しないため）。
+
+**`swift apply.swift` を直接叩かない。** TCC はカレンダー許可を「責任プロセスの code identity」に紐づけるため、Claude Code から直接叩くと許可が claude のバージョン付きパスに付き、更新のたびに失効する。さらに SSH/tmux は Aqua セッションでないので許可ダイアログを描画できず自動拒否される。`evkit` は MacBook Air 常駐の署名済みヘルパー `evkitd` に委譲するので、どのホスト・どのセッションからでも通る。`apply.swift` はその evkitd が exec する実装であり、呼び出し口ではない。
 
 ## 不変の契約（必ず守る）
 1. **iCloud に入れる** — 新規カレンダーは iCloud(CalDAV)ソースに作る。On My Mac は iPhone と同期しない。`apply.swift` が自動でそうする。
@@ -15,8 +17,12 @@ Claude / Codex が Apple カレンダーにイベントを追加・更新する�
 
 ## 使い方
 1. 汎用イベントJSONを組み立てて一時ファイルに Write（schema 下記）。
-2. `swift ~/.claude/scripts/calendar/apply.swift <events.json>`（`-` で stdin も可）。
-3. 出力 `applied N / removed M / mode=… / source=iCloud` を確認（source が iCloud であること）。
+2. `evkit calendar < events.json`
+3. 返る JSON の `ok` が true で、`stdout` が `applied N / removed M / mode=… / source=iCloud` であることを確認（source が iCloud であること）。
+
+`ok:false` かつ `calendar access not granted` が返ったら、TCC 許可が剥がれている。MacBook Air の画面で
+システム設定 → プライバシーとセキュリティ → カレンダー → **EventKitBridge** をフルアクセスにする（原則一度きり）。
+Air がスリープ／到達不能なら ssh が失敗する。これは正しい失敗であり、黙って別経路に落ちてはいけない。
 
 ## 汎用イベントJSON schema
 ```json
@@ -46,7 +52,14 @@ Claude / Codex が Apple カレンダーにイベントを追加・更新する�
 - **定期洗い替え**（外部ソースから当月分を貼り直す等）: `replace-month` / `replace-range`。冪等。
 
 ## 消費者（このスキルに依存している例）
-- `meguro-pool-update`（プールPDF→往復コースルール→この schema→ apply.swift）。新しいカレンダー自動化も同様にこの窓口へ委譲する。
+- `meguro-pool-update`（プールPDF→往復コースルール→この schema→ `evkit calendar`）。新しいカレンダー自動化も同様にこの窓口へ委譲する。
+
+## 層の分担（どこに何が住むか）
+| 層 | 実体 | 責務 |
+|---|---|---|
+| client | `evkit`（PATH） | spec を包んで Air のソケットへ流すだけ。TCC 権限不要。mini からは ssh で縮退 |
+| 権限境界 | `evkitd`（署名済み `EventKitBridge.app`, Air の LaunchAgent） | TCC の責任プロセス。許可を恒久保持し、実装を exec する |
+| 実装 | `apply.swift` | iCloud固定・geocode・mode の「正しさ」。ここが canonical |
 
 ## いつ「カレンダーでない」か（兄弟バックエンド）
 時間で起こる予定はここ。**やること(タスク)で場所がトリガー**なら別バックエンド。判断は `remind-or-schedule`(ルーター)に従う:
