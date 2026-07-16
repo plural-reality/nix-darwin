@@ -393,6 +393,18 @@ in
   home.shellAliases.claude = "claude --settings '{\"ultracode\":true}'";
 
   home.file = {
+    # Air delegates `claude` and `codex` to the always-on mini. These are the
+    # only launcher dependencies owned by the generated shell aliases; legacy
+    # hook scripts remain outside this projection until their separate migration.
+    ".claude/scripts/claude-mini.sh" = {
+      source = ../scripts/claude/claude-mini.sh;
+      executable = true;
+    };
+    ".claude/scripts/run-on-mini.sh" = {
+      source = ../scripts/claude/run-on-mini.sh;
+      executable = true;
+    };
+
     # Gemini
     ".gemini/GEMINI.md".text = expandTemplate {
       templateScope = ../prompt;
