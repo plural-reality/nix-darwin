@@ -1,6 +1,6 @@
 ---
 name: wip-crawl
-description: Scrapbox 3 project を横断して未処理の [claude code WIP.icon]（=tkgshn の未解決の問い）を検知し、各ページをディープリサーチ→灰色 [( ] で in-place 回答→アイコン削除→？タイトルは →結論+☑️ rename→再フェッチ検証 まで自動処理する。処理結果はダイジェストに記録し daily-report に乗せる。source of truth は Scrapbox 自身（アイコンが消える=処理済=キューから外れる self-draining queue）。トリガー:「/wip-crawl」「WIPをクロール」「scbのWIPを処理」「未処理の問いを調べて」「scb-mention-deep-research」、および launchd からの headless 起動。
+description: Scrapbox 3 project を横断して未処理の [claude code WIP.icon] を全部検知し(問い型=ディープリサーチ回答・委任型=サブスク内で完結する作業は実行まで)、加えて ToDoカンバン「LLMがやれること」todo キューを処理する。毎時32分の launchd 実行。着手⏳cc:・完了☑️・人間待ち🚨(語彙正本=scrapbox-status)。処理結果は digest+Push通知+daily-report。source of truth は Scrapbox 自身(self-draining queue)。トリガー:「/wip-crawl」「WIPをクロール」「scbのWIPを処理」「未処理の問いを調べて」、および launchd からの headless 起動。
 ---
 
 # wip-crawl — Scrapbox の [claude code WIP.icon] 未処理キューを自律処理する
@@ -19,13 +19,18 @@ wip-crawl.mjs --json   →  各ページを処理(リサーチ→灰色書込→
 ```sh
 wip-crawl --json   # nix管理の PATH binary。未apply環境では node <nix-darwin>/scripts/wip-crawl.mjs --json
 ```
-出力 = 処理対象 `[{project,title,url,wipCount,questions}]`。in-scope の定義（`inScopeLines`）= **行頭の非空白トークンが `[claude code WIP.icon]`**。除外済み: `整備中…`（進行中タスク）/ 自動取込ログ(`from [claude codeセッション]`) / アイコン定義ページ / 全角 `［…］` 引用。**1回あたり上限（既定5件）**で処理し、超過は次回へ（`log()`/digest に残す）。
+出力 = 処理対象 `[{project,title,url,wipCount,questions}]`。in-scope の定義（`inScopeLines`）= **実アイコン `[claude code WIP.icon]` を含む行すべて**（行頭・行中・行末を問わない。2026-07-24「全部検知」決定）。除外は機械的ノイズのみ: 自動取込ログ(`from [claude codeセッション]`) / アイコン定義ページ。問い型/委任型/対象外の**分類は step 2 の LLM 再判定が担う**。**1回あたり上限（問い型5件・委任型2件）**で処理し、超過は次回へ（`log()`/digest に残す）。
+
+加えて **ToDoカンバン(plural-reality)の「LLMがやれること」`[* todo（…]` 直下の項目**も委任キューとして毎回検知する（`cosense-fetch "ToDoカンバン" -p plural-reality -r` → todo セクションの項目行を抽出）。
 
 ## 2. ページごとの処理（4回の実運用で確立した手順）
 各対象 `{project,title}` に対して:
 
 1. **取得**: `cosense-fetch -r "<title>" -p <project> -o page.json`（特殊文字タイトルは redirect でなく `-o` 必須）。`.lines[].text` を ground truth に。
-2. **スコープ再判定**: アイコン行の直前数行に明確な問い（`？`/`[tkgshn.icon]`）があるか。曖昧・進行中タスク（整備中）は **skip**（digest に skipped で残す）。
+2. **分類（旧: スコープ再判定）**: アイコン行とその前後から3値に分類する。
+   - **問い型**（`？`/`[tkgshn.icon]` の明確な疑問）→ step 3 以降のディープリサーチ回答へ。
+   - **委任型**（「〜して」「〜を作る/調べる/転記する」等の作業指示、および `整備中` 等の進行中タスクでアイコンが付いたもの）→ 下の「委任タスクの実行契約」へ。
+   - **対象外**（アイコンの引用・解説・意図不明）→ **skip**（digest に skipped+理由で残す。沈黙のドロップ禁止）。
 3. **ディープリサーチ**: 内部(Scrapbox/該当ページの越境リンク・内部 transcript)＋外部(Web)。多角度の web-search-researcher を並列 fan-out → 敵対的検証 → 統合（Workflow 推奨）。一次ソース＋出典URLを必ず確保。途中で出た誤情報は除外。
 4. **回答の作文（既定=中:結論＋根拠＋誤解の出所/含意）**:
    - AI 散文は灰色 `[( …]`。**人間の素の行（`from …`/`…？[tkgshn.icon]`/`要リサーチ` 等）は触らず verbatim 保全**。
@@ -39,6 +44,27 @@ wip-crawl --json   # nix管理の PATH binary。未apply環境では node <nix-d
 7. **検証（必須）**: `cosense-fetch -r "<新title>" -p <project> -o final.json` を保存し、`jq -r '.lines[].text'` で **WIPアイコン=0 / 回答反映 / 人間の素行 intact / id 保持** を実数確認。未反映ならリトライ。
 8. **digest 追記**: 下記 jsonl に1行追記。
 
+## 2.5 委任タスクの実行契約（2026-07-24 ユーザー決定・ask-page 回収）
+
+委任型 WIP と カンバン todo キューの項目は、以下の契約で**実行まで**進める。
+
+**ライフサイクル（語彙正本 = [[scrapbox-status]]）**:
+1. **着手**: カンバン todo 項目は `wip` へ移動し、該当インデント以下を別ページに切り出す。切り出し/対象ページのタイトルは `⏳cc: {タイトル}`（`scrapbox-rename` で。素の write で新タイトルページを作らない）。
+2. **実行**: headless claude(サブスク枠)内で完結する作業は最後までやる — Scrapbox 読み書き・Web 調査・ローカルファイル/リポジトリ読取・分析・作文。
+3. **完了**: `☑️{結論がタイトル単独で分かる断定形}` に rename（cc: 外す）+ カンバン `done` へ移動 + 灰色 `[(` サマリー。
+4. **人間待ち**: `🚨{タイトル}` に rename（cc: 外す）+ `done` へ移動 + 何を待っているかを灰色で明記。
+
+**やってはいけない（実行せず 🚨 に落とすもの）**:
+- 外部への送信・公開: メール送信、Beeper/LINE/SNS 送信、カレンダー変更、外部サービスへの投稿・公開設定変更
+- 支出・契約・アカウント操作、システム設定の変更（nix apply 等）
+- ページ本文に「メール送信禁止」等のインライン指示がある場合はそれが最優先
+
+**曖昧な指示（A+C 併用）**:
+- 合理的に推測できる範囲 → **前提を灰色で明記して実行**（「〜と解釈して進めた」を残す。やり直し可能性を許容）
+- 人間の選好・権限・対外関係の判断が必要 → `🚨` + 灰色で質問を書き込む（回答が書かれたら次ランが拾って再開）
+
+**通知（各イベント時に PushNotification ツールで短文送信）**: 着手「⏳cc: {title} に着手」/ 完了「☑️ {結論}」/ 人間待ち「🚨 {title}: {何を待つか}」。処理が1件以上あったランは、最後に beeper-send.sh で **自分宛(Note to Self)チャット**へ1行サマリーを送る（自分宛チャットが特定できない場合は skip し digest に注記。他人宛には絶対に送らない）。
+
 ## 3. ダイジェスト（daily-report 連携の SoT）
 処理1ページにつき `~/.claude/.cache/wip-crawl/<YYYY-MM-DD>.jsonl` に1行追記（JST）:
 ```sh
@@ -51,14 +77,10 @@ printf '%s\n' "$(jq -nc --arg t "$(date +%H:%M)" --arg p "<project>" --arg ti "<
 
 ## 4. 安全策（autonomous 前提）
 - 灰色 `[( ]` は**可逆**（人間が後で承認/打ち消し却下できる）。だが研究の誤りも書かれうる → 一次ソース＋敵対的検証を必須。
-- **1回あたり処理上限**（既定5件）。超過分は digest に残し次回。
+- **1回あたり処理上限**（問い型5件・委任型2件）。超過分は digest に残し次回。
 - **同時実行制御は run.sh ラッパーが単独で担う**（run.sh が `.lock` 取得→claude 実行→trap で解放）。**skill 側ではロックを見ない**＝自分の親 run.sh のロックを誤検知して即終了するデッドロックを防ぐ（2026-06-25 の監督テストで実証・修正）。手動 `/wip-crawl` は run.sh を介さずロック無しで処理する。
-- 整備中/セッションログ/曖昧な問いは処理しない。
+- セッションログ・アイコンの引用/解説・意図不明の行は処理しない（§2 の3値分類で skip。旧「整備中は処理しない」は 2026-07-24 の委任型スコープ拡張で廃止）。
 - 書込後の再フェッチ検証を**毎回**通す（[[reference_scrapbox_write_gotchas]]）。
 
-## 5. headless（launchd 高頻度実行）
-launchd から `claude -p "/wip-crawl"`（または wrapper）で起動。env: `LANG/LC_ALL=ja_JP.UTF-8`、`SCRAPBOX_SID` は settings.json から。既存 `claude-log-to-scb` の launchd パターンに準拠。**初回は launchd 無効のまま手動で1ページ監督実行**してから timer を有効化する。
-```sh
-# 手動: 検知だけ見る
-wip-crawl
-```
+## 5. headless（launchd 毎時実行）
+launchd(毎時32分・todo-kanban-autoupdate の毎正時と衝突回避)から `claude -p "/wip-crawl" --dangerously-skip-permissions` で起動(フル権限=2026-07-24 ユーザー決定。ただし §2.5 の「やってはいけない」が契約上の上限)。env: `LANG/LC_ALL=ja_JP.UTF-8`、`SCRAPBOX_SID` は settings.json から。既存 `claude-log-to-scb` の launchd パターンに準拠。**スコープ拡張後の初回は launchd 無効のまま手動で監督実行**してから timer を有効化する。空振りラン(検知0件)は数十秒・軽トークンで終わるため毎時実行のコストは小さい。委任実行を伴うランはサブスク枠を消費する — 上限(委任2件/ラン)で暴走を防ぐ。

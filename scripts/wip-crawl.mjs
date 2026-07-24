@@ -4,14 +4,14 @@
 // source of truth は Scrapbox 自身（アイコンが消える = 処理済 = キューから外れる）。状態を別管理しない。
 // 入力: project 名（args、既定 3 project） / 出力: 処理対象ページ一覧（既定=表 / --json=JSON）
 //
-// in-scope の定義（メモリ feedback_wip_icon_research_workflow 準拠）:
-//   ある行の「先頭の非空白トークンが [claude code WIP.icon]」= 未解決の問いマーカー。
-//   除外: 「整備中[claude code WIP.icon]」(進行中タスク) / 自動取込ログ(2行目が "from [claude codeセッション]") /
-//         アイコン定義ページ(title === "claude code WIP") / 全角ブラケットの引用(［…］) / 行中・行末の埋め込み。
+// in-scope の定義（2026-07-24 ユーザー決定「全部検知して」で拡張。旧: 行頭アイコンのみ）:
+//   実アイコン [claude code WIP.icon] を含む行すべて（行頭・行中・行末を問わない）。
+//   問い型/委任型/対象外の分類は検知器ではなく skill 側の LLM step(スコープ再判定)が担う。
+//   除外(ページ単位・機械的ノイズのみ): 自動取込ログ(2行目が "from [claude codeセッション]") /
+//         アイコン定義ページ(title === "claude code WIP") / 全角ブラケットの引用(［…］は別文字なので自然に不一致)。
 //
-// ponytail: 判定は「行頭が実アイコン」に限定（実データで検証済み）。上限=行末に置かれたアイコン
-//   （例「〜であってる？[claude code WIP.icon]」）は拾わない。必要になったら inScopeLines に
-//   「？を含む行の行末アイコン」も in-scope として足す（誤検知に注意）。
+// ponytail: 「アイコンについて説明する行」(引用・解説)も拾いうるが、skill 側の再判定で捨てる方が
+//   検知器に自然言語判定を持ち込むより単純。取りこぼし(検知漏れ)ゼロを優先する。
 //
 // 依存: cosense-fetch(検索 -s / 生取得 -r)。処理(リサーチ→灰色書込→アイコン削除)は別レイヤ(wip-process)。
 
@@ -25,7 +25,7 @@ export const PROJECTS_DEFAULT = ["plural-reality", "tkgshn-private", "takalog"];
 export const inScopeLines = (title, lines) => {
   if (title === "claude code WIP") return [];
   if ((lines[1] || "") === "from [claude codeセッション]") return [];
-  return lines.filter((t) => t.replace(/^[\s　]+/, "").startsWith(ICON));
+  return lines.filter((t) => t.includes(ICON));
 };
 
 // 純粋: WIP 行の直前数行から、人間の問い(？ or [tkgshn.icon] を含む行)を1つ拾う。

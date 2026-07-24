@@ -19,7 +19,10 @@ T("full-width-space indent icon is in-scope", () => {
 });
 // out: 整備中プレフィックス(進行中タスク)
 T("整備中-prefixed icon is out", () => {
-  assert.equal(inScopeLines("page", ["x", "整備中" + ICON]).length, 0);
+  // 2026-07-24「全部検知して」: 行頭以外のアイコンも拾う(分類は skill 側 LLM が担う)
+  assert.equal(inScopeLines("page", ["x", "整備中" + ICON]).length, 1);
+  assert.equal(inScopeLines("page", ["x", "これ調べて" + ICON]).length, 1);
+  assert.equal(inScopeLines("page", ["x", "〜であってる？" + ICON]).length, 1);
 });
 // out: 自動取込セッションログ(2行目が from [claude codeセッション])
 T("session-log import is out", () => {
@@ -33,9 +36,9 @@ T("icon-definition page is out", () => {
 T("full-width-bracket quote is out", () => {
   assert.equal(inScopeLines("page", ["x", "［claude code WIP.icon］"]).length, 0);
 });
-// out: 行中・行末に埋め込まれたアイコン（ponytail で既知の上限）
-T("mid/end-of-line embedded icon is out (known ceiling)", () => {
-  assert.equal(inScopeLines("page", ["x", "〜について" + ICON]).length, 0);
+// in: 行中・行末に埋め込まれたアイコンも拾う(2026-07-24「全部検知」で旧 ceiling を撤廃)
+T("mid/end-of-line embedded icon is in (ceiling removed 2026-07-24)", () => {
+  assert.equal(inScopeLines("page", ["x", "〜について" + ICON]).length, 1);
 });
 // 複数 in-scope 行を全部返す
 T("counts multiple in-scope lines", () => {
