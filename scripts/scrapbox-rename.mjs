@@ -16,6 +16,7 @@
 // this module stays pure-importable for the unit tests, which need only
 // rewriteLinks and must not resolve the runtime-only node_modules.
 import { pathToFileURL } from "node:url";
+import { normalizeStatusEmoji } from "./scrapbox-title-normalize.mjs";
 
 const die = (msg) => {
   process.stderr.write(`scrapbox-rename: ${msg}\n`);
@@ -61,7 +62,10 @@ const main = async () => {
   const { patch } = await import("@cosense/std/websocket");
   const { replaceLinks } = await import("@cosense/std/rest");
 
-  const [project, oldTitle, newTitle, ...rest] = process.argv.slice(2);
+  const [project, oldTitle, rawNewTitle, ...rest] = process.argv.slice(2);
+  // リネーム先は常に VS16 正規形へ(旧タイトルは既存ページの実バイト列に一致させる必要が
+  // あるので触らない)。非正規形の新タイトルを許すと別バイト列の二重ページ源になる。
+  const newTitle = rawNewTitle === undefined ? rawNewTitle : normalizeStatusEmoji(rawNewTitle);
   const dryRun = rest.includes("--dry-run");
   const sid = process.env.SCRAPBOX_SID;
 

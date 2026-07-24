@@ -74,7 +74,7 @@ const scbPluralPrompt = `Scrapbox のチームプロジェクト "plural-reality
 手順:
 1. メモリ ~/.claude/projects/-Users-tkgshn/memory/reference_cosense_proxy.md を Read して正しい取得方法を確認（cosense-fetch or curl→ファイル→Read、WebFetch 不可）。
 2. 今日の日付ページ "${PAGE}" を取得。
-3. ToDoカンバン / タスク / 案件 系ページを Scrapbox 検索 API（https://scrapbox.io/api/pages/plural-reality/search/query?q=ToDo 等、SID は ~/.claude/settings.json の SCRAPBOX_SID）で探して取得。canonical な「ToDoカンバン」ページのステータス絵文字規約（⬜未着手/⏹️停止/⏳進行中/☑️✅完了/❌却下、⌛️待ち/⚠️リスク）に従い、未完(⬜⏳⌛️⚠️)のみ抽出。完了・停止は除外。
+3. ToDoカンバン / タスク / 案件 系ページを Scrapbox 検索 API（https://scrapbox.io/api/pages/plural-reality/search/query?q=ToDo 等、SID は ~/.claude/settings.json の SCRAPBOX_SID）で探して取得。ステータス絵文字規約（正本=scrapbox-status skill: ⬜未着手/⏳進行中/⏹️保留/🚨人間の判断待ち/☑️完了。旧表記 ⌛️=⏳・✅=☑️ と読み替え）に従い、未完(⬜⏳🚨、旧⌛️⚠️含む)のみ抽出。完了(☑️✅)・保留(⏹️)・却下(❌)は除外。
 4. context には**根拠となった Scrapbox ページ名を必ず明記**（後でリンク化するため）。期日超過は due に明記。category は基本 多元。
 取得手段が全滅したら reachable=false、notes に詳細を書く。`
 

@@ -38,6 +38,8 @@ Options:
   -h, --help            Show this help
 `;
 
+import { normalizeStatusEmoji } from "./scrapbox-title-normalize.mjs";
+
 const die = (msg) => { process.stderr.write(`scrapbox-write: ${msg}\n`); process.exit(1); };
 const showHelp = () => process.stdout.write(`${usage}\n`);
 
@@ -286,15 +288,32 @@ const patchPage = (project, title, patchStrategy, sid) =>
 // never when --no-gray is passed.
 const effectiveGray = (args) => !args.verbatim && args.gray !== false;
 
+// VS16 揺れタイトルでの二重ページ生成を入口で防ぐ。ただし「与えられた表記そのままの
+// ページが実在する」場合はそちらを正とする(mid-page 編集フローが正確なタイトルで
+// 既存ページを指名するのを、正規化で別ページへ逸らさないため)。
+const resolveWriteTitle = (project, title, sid) => {
+  const norm = normalizeStatusEmoji(title);
+  return norm === title
+    ? Promise.resolve(title)
+    : fetch(
+        `https://scrapbox.io/api/pages/${encodeURIComponent(project)}/${encodeURIComponent(title)}`,
+        { headers: { Cookie: `connect.sid=${encodeURIComponent(sid)}` } },
+      )
+        .then((res) => (res.ok ? res.json() : null))
+        .then((meta) => (meta && meta.persistent !== false ? title : norm))
+        .catch(() => title); // 照会不能時は与えられた表記を維持(現状動作へ縮退)
+};
+
 const writePage = (args, body, patchStrategy) =>
   args.dryRun
-    ? Promise.resolve(renderDryRun(args.title, body, args.verbatim, effectiveGray(args)))
-    : patchPage(args.project, args.title, patchStrategy(args.title, body, args.verbatim, effectiveGray(args)), process.env.SCRAPBOX_SID)
-      .then((result) =>
-        result.ok
-          ? process.stdout.write(`https://scrapbox.io/${args.project}/${encodeURIComponent(args.title)}\n`)
-          : die(`patch failed: ${JSON.stringify(result)}`)
-      );
+    ? Promise.resolve(renderDryRun(normalizeStatusEmoji(args.title), body, args.verbatim, effectiveGray(args)))
+    : resolveWriteTitle(args.project, args.title, process.env.SCRAPBOX_SID).then((title) =>
+        patchPage(args.project, title, patchStrategy(title, body, args.verbatim, effectiveGray(args)), process.env.SCRAPBOX_SID)
+          .then((result) =>
+            result.ok
+              ? process.stdout.write(`https://scrapbox.io/${args.project}/${encodeURIComponent(title)}\n`)
+              : die(`patch failed: ${JSON.stringify(result)}`)
+          ));
 
 const main = () => {
   const args = parseArgs(process.argv);
