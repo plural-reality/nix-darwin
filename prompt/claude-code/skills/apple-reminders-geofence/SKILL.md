@@ -94,6 +94,8 @@ Input schema:
 2. `【印刷後】` 押印/複写/持参/郵送などの後続手順(番号付き)
 3. `【netprint】` 予約番号+有効期限(登録翌日23:59)+「期限切れならclaudeに『netprint再登録』」+A4白黒20円
 4. `QR(タップで表示→かざす): https://gyazo.com/<hash>` と `詳細: <scbページURL>`
+5. `【書類プレビュー(タップで表示)】` 各書類の1ページ目サムネ(`qlmanage -t -s 900`→Gyazo)への
+   リンク。netprint 番号が未発行の段階でも**最初から**入れる(現地で書類の見た目が分かる)
    (EventKit に画像添付 API は無いため、QR は Gyazo URL のリンクが上限。QR は予約番号を
    api.qrserver で符号化して自前生成する — netprint サイトの QR は匿名セッション消滅で再取得不可)
 
