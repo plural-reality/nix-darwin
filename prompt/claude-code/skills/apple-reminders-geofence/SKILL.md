@@ -84,3 +84,18 @@ Input schema:
 - The script uses the default Reminders calendar unless `calendarTitle` names an existing list.
 - Location coordinates are part of the contract. If geocoding is approximate, say that and choose a radius that matches the uncertainty.
 - Treat account names, addresses, and errands as user-private context. Do not put sensitive identifiers in reusable examples.
+
+## Print-Errand Notes Contract (2026-07-24, user-mandated)
+
+印刷系(netprint→セブン)の geofence リマインダーは、notes を必ずこの4要素+安定markerで構成する。
+**概要と QR はリマインダー側に置き、詳細は scb ページへ飛ばす**(現地でリマインダーだけ見れば完結する状態が要件):
+
+1. `【書類】` 何の書類か・なぜ印刷するのか(一文)
+2. `【印刷後】` 押印/複写/持参/郵送などの後続手順(番号付き)
+3. `【netprint】` 予約番号+有効期限(登録翌日23:59)+「期限切れならclaudeに『netprint再登録』」+A4白黒20円
+4. `QR(タップで表示→かざす): https://gyazo.com/<hash>` と `詳細: <scbページURL>`
+   (EventKit に画像添付 API は無いため、QR は Gyazo URL のリンクが上限。QR は予約番号を
+   api.qrserver で符号化して自前生成する — netprint サイトの QR は匿名セッション消滅で再取得不可)
+
+netprint 登録〜QR 生成〜scb への実画像埋込の手順本体は memory `reference_seven_eleven_netprint_workflow` が持つ。
+list は `ある場所に居る時にやること`、店舗は自宅近隣セブン3店(半径250m・enter)が既定。
