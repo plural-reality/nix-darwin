@@ -118,33 +118,37 @@ export const isEmptyStub = (page) =>
 const STATUS_CHARS = "⬜⏳⌛✅❌☑⏹⚠\u{1F6A8}";
 export const stripStatusPrefix = (title) =>
   title
+    .replace(/^\uFE0F+/u, "") // 先頭の裸 VS16(絵文字を剥がした残骸)
     .replace(new RegExp(`^[\\s\\uFE0F]*(?:[${STATUS_CHARS}]\\uFE0F*\\s*)+`, "u"), "")
-    .replace(/\uFE0F/gu, "")
+    // VS16 除去はステータス文字直後のみ(©️ 等の非ステータス絵文字の VS16 を巻き込まない)
+    .replace(new RegExp(`([${STATUS_CHARS}])\\uFE0F+`, "gu"), "$1")
     .replace(/^cc:\s*/u, "")
     .trim();
 
 // 状態絵文字/VS16/cc: だけ違う実ページ群 [{ base, titles:[...] }]
+// Map を使う: 素の object だと "constructor" 等の prototype 名タイトルで衝突しクラッシュする
 export const findEmojiVariants = (pages) => {
   const groups = pages.reduce((acc, p) => {
     const base = stripStatusPrefix(p.title);
     return base && base !== p.title.trim()
-      ? { ...acc, [base]: [...(acc[base] || []), p.title] }
+      ? acc.set(base, [...(acc.get(base) || []), p.title])
       : acc;
-  }, {});
-  return Object.entries(groups)
+  }, new Map());
+  return [...groups.entries()]
     .map(([base, titles]) => ({ base, titles: [...new Set(titles)] }))
     .filter((g) => g.titles.length > 1);
 };
 
 // 同一 project 内の重複タイトル群を返す [{ norm, titles:[...] }]
+// (findEmojiVariants と同じ理由で Map: "constructor" 等の prototype 名タイトルで衝突しない)
 export const findDuplicates = (pages) => {
   const groups = pages
     .filter((p) => !isExcluded(p.title))
     .reduce((acc, p) => {
       const k = normalizeTitle(p.title);
-      return k ? { ...acc, [k]: [...(acc[k] || []), p.title] } : acc;
-    }, {});
-  return Object.entries(groups)
+      return k ? acc.set(k, [...(acc.get(k) || []), p.title]) : acc;
+    }, new Map());
+  return [...groups.entries()]
     .map(([norm, titles]) => ({ norm, titles: [...new Set(titles)] }))
     .filter((g) => g.titles.length > 1);
 };

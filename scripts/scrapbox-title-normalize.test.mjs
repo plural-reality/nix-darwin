@@ -40,3 +40,13 @@ test("mid-title status chars are normalized too (links in prose share the hazard
 test("VS16 after a non-status char is left alone", () => {
   assert.equal(normalizeStatusEmoji("©️ copyright page"), "©️ copyright page");
 });
+
+test("🚨 (non-BMP, emoji-default) drops redundant VS16 and needs the u flag", () => {
+  // \u{1F6A8}️ → \u{1F6A8}。u フラグ無しだとサロゲート分割で不整合になるのを固定。
+  assert.equal(normalizeStatusEmoji("\u{1F6A8}️判断待ち"), "\u{1F6A8}判断待ち");
+});
+
+test("lone surrogates are not corrupted", () => {
+  const weird = "\uD83D task"; // lone high surrogate
+  assert.equal(normalizeStatusEmoji(weird), weird);
+});

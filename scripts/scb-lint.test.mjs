@@ -168,6 +168,23 @@ T("stripStatusPrefix: strips emoji chain, VS16 residue, and cc: marker", () => {
   assert.equal(stripStatusPrefix("絵文字なし"), "絵文字なし");
 });
 
+T("emoji-variant: non-status emoji VS16 (©️) is NOT grouped as a variant", () => {
+  assert.equal(findEmojiVariants([{ title: "©️ Policy" }, { title: "©️️ Policy" }]).length, 0);
+});
+
+T("emoji-variant: prototype-name titles ('constructor') do not crash grouping", () => {
+  const groups = findEmojiVariants([{ title: "⬜ constructor" }, { title: "☑️ constructor" }]);
+  assert.equal(groups.length, 1);
+  assert.equal(findDuplicates([{ title: "constructor" }, { title: "Constructor" }]).length, 1);
+});
+
+T("detect: emoji-variant finding carries severity=file", () => {
+  const pages = [{ title: "⬜ 名義切替" }, { title: "☑️ 名義切替" }];
+  const found = detect("plural-reality", pages, NOW).filter((f) => f.type === "emoji-variant");
+  assert.equal(found.length, 1);
+  assert.equal(found[0].severity, "file");
+});
+
 // --- severity policy: stub/duplicate=file, orphan=digest ---
 T("severity: stub and duplicate are fileable, orphan is digest-only", () => {
   assert.equal(SEVERITY["empty-stub"], "file");

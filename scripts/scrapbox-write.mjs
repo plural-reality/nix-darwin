@@ -291,6 +291,19 @@ const effectiveGray = (args) => !args.verbatim && args.gray !== false;
 // VS16 揺れタイトルでの二重ページ生成を入口で防ぐ。ただし「与えられた表記そのままの
 // ページが実在する」場合はそちらを正とする(mid-page 編集フローが正確なタイトルで
 // 既存ページを指名するのを、正規化で別ページへ逸らさないため)。
+//
+// 正規化先を選ぶのは「与えられた表記のページが不在」を **確認できた時だけ**:
+//   200 + persistent:false → phantom(実体なし) → 正規形へ
+//   404                    → 不在 → 正規形へ
+//   それ以外(403/5xx/parse失敗/ネットワーク断) → 不在の証拠にならないので与えられた表記を維持
+//   (SID 失効時の 403 で既存ページを正規形の別ページへ逸らすと、防ぐはずの二重化を自ら起こす)
+export const decideWriteTitle = (title, norm, status, meta) =>
+  status === 200
+    ? (meta && meta.persistent !== false ? title : norm)
+  : status === 404
+    ? norm
+    : title;
+
 const resolveWriteTitle = (project, title, sid) => {
   const norm = normalizeStatusEmoji(title);
   return norm === title
@@ -299,8 +312,11 @@ const resolveWriteTitle = (project, title, sid) => {
         `https://scrapbox.io/api/pages/${encodeURIComponent(project)}/${encodeURIComponent(title)}`,
         { headers: { Cookie: `connect.sid=${encodeURIComponent(sid)}` } },
       )
-        .then((res) => (res.ok ? res.json() : null))
-        .then((meta) => (meta && meta.persistent !== false ? title : norm))
+        .then((res) =>
+          res.status === 200
+            ? res.json().then((meta) => decideWriteTitle(title, norm, 200, meta), () => title)
+            : decideWriteTitle(title, norm, res.status, null),
+        )
         .catch(() => title); // 照会不能時は与えられた表記を維持(現状動作へ縮退)
 };
 
