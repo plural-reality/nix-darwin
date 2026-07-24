@@ -28,10 +28,13 @@ export const inScopeLines = (title, lines) => {
   return lines.filter((t) => t.includes(ICON));
 };
 
-// 純粋: WIP 行の直前数行から、人間の問い(？ or [tkgshn.icon] を含む行)を1つ拾う。
-export const nearbyQuestion = (lines, wipLine) => {
-  const idx = lines.indexOf(wipLine);
-  if (idx < 0) return "";
+// 純粋: WIP 行(index 指定)の本文自身または直前数行から、人間の問い/指示文を1つ拾う。
+//   行末アイコン形式(「〜であってる？[claude code WIP.icon]」)はアイコンを除いた自行本文が最良の候補。
+//   index を受け取るのは、同一文字列の WIP 行が複数あるとき indexOf が先頭に誤対応するため。
+export const nearbyQuestion = (lines, idx) => {
+  if (idx < 0 || idx >= lines.length) return "";
+  const self = (lines[idx] || "").split(ICON).join("").replace(/^[\s　]+/, "").trim();
+  if (self) return self;
   for (let j = idx - 1; j >= Math.max(0, idx - 4); j--) {
     const t = lines[j] || "";
     if (/[？?]/.test(t) || t.includes("[tkgshn.icon]")) return t.replace(/^[\s　]+/, "");
@@ -56,6 +59,9 @@ const crawl = async (targetProjects) => {
   for (const p of targetProjects) {
     const sj = parseJson(await run("cosense-fetch", ["-s", "claude code WIP", "-p", p, "-l", "200"]));
     const candidates = sj && Array.isArray(sj.pages) ? sj.pages.map((x) => x.title) : [];
+    // 検索上限に到達 = それより古い言及ページを見ていない。静かに欠落させず stderr に出す。
+    if (candidates.length >= 200)
+      process.stderr.write(`wip-crawl: ${p}: search capped at 200 pages — older mentions not scanned\n`);
     for (const title of candidates) {
       const rj = parseJson(await run("cosense-fetch", ["-r", title, "-p", p]));
       const lines = rj && Array.isArray(rj.lines) ? rj.lines.map((l) => l.text ?? "") : [];
@@ -66,7 +72,9 @@ const crawl = async (targetProjects) => {
         title,
         url: `https://scrapbox.io/${p}/${encodeURIComponent(title.replace(/ /g, "_"))}`,
         wipCount: wip.length,
-        questions: wip.map((w) => nearbyQuestion(lines, w)).filter(Boolean),
+        questions: lines
+          .map((t, i) => (t.includes(ICON) ? nearbyQuestion(lines, i) : ""))
+          .filter(Boolean),
       });
     }
   }
