@@ -17,15 +17,22 @@
 
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { realpathSync } from "node:fs";
 
 export const ICON = "[claude code WIP.icon]"; // 半角ブラケットの実アイコンのみ
 export const PROJECTS_DEFAULT = ["plural-reality", "tkgshn-private", "takalog"];
+
+// 構造的除外: 行頭(字下げ除く)が `[(` = Cosense の灰色(AI 記入)記法。灰色行は AI が書いた散文で、
+//   その中のアイコンは「キューを確認した/未処理は0件」等の *言及* であって、人間が置いた実行対象マーカーではない。
+//   人間の WIP マーカーは常に素の行(`@[icon]` / `整備中[icon]` 等)に置かれ、`[( )]` で包まれることはない
+//   (灰色=AI / 素=human の正本規約)。この構造だけで daily-report 等の自己言及誤検知を NL 判定なしに落とす。
+const isGrayMention = (t) => /^[\s　]*\[\(/.test(t);
 
 // 純粋判定: 全文 lines(=cosense-fetch -r の .lines[].text 配列) から in-scope な WIP 行を返す。
 export const inScopeLines = (title, lines) => {
   if (title === "claude code WIP") return [];
   if ((lines[1] || "") === "from [claude codeセッション]") return [];
-  return lines.filter((t) => t.includes(ICON));
+  return lines.filter((t) => t.includes(ICON) && !isGrayMention(t));
 };
 
 // 純粋: WIP 行(index 指定)の本文自身または直前数行から、人間の問い/指示文を1つ拾う。
@@ -97,4 +104,12 @@ const main = async () => {
   }
 };
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) main();
+// main() 起動ガード: macOS では argv[1](呼出パス)が symlink 未解決(/tmp→/private/tmp,
+// nix の .local/bin/wip-crawl→/nix/store/…)なのに対し import.meta.url は realpath 解決済で、
+// 素の === 比較は symlink 経由の起動(=nix packaging 後の全実行)で常に false になり main() が走らない。
+// 両辺を realpath 解決してから比較する。
+const isMain = () => {
+  try { return !!process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); }
+  catch { return false; }
+};
+if (isMain()) main();
