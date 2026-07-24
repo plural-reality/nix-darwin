@@ -55,3 +55,9 @@ T("counts multiple in-scope lines", () => {
 });
 
 if (process.exitCode) console.error("\nSOME TESTS FAILED"); else console.log("\nall wip-crawl tests passed");
+
+// 2026-07-24 初回監督ランで発見: 灰色 [( )] 行のアイコンは AI の言及であり実行対象でない
+T("gray [( )] mention lines are excluded (AI prose, not a human marker)", () => {
+  assert.equal(inScopeLines("page", ["x", "\t[( キュー確認済・未処理の " + ICON + " は0件]"]).length, 0);
+  assert.equal(inScopeLines("page", ["x", "素の行 " + ICON]).length, 1);
+});
