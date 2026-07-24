@@ -33,8 +33,8 @@ node ~/Developer/plural-reality/nix-darwin/scripts/scb-lint.mjs --json   # 機�
 node ~/Developer/plural-reality/nix-darwin/scripts/scb-lint.mjs          # 人間向け表(filing対象とdigestを分けて表示)
 ```
 出力 finding = `{type, severity, project, subject, fingerprint, question, url, signal}`。
-- `type`: `empty-stub`(参照多いが本体空=概念ページ不足) / `duplicate`(正規化タイトル衝突) / `orphan`(被リンク0・実質本文あり)。
-- `severity`: `file`(empty-stub/duplicate=高精度→WIP filing) / `digest`(orphan=ノイズ多→レポートのみ)。
+- `type`: `empty-stub`(参照多いが本体空=概念ページ不足) / `duplicate`(正規化タイトル衝突) / `emoji-variant`(状態絵文字/VS16/cc: だけ違う二重ページ=rename 置き去り。正本判定と `scrapbox-rename` 統合を問う。語彙の正本: [[scrapbox-status]]) / `orphan`(被リンク0・実質本文あり)。
+- `severity`: `file`(empty-stub/duplicate/emoji-variant=高精度→WIP filing) / `digest`(orphan=ノイズ多→レポートのみ)。
 - 機械的スキャンは各 project 最新 1000 ページ(更新降順)。tail 未走査は stderr に `capped` で出る(沈黙ドロップしない)。
 - `orphan` は `scb-lint.mjs` の `ORPHAN_PROJECTS`(=plural-reality)でのみ検知(tkgshn-private/takalog は会話ログ・自動取込ログが多く偽陽性だらけのため抑止)。さらに `isLogPage`(メール転記/クローリング結果/思考ログ/URL題貼付け)と `isDatePage`(ハイフン日付含む)で機械的にノイズ除去済み。**この orphan は severity=digest だが「捨てる」のではなく §4.5 で必ず処理する。**
 

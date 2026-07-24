@@ -506,6 +506,10 @@ in
                 }
                 {
                   type = "command";
+                  command = script "automation-health-check.sh";
+                }
+                {
+                  type = "command";
                   command = script "hook-fire-log.sh SessionStart";
                 }
               ];
@@ -607,6 +611,11 @@ in
 
     ".claude/scripts/sid-freshness-check.sh" = {
       source = ../scripts/sid-freshness-check.sh;
+      executable = true;
+    };
+
+    ".claude/scripts/automation-health-check.sh" = {
+      source = ../scripts/automation-health-check.sh;
       executable = true;
     };
 

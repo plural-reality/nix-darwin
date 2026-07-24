@@ -368,6 +368,8 @@ in
   home.file.".local/share/scrapbox-write/scrapbox-write.mjs".source = ../scripts/scrapbox-write.mjs;
   # scrapbox-rename shares the same dir (and its @cosense/std node_modules).
   home.file.".local/share/scrapbox-write/scrapbox-rename.mjs".source = ../scripts/scrapbox-rename.mjs;
+  # VS16 正規化(純関数)。write/rename 両方が相対 import する共有モジュール。
+  home.file.".local/share/scrapbox-write/scrapbox-title-normalize.mjs".source = ../scripts/scrapbox-title-normalize.mjs;
   home.file.".local/share/scrapbox-write/package.json".text = builtins.toJSON {
     name = "scrapbox-write";
     version = "1.0.0";

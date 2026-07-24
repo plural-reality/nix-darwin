@@ -11,6 +11,8 @@ import {
   isOrphan,
   isEmptyStub,
   findDuplicates,
+  findEmojiVariants,
+  stripStatusPrefix,
   detect,
   SEVERITY,
   ORPHAN_MIN_CHARS,
@@ -137,6 +139,50 @@ T("detect: orphan suppressed outside ORPHAN_PROJECTS", () => {
   // empty-stub は全 project で出るが、orphan は plural-reality 以外では出ない
   assert.deepEqual(fsPriv, ["empty-stub"]);
   assert.deepEqual(fsLog, ["empty-stub"]);
+});
+
+// --- emoji-variant: 状態絵文字/VS16/cc: だけ違う二重ページ検出 ---
+T("emoji-variant: status-emoji / VS16 / cc: variants of one base title group together", () => {
+  const pages = [
+    { title: "⬜ 音威子府の企業人名義を切り替える" },
+    { title: "☑️ 音威子府の企業人名義を切り替える" },
+    { title: "⏳cc: 広報誌9月号で特集紹介する" },
+    { title: "☑️広報誌9月号で特集紹介する" },
+    { title: "絵文字なし単独ページ" },
+    { title: "⏹️単独タスク" },
+  ];
+  const groups = findEmojiVariants(pages);
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups.map((g) => g.titles.length), [2, 2]);
+});
+
+T("emoji-variant: VS16-only difference is a variant pair", () => {
+  const one = "☑️高木インド出張"; // ☑️ (VS16x1)
+  const two = "☑️️高木インド出張"; // ☑️️ (VS16x2)
+  assert.equal(findEmojiVariants([{ title: one }, { title: two }]).length, 1);
+});
+
+T("stripStatusPrefix: strips emoji chain, VS16 residue, and cc: marker", () => {
+  assert.equal(stripStatusPrefix("⏳cc: タスクA"), "タスクA");
+  assert.equal(stripStatusPrefix("️構想日本と共に勉強会"), "構想日本と共に勉強会");
+  assert.equal(stripStatusPrefix("絵文字なし"), "絵文字なし");
+});
+
+T("emoji-variant: non-status emoji VS16 (©️) is NOT grouped as a variant", () => {
+  assert.equal(findEmojiVariants([{ title: "©️ Policy" }, { title: "©️️ Policy" }]).length, 0);
+});
+
+T("emoji-variant: prototype-name titles ('constructor') do not crash grouping", () => {
+  const groups = findEmojiVariants([{ title: "⬜ constructor" }, { title: "☑️ constructor" }]);
+  assert.equal(groups.length, 1);
+  assert.equal(findDuplicates([{ title: "constructor" }, { title: "Constructor" }]).length, 1);
+});
+
+T("detect: emoji-variant finding carries severity=file", () => {
+  const pages = [{ title: "⬜ 名義切替" }, { title: "☑️ 名義切替" }];
+  const found = detect("plural-reality", pages, NOW).filter((f) => f.type === "emoji-variant");
+  assert.equal(found.length, 1);
+  assert.equal(found[0].severity, "file");
 });
 
 // --- severity policy: stub/duplicate=file, orphan=digest ---

@@ -9,7 +9,23 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { markGrayText, grayCore, grayBodyLines, isAlreadyGray, leadingDeco, matchClose } from "./scrapbox-write.mjs";
+import { markGrayText, grayCore, grayBodyLines, isAlreadyGray, leadingDeco, matchClose, decideWriteTitle } from "./scrapbox-write.mjs";
+
+// --- decideWriteTitle: 正規化先を選ぶのは「不在を確認できた時だけ」 ---------------
+// SID 失効時の 403 で既存ページを正規形の別ページへ逸らすと二重化を自ら起こす(2026-07-24 Codex レビュー High)。
+test("decideWriteTitle: exact page exists (200 persistent) → keep given title", () => {
+  assert.equal(decideWriteTitle("☑️️X", "☑️X", 200, { persistent: true }), "☑️️X");
+});
+test("decideWriteTitle: phantom (200 persistent:false) → normalized", () => {
+  assert.equal(decideWriteTitle("☑️️X", "☑️X", 200, { persistent: false }), "☑️X");
+});
+test("decideWriteTitle: 404 (confirmed absent) → normalized", () => {
+  assert.equal(decideWriteTitle("☑️️X", "☑️X", 404, null), "☑️X");
+});
+test("decideWriteTitle: 403/5xx (absence NOT confirmed) → keep given title", () => {
+  assert.equal(decideWriteTitle("☑️️X", "☑️X", 403, null), "☑️️X");
+  assert.equal(decideWriteTitle("☑️️X", "☑️X", 500, null), "☑️️X");
+});
 
 // Faithful port of the canonical ungray() in tkgshn-extension/llm-auto-humanize: melt every
 // gray deco token (chars include '('), keep bare links and non-gray decorations, recurse into

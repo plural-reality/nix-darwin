@@ -18,11 +18,9 @@ ToDoカンバン（Cosense/Scrapbox）上のステータスと、各ネストペ
 
 ### Phase 1: メインページ取得
 
-cosense-fetch でカンバンページを取得する（WebFetch は Scrapbox 本文を壊すので使わない）。状態は4状態（canonical=plural-reality「ToDoカンバン」infobox）で判定する:
-- `⬜` 未着手 = 今すぐ着手可（自分のボール／実作業中含む）
-- `⏳` 進行中 = 相手ボール・返答待ち
-- `⏹️` 保留 = 今は着手不可（将来ToDo化 / 依存待ち）
-- `☑️` 完了
+cosense-fetch でカンバンページを取得する（WebFetch は Scrapbox 本文を壊すので使わない）。状態語彙の正本は [[scrapbox-status]] skill:
+- `⬜` 未着手 / `⏳` 進行中（`⏳cc:`=claude 実行中） / `⏹️` 保留 / `🚨` 人間の判断待ち / `☑️` 完了
+- 旧表記の読み替え: `⌛️`（廃止）は `⏳`、`✅` は `☑️` として扱う（新規には書かない）
 
 ```
 cosense-fetch "ToDoカンバン" -p plural-reality -h 2

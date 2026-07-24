@@ -12,6 +12,7 @@
 //   orphan      … 実質コンテンツのある persistent ページが被リンク 0(=どこからも参照されない孤立ページ)。
 //   duplicate   … 正規化タイトルが衝突する複数ページ(同一 project 内・統合候補)。
 //   empty-stub  … linesCount<=1(タイトルのみで本体が空)だが被リンク>=N(=参照されてるのに未記述の概念ページ)。
+//   emoji-variant … 状態絵文字プレフィックス/VS16/cc: だけ違う実ページ群(rename せず新規作成した置き去り二重ページ)。
 //
 // ponytail: 機械的スキャンは `cosense-fetch --list -l LIMIT`(更新降順)で最新 LIMIT 件/project を対象にする。
 //   それより古い tail は対象外(cosense-fetch が skip ページングを公開していないため)。上限到達は log に出す。
@@ -110,15 +111,44 @@ export const isEmptyStub = (page) =>
   (page.pin || 0) === 0 &&
   !isExcluded(page.title);
 
+// 状態絵文字プレフィックス(⬜⏳⌛✅❌☑⏹⚠🚨)と VS16 を剥がした base タイトル。
+// 「絵文字だけ違う二重ページ」(rename でなく新規作成で状態変更した置き去り)の検出に使う。
+// isTransactionalPage がタスクページを duplicate 検出から除外しているため、この専用検出が必要
+// (2026-07-24 実測: ⬜版に本文40行・☑️版が空スタブ4行の並立などを見逃していた)。
+const STATUS_CHARS = "⬜⏳⌛✅❌☑⏹⚠\u{1F6A8}";
+export const stripStatusPrefix = (title) =>
+  title
+    .replace(/^\uFE0F+/u, "") // 先頭の裸 VS16(絵文字を剥がした残骸)
+    .replace(new RegExp(`^[\\s\\uFE0F]*(?:[${STATUS_CHARS}]\\uFE0F*\\s*)+`, "u"), "")
+    // VS16 除去はステータス文字直後のみ(©️ 等の非ステータス絵文字の VS16 を巻き込まない)
+    .replace(new RegExp(`([${STATUS_CHARS}])\\uFE0F+`, "gu"), "$1")
+    .replace(/^cc:\s*/u, "")
+    .trim();
+
+// 状態絵文字/VS16/cc: だけ違う実ページ群 [{ base, titles:[...] }]
+// Map を使う: 素の object だと "constructor" 等の prototype 名タイトルで衝突しクラッシュする
+export const findEmojiVariants = (pages) => {
+  const groups = pages.reduce((acc, p) => {
+    const base = stripStatusPrefix(p.title);
+    return base && base !== p.title.trim()
+      ? acc.set(base, [...(acc.get(base) || []), p.title])
+      : acc;
+  }, new Map());
+  return [...groups.entries()]
+    .map(([base, titles]) => ({ base, titles: [...new Set(titles)] }))
+    .filter((g) => g.titles.length > 1);
+};
+
 // 同一 project 内の重複タイトル群を返す [{ norm, titles:[...] }]
+// (findEmojiVariants と同じ理由で Map: "constructor" 等の prototype 名タイトルで衝突しない)
 export const findDuplicates = (pages) => {
   const groups = pages
     .filter((p) => !isExcluded(p.title))
     .reduce((acc, p) => {
       const k = normalizeTitle(p.title);
-      return k ? { ...acc, [k]: [...(acc[k] || []), p.title] } : acc;
-    }, {});
-  return Object.entries(groups)
+      return k ? acc.set(k, [...(acc.get(k) || []), p.title]) : acc;
+    }, new Map());
+  return [...groups.entries()]
     .map(([norm, titles]) => ({ norm, titles: [...new Set(titles)] }))
     .filter((g) => g.titles.length > 1);
 };
@@ -127,7 +157,7 @@ const sbUrl = (project, title) =>
   `https://scrapbox.io/${project}/${encodeURIComponent(title.replace(/ /g, "_"))}`;
 
 // 検知タイプごとの扱い: file=高精度なので WIP 問いとして自動 filing / digest=ノイズ多なのでレポート止まり(人間レビュー)
-export const SEVERITY = { "empty-stub": "file", duplicate: "file", orphan: "digest" };
+export const SEVERITY = { "empty-stub": "file", duplicate: "file", "emoji-variant": "file", orphan: "digest" };
 
 // finding 1件を組み立てる。fingerprint は seen.json での dedup キー(type|project|subject)。
 const mkFinding = (type, project, subject, question, signal) => ({
@@ -175,7 +205,16 @@ export const detect = (project, pages, nowSec) => {
       { titles: g.titles }
     )
   );
-  return [...orphans, ...stubs, ...dups];
+  const emojiVariants = findEmojiVariants(pages).map((g) =>
+    mkFinding(
+      "emoji-variant",
+      project,
+      g.titles.join(" / "),
+      `「${g.titles.join("」「")}」は状態絵文字/VS16 だけ違う二重ページの疑い(rename でなく新規作成で状態変更した置き去り)。どれを正本にし scrapbox-rename で統合すべき？`,
+      { titles: g.titles, base: g.base }
+    )
+  );
+  return [...orphans, ...stubs, ...dups, ...emojiVariants];
 };
 
 // --- IO 境界 ----------------------------------------------------------------

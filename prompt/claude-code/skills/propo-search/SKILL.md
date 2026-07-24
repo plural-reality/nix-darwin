@@ -144,7 +144,7 @@ echo '内容' | scrapbox-write -t "官公需クローリング結果（YYYY/M/D�
 特に有望な案件は個別ページも作成:
 
 ```bash
-echo '詳細内容' | scrapbox-write -t "⌛️プロポ案件: {自治体名} {業務名}"
+echo '詳細内容' | scrapbox-write -t "⏳プロポ案件: {自治体名} {業務名}"
 ```
 
 ---

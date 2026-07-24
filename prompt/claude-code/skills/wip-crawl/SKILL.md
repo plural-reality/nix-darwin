@@ -34,7 +34,7 @@ wip-crawl --json   # nix管理の PATH binary。未apply環境では node <nix-d
    - 制度要綱の全文などリンク先に既にある内容は**重複させない**。
    - グレー化フォーマット確認: `scrapbox-write -t _ -p <project> --gray --dry-run < ai.txt | tail -n +2 | sed 's/^ //'`（`[( X]` を得る）。手書きで `[( …]` を付けても可（verbatim 時）。
 5. **in-place 置換**: 生 `.lines` を読み、**WIPアイコン行を回答行に差し替え**（同じ字下げを保持）、他は全行 verbatim。`-V/--verbatim --mode replace`（stdin はタイトル行を含めない）で書込。
-   - ハブ内に多数リンクがあり調査本体が長い場合のみ別ページ切り出し（`feedback_wip_icon_research_workflow` step4）。独立した「？」リーフページは in-place。
+   - ハブ内に多数リンクがあり調査本体が長い場合のみ別ページ切り出し（`feedback_wip_icon_research_workflow` step4）。独立した「？」リーフページは in-place。切り出しページの着手印は `⏳cc: {タイトル}`（正本: [[scrapbox-status]]。旧 `⌛️cc:` は廃止）、完了時に step6 の ☑️ rename で cc: を外す。
 6. **タイトルが「？」のページ**: `scrapbox-rename <project> "旧" "新"`。新タイトル = **文頭 `☑️` ＋ 末尾 `→<簡潔な断定結論>`**。`replaceLinks` が 403 でも `deepLinkPagesFixed` が補完しうる → **親ページを grep で被リンク確認**（[[scrapbox-rename-replacelinks-403-deeplink-fallback]]）。タイトルが疑問形でない（解説/概要）ページは rename しない。
 7. **検証（必須）**: `cosense-fetch -r "<新title>" -p <project> -o final.json` を保存し、`jq -r '.lines[].text'` で **WIPアイコン=0 / 回答反映 / 人間の素行 intact / id 保持** を実数確認。未反映ならリトライ。
 8. **digest 追記**: 下記 jsonl に1行追記。
