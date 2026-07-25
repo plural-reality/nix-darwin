@@ -113,11 +113,23 @@ in
       enable = true;
       mouse = true;
       historyLimit = 50000;
-      escapeTime = 0; # home-manager 既定の 500ms は nvim の ESC を遅延させるため 0
+      # home-manager 既定の 500ms は nvim の ESC を遅延させる。ただし 0 も正しくない:
+      # tmux 3.5 以降の tmux 自身の既定は 10ms であり、`escape-time 0` は 500ms 時代
+      # (〜3.4)の助言である。0 だと、ジッタのある回線で矢印/Alt の ESC シーケンスが
+      # パケット境界で分断されたとき「単独 ESC + ゴミ文字」と確定してしまう。
+      # 25ms は Escape キーの遅れとして視覚処理の閾値(約40ms)未満で知覚されない。
+      escapeTime = 25;
       terminal = "tmux-256color"; # "screen" だと OSC エスケープが剥ぎ取られ URL がクリック不能になる
       extraConfig = ''
-        # OSC 8 ハイパーリンク(クリッカブルURL)を外側ターミナルに透過させる (tmux 3.3+)
-        set -g allow-passthrough on
+        # 外側ターミナルの真色(RGB)と OSC 8 ハイパーリンクを tmux に明示する。
+        # tmux 3.4+ は OSC 8 を native に解釈して外側へ再発行するが、それは client が
+        # hyperlinks feature を持つ場合だけ。Ghostty は RGB も hyperlinks も自動検出
+        # されない(実測: #{client_termfeatures} に載らない)ので宣言する。
+        # これがある限り allow-passthrough は不要 — passthrough が今なお与えるのは
+        # 「任意のプログラムが tmux の discard-and-repaint スロットルを迂回して
+        # 端末へ直接エスケープを撃てる」能力だけで、細い回線では有害。
+        set -sa terminal-features ',xterm-ghostty:RGB:hyperlinks'
+        set -sa terminal-features ',xterm-256color:RGB:hyperlinks'
       '';
     };
 
