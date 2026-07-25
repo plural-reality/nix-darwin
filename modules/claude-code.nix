@@ -389,6 +389,9 @@ let
       # マルチエージェントへ広げるのは無駄なので、必要な時だけ `ccx`(CC_ULTRA=1) か /effort ultracode。
       # CLAUDE_CODE_EFFORT_LEVEL env も使わない(セッション中の /effort を丸ごと上書きしてしまう)。
       effortLevel = "xhigh";
+      # 既定 OFF を「宣言しない」ではなく明示する: activation のマージは nix が宣言しない
+      # キーを温存するので、過去に書かれた ultracode = true が黙って生き残ってしまう。
+      ultracode = false;
       env = sharedAgentEnv;
       enableAutoMode = true;
       skipDangerousModePermissionPrompt = true;
@@ -664,11 +667,17 @@ in
     if [ -L "$SETTINGS" ]; then
       rm -f "$SETTINGS"
     fi
-    if [ -s "$SETTINGS" ]; then
-      ${pkgs.jq}/bin/jq -s '.[0] * .[1]' "$SETTINGS" ${claudeSettingsFile} > "$SETTINGS.tmp" \
-        && mv -f "$SETTINGS.tmp" "$SETTINGS"
+    # マージ元は Claude Code が書き戻すファイル = 信用境界の外。妥当な JSON の時だけ
+    # マージし、壊れていれば宣言値で置き換える(apply を道連れにしない fail-safe)。
+    if [ -s "$SETTINGS" ] && ${pkgs.jq}/bin/jq -e . "$SETTINGS" > /dev/null 2>&1; then
+      if ${pkgs.jq}/bin/jq -s '.[0] * .[1]' "$SETTINGS" ${claudeSettingsFile} > "$SETTINGS.tmp"; then
+        mv -f "$SETTINGS.tmp" "$SETTINGS"
+      else
+        rm -f "$SETTINGS.tmp"
+        cp -f ${claudeSettingsFile} "$SETTINGS"
+      fi
     else
-      cp ${claudeSettingsFile} "$SETTINGS"
+      cp -f ${claudeSettingsFile} "$SETTINGS"
     fi
     chmod u+w "$SETTINGS"
   '';
