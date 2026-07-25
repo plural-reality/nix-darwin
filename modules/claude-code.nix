@@ -377,45 +377,21 @@ let
   codexManagedConfigFile = pkgs.writeText "codex-managed-config.json" (
     builtins.toJSON codexManagedConfig
   );
-in
-{
-  home.packages = [
-    pkgs.llm-agents.claude-code # Claude Code CLI
-  ];
 
-  # Default every Claude Code session to ultracode (xhigh reasoning + automatic
-  # workflow orchestration). ultracode is session-only and explicitly NOT read
-  # from settings.json by design, so the only declarative way to make it the
-  # default is to inject it at launch via --settings (merged onto settings.json,
-  # not overriding it). Replaces the former always-on CLAUDE_CODE_EFFORT_LEVEL=max
-  # env, which would have overridden any per-session /effort choice anyway.
-  # Escape hatch: `command claude` / `\claude` runs the un-aliased binary.
-  home.shellAliases.claude = "claude --settings '{\"ultracode\":true}'";
-
-  home.file = {
-    # Air delegates `claude` and `codex` to the always-on mini. These are the
-    # only launcher dependencies owned by the generated shell aliases; legacy
-    # hook scripts remain outside this projection until their separate migration.
-    ".claude/scripts/claude-mini.sh" = {
-      source = ../scripts/claude/claude-mini.sh;
-      executable = true;
-    };
-    ".claude/scripts/run-on-mini.sh" = {
-      source = ../scripts/claude/run-on-mini.sh;
-      executable = true;
-    };
-
-    # Gemini
-    ".gemini/GEMINI.md".text = expandTemplate {
-      templateScope = ../prompt;
-      template = ../prompt/antigravity.md;
-    };
-
-    ".claude/settings.json".text = builtins.toJSON {
-      # ultracode = xhigh effort + standing dynamic-workflow orchestration.
-      # Single canonical source for effort; replaces the old CLAUDE_CODE_EFFORT_LEVEL
-      # env var which used to override (and thus suppress) this setting.
-      ultracode = true;
+  # Claude Code は settings.json を実行時に書き戻す(/effort は userSettings スコープの
+  # effortLevel を更新する)。read-only な store symlink だと EACCES で失敗するため、宣言的な
+  # 内容はここに閉じ込め、下の home.activation.claudeSettings が実ファイルとして配置する。
+  claudeSettingsFile = pkgs.writeText "claude-settings.json" (
+    builtins.toJSON {
+      # 既定の推論深度。settings schema 上の "Persisted effort level"(low/medium/high/xhigh)。
+      # 解決順は CLI --effort > settings.ultracode > settings.effortLevel なので、これが既定になる。
+      # ultracode(= xhigh + 常時 dynamic-workflow orchestration)は既定にしない: 全タスクを
+      # マルチエージェントへ広げるのは無駄なので、必要な時だけ `ccx`(CC_ULTRA=1) か /effort ultracode。
+      # CLAUDE_CODE_EFFORT_LEVEL env も使わない(セッション中の /effort を丸ごと上書きしてしまう)。
+      effortLevel = "xhigh";
+      # 既定 OFF を「宣言しない」ではなく明示する: activation のマージは nix が宣言しない
+      # キーを温存するので、過去に書かれた ultracode = true が黙って生き残ってしまう。
+      ultracode = false;
       env = sharedAgentEnv;
       enableAutoMode = true;
       skipDangerousModePermissionPrompt = true;
@@ -425,6 +401,11 @@ in
         command = "bash ${config.home.homeDirectory}/.claude/statusline-command.sh";
       };
       permissions = {
+        # 起動時の permission mode。enableAutoMode は auto mode 機能の gate でしかないので、
+        # 「起動したら auto」にするにはこちらが要る(両方必要)。auto を grant できるのは
+        # policy/user/flag settings だけ(project/local の defaultMode="auto" は
+        # repo-controllable として無視される) → user scope の本ファイルが正しい置き場。
+        defaultMode = "auto";
         allow = [
           "Bash(grep:*)"
           "Bash(find:*)"
@@ -589,6 +570,36 @@ in
             }
           ];
         };
+    }
+  );
+in
+{
+  home.packages = [
+    pkgs.llm-agents.claude-code # Claude Code CLI
+  ];
+
+  # (removed 2026-07-25) home.shellAliases.claude = "claude --settings ultracode":
+  # dead config — downstream personal.nix overrides `claude` with lib.mkForce ("cc"),
+  # so this alias never reached a shell. The session default effort now lives in
+  # settings.json (effortLevel below); ultracode stays opt-in via `ccx` (CC_ULTRA=1).
+
+  home.file = {
+    # Air delegates `claude` and `codex` to the always-on mini. These are the
+    # only launcher dependencies owned by the generated shell aliases; legacy
+    # hook scripts remain outside this projection until their separate migration.
+    ".claude/scripts/claude-mini.sh" = {
+      source = ../scripts/claude/claude-mini.sh;
+      executable = true;
+    };
+    ".claude/scripts/run-on-mini.sh" = {
+      source = ../scripts/claude/run-on-mini.sh;
+      executable = true;
+    };
+
+    # Gemini
+    ".gemini/GEMINI.md".text = expandTemplate {
+      templateScope = ../prompt;
+      template = ../prompt/antigravity.md;
     };
 
     # Status line: the script referenced by statusLine.command above. Co-located
@@ -644,6 +655,32 @@ in
   // agentFiles
   // mkClaudeAgentAttrs
   // (mkDirFileAttrs ".claude/commands" sharedCommandsDir);
+
+  # settings.json は Claude Code 自身が書き戻す(/effort → userSettings の effortLevel)ので、
+  # ~/.claude.json と同じ理由で read-only symlink にできない。nix 側のキーを優先マージした
+  # 実ファイルとして配置する: nix が宣言するキーは apply ごとに宣言値へ戻り、Claude Code が
+  # 書いた他のキー(/effort や /config のトグル)は次の apply まで生き残る。
+  home.activation.claudeSettings = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    SETTINGS="$HOME/.claude/settings.json"
+    mkdir -p "$HOME/.claude"
+    # 旧世代の store symlink を剥がす(残すと書込が read-only store に向かう)
+    if [ -L "$SETTINGS" ]; then
+      rm -f "$SETTINGS"
+    fi
+    # マージ元は Claude Code が書き戻すファイル = 信用境界の外。妥当な JSON の時だけ
+    # マージし、壊れていれば宣言値で置き換える(apply を道連れにしない fail-safe)。
+    if [ -s "$SETTINGS" ] && ${pkgs.jq}/bin/jq -e . "$SETTINGS" > /dev/null 2>&1; then
+      if ${pkgs.jq}/bin/jq -s '.[0] * .[1]' "$SETTINGS" ${claudeSettingsFile} > "$SETTINGS.tmp"; then
+        mv -f "$SETTINGS.tmp" "$SETTINGS"
+      else
+        rm -f "$SETTINGS.tmp"
+        cp -f ${claudeSettingsFile} "$SETTINGS"
+      fi
+    else
+      cp -f ${claudeSettingsFile} "$SETTINGS"
+    fi
+    chmod u+w "$SETTINGS"
+  '';
 
   # Symlink ~/.claude/{commands,skills} → Xcode Agent config dir
   # so both CLI and Xcode Agent share the same commands/skills.
