@@ -28,7 +28,7 @@ description: >
 ### 2系統（用途で使い分ける — 統合しない）
 | 系統 | 何 | パレット / 形 | 用途 |
 |---|---|---|---|
-| **傘（本 skill）** | 多元現実ブランド基調 | 白 `#FFFFFF` / Teal `#0F766E` / **角丸 0px** | Web・LP・メール・名刺・汎用ブランド資料 |
+| **傘（本 skill）** | 多元現実ブランド基調 | 白 `#FFFFFF`（印刷）or 近黒 `#0E0E10`（画面） / emerald `#00E599`（単一外科的アクセント） / 角丸=register依存 | Web・LP・メール・名刺・汎用ブランド資料 |
 | **形式A–E（`design-format-*`）** | 用途特化フォーマット | 各 Palantir 原典準拠（傘と異なる場合あり） | 下表 |
 
 **原則**: 傘と形式A–E は *別のデザイン言語*。無理に統合せず、用途で明示的に分ける（「対外ブランド = 傘 / IR・写経 = 形式」）。違うものに違う名前。
@@ -61,12 +61,38 @@ description: >
 
 | 名称 | Hex | RGB | 用途 |
 |---|---|---|---|
-| **Brand Teal** | `#0F766E` | 15, 118, 110 | CTA、リンク、ハイライト、ブランド要素 |
+| **Brand Green** | `#00E599`（UI/リンク重み `#00C868`） | 0, 229, 153 | CTA・リンク・ハイライト（screen register・画面5%以下。白背景/印刷では無彩＋インク下線） |
 | **Destructive** | `#EF4444` | 239, 68, 68 | エラー、警告（限定使用） |
 
-### ダークモード（デジタル専用・参考）
+### Palantir 源泉 DNA — register-conditional（2026-07-04 決定・原典デッキ実読に基づく訂正）
 
-ウェブサイトのデフォルトテーマ。画面上のプレゼンやデジタル配布専用。
+現行の「白/純黒フラット・**teal**・**角丸0**・Public Sans」は**原典からの劣化**だった。会社 Drive の**原典デッキ全読**(IR 2022–2025 全期 約330枚＋whitepaper/service-def 66頁＋Airbus＋live warpspeed)で訂正する。**アクセント色も角丸もブランド定数ではなく register・時代依存**。不変なのは「**モノクロ基調＋単一の外科的アクセント＋チャートはモノクロ**」。
+
+**不変の DNA(全期・全 register 共通):**
+- **厳格モノクロ基調**: 近黒チャコール `#0E0E10`–`#1C2127`(2025 は暖め `#1A1D22`)＋ライト暖グレー `#D8D8D8`–`#EFEFEF`/カード `#C7C7C7`。**明暗の反転が装置**(ダーク面＋白バー ⇔ ライトカード＋黒バー)。地・パネルはどちらの明暗も取る。
+- **単一の外科的アクセント(色相は時代/キャンペーンで可変)**: 2022=**無**(純モノクロ) / 2024=**AIP紫** `#7C3AED`(gradient `#C026D3→#4F46E5`) / 2025=**emerald 緑** `#00E599`(2値: neon=自社 / muted `#1F9E6E`=peer)＋**cyan `#35C6E6`**(デルタ/前期)。**常に 1–2 箇所・ベタ塗り禁止・チャートには入れない**。多元はこの pattern に倣い **emerald 緑 `#00E599` を単一アクセントに固定**(下記トークン)。partner ロゴ色は隔離(restyle しない)。
+- **チャートは常にモノクロ**: 過去期=**中空アウトライン棒** → 当期=**ソリッド白/黒 or 白→グレーグラデ棒**、点線対角 `+NN%` コネクタ、最新点 **dashed halo ring**、軸 break `//`、mono uppercase 凡例。赤青緑は native チャートに**一切入れない**(色は写真・製品UI内のみ)。
+- **タイポ**: neo-grotesque(**Neue Haas Grotesk / Univers 系**・独自 face。特大 display・tight negative tracking・**regular〜medium weight＝bold 使わない**。`-apple-system`/Public Sans は劣化)。**tabular/monospaced numerals**。canonical=`--font`、web/free tier=**Geist**(Inter/Roboto 等の汎用AIフォント禁止)、和文=premium gothic(Hiragino/Zen Kaku)。
+- **強調はインク色の下線のみ**(`text-decoration-color:currentColor`)。**下線/文字をアクセント色で塗らない**=強調に色を足さない(AIっぽさ回避)。
+- **blueprint/engineering 装飾**: page-progress **pips**(`● ○ ○ ○`・章で塗り移動。実データの dot-matrix 計数にも転用)・**stadium/segmented pill** タグ(`[Q4 │ Business Update]`)・極小 uppercase **mono ラベル**・**hairline 多段フッタ/帯**・dashed コネクタ・isometric matte-3D グリフ・breadcrumb。(⌐コーナーブラケット/±tick strip は AmCham マーケデッキ固有で IR には出ない。)
+- **写真**: フルブリード・**フルカラー**(モノクロ基調の中で色が宿る主な場所)・subtle 角丸。co-brand=`Palantir • partner` 縦 divider(partner は自社色・Palantir はモノクロ)。
+- **motion**: minimal-functional(video loop / fade・scroll-reveal / black↔white hover 反転)。particles/3D-scene/shader/glass は不使用。
+
+**register 依存(可変)の軸:**
+
+| register | 面・角丸 | アクセント |
+|---|---|---|
+| **IR/投資家(画面)** | ライト舞台 or 近黒フルブリード＋角丸パネル。cover/divider **~24–32px**・財務パネル **~16–26px**・pill=**stadium** | 期のキャンペーン色を外科的に(多元=緑) |
+| **marketing/web(warpspeed)** | 近黒 hero＋ライト content。UI **~2–6px** | 控えめ(リンク/hover)＋schematic の cyan/blue グロー |
+| **印刷/正式(whitepaper・service-def)** | **白 or warm cream `#F2EFE6`**・本文黒モノクロ・**narrow 左レール＋wide 右本文＋hairline**・**番号必須**(decimal/01–/TOC)・角 **0px**(写真のみ4–6px) | **本文は無彩**。色は写真・図版・リンク・見出しのみ |
+
+**多元スライドの実運用＝印刷前提(多くが白黒コピー)・重要な上書き**: Palantir のダーク画面 IR と違い、**多元のスライドは印刷され、白黒でコピーされる**。だからスライド register は Palantir のダーク面をそのまま真似ない:
+- **白背景を徹底**(ダークチャコール面はトナーを浪費し、コピー機で視認性が落ちる)。ダーク面は web hero など画面専用に留める。
+- **チャートは色に依存させない**: outline(過去)/solid(当期)/hatch＋**直接ラベル**で符号化(Palantir のモノクロ棒がそのまま B&W セーフ)。色分けだけの凡例に意味を持たせない。
+- **アクセント緑は grayscale で消えない冗長符号化**と併用: 緑ドット＝同時に「solid ドット＋直接数値」、リンク＝下線。**色単独で情報を担わせない**。実質、印刷スライドはほぼ無彩＋緑は最小の1点。
+- サイドバー等の**ベタ塗り面は使わない**→ 明グレー `#EFEFEF` カード＋hairline 罫で代替。
+
+機械可読正本 = この skill 内 `design-dna-palantir.json`(design-learn がここを編集して恒久還流)。
 
 | 名称 | Hex | 用途 |
 |---|---|---|
@@ -77,9 +103,42 @@ description: >
 | **Muted BG** | `#2F343C` | 補助背景 |
 | **Muted Text** | `#D4D9DF` | セカンダリテキスト |
 | **Border** | `#383E47` | ボーダー |
-| **Brand Teal** | `#2DD4BF` | アクセント（ダーク背景用・明るめ） |
-| **Brand FG** | `#000000` | Brand Teal 上のテキスト |
+| **Brand Green** | `#00E599` | アクセント（Palantir 真アクセント・screen register のみ・画面5%以下）。UI/リンク重み `#00C868` |
+| **Brand FG** | `#000000` | Brand Green 上のテキスト |
 | **Destructive** | `#CD4246` | エラー（ダーク用・Blueprint赤） |
+
+> **訂正記録(2026-07-04)**: 旧「Brand Teal `#2DD4BF`/`#0F766E`」は原典 Palantir(エメラルド緑 `#00E599`)からの取り違え劣化。緑に全面訂正。
+
+### 単一トークン源（consumable CSS変数・全 skill/ページがこれを inline して消費）
+
+これが乱立解消の source of truth。design-format-* / 内部ツールは独自の配色を持たず、この変数を消費する。
+自己完結HTMLに**そのまま inline**する（外部CSS参照はしない＝共有時に壊れる）。**角丸は register 依存**(下記コメント)。
+既定は screen register(内部ツール=IR/marketing 寄り)、`@media print` が印刷/正式 register。
+
+```css
+:root{
+  /* 多元現実 = Palantir 源泉 DNA（screen register 既定） */
+  --stage:#D8D8D8; --card-light:#EFEFEF; --card-light-2:#C7C7C7;      /* ライト面(反転カード/明グレー) */
+  --bg:#0E0E10; --panel:#1C2127; --panel-2:#252A31; --panel-3:#2F343C;  /* 近黒 hero / チャコールパネル(2025は暖め #1A1D22) */
+  --fg:#FFFFFF; --muted:#D4D9DF; --border:#383E47;
+  /* Latin=neo-grotesque / 和文=premium gothic のペア(和欧混植を font で崩さない) */
+  --font:"Neue Haas Grotesk Display Pro","Neue Haas Grotesk","Geist","Helvetica Neue","Hiragino Kaku Gothic ProN","Zen Kaku Gothic New",Helvetica,Arial,sans-serif;
+  --font-mono:"Geist Mono","SF Mono",Menlo,monospace;  /* blueprint 極小ラベル用 */
+  --accent:#00E599; --accent-ui:#00C868; --accent-peer:#1F9E6E; --accent-cyan:#35C6E6; --accent-fg:#000000;
+  /* 単一外科的アクセント(1–2箇所・ベタ塗り禁止・チャートには入れない)。peer=注目他社/cyan=デルタ は任意 */
+  --destructive:#CD4246;
+  --radius:4px;          /* web UI(2–6px) */
+  --radius-panel:20px;   /* 財務パネル(16–26px) */ --radius-cover:28px; /* cover/divider(24–32px) */ --radius-pill:9999px; /* stadium */
+  --shadow:0 1px 0 rgba(255,255,255,.02), 0 8px 30px rgba(0,0,0,.45);
+}
+@media print{  /* 印刷/正式 register: 純モノクロ白・hairline・シャープ・緑なし */
+  :root{
+    --stage:#FFFFFF; --bg:#FFFFFF; --panel:#F3F3F3; --panel-2:#F3F3F3; --panel-3:#F3F3F3;
+    --fg:#111111; --muted:#525252; --border:#E5E5E5;
+    --accent:#111111; --accent-ui:#111111; --accent-fg:#FFFFFF; --radius:0; --radius-panel:0;
+  }
+}
+```
 
 ### カラー使用原則
 
@@ -96,9 +155,9 @@ description: >
 
 | 用途 | フォント | フォールバック |
 |---|---|---|
-| **メイン（欧文）** | Public Sans | Helvetica Neue, Arial, sans-serif |
-| **メイン（日本語）** | Noto Sans JP | ヒラギノ角ゴ ProN, 游ゴシック, sans-serif |
-| **モノスペース** | JetBrains Mono | SF Mono, Consolas, monospace |
+| **メイン（欧文）** | Neue Haas Grotesk 系（web/free tier=Geist） | Helvetica Neue, Arial, sans-serif |
+| **メイン（日本語）** | ヒラギノ角ゴ ProN / Zen Kaku Gothic New（premium gothic） | 游ゴシック, sans-serif |
+| **モノスペース** | Geist Mono | SF Mono, Menlo, monospace |
 
 ### フォントウェイト
 
@@ -239,7 +298,7 @@ description: >
   角丸: 0px
   高さ: 48px
   パディング: 0 24px
-  フォント: Public Sans, 14px, Medium(500)
+  フォント: Neue Haas Grotesk 系(web=Geist), 14px, Medium(500)
   ホバー: 背景 #111111, テキスト #FFFFFF
 
 [Primary]
@@ -249,9 +308,9 @@ description: >
   ホバー: 背景 #111111/90%
 
 [Brand]
-  背景: #0F766E
-  テキスト: #FFFFFF
-  ホバー: 背景 #0F766E/90%
+  背景: #00C868
+  テキスト: #000000
+  ホバー: 背景 #00C868/90%
 ```
 
 ### カード
@@ -267,7 +326,7 @@ description: >
 ### テックラベル（カテゴリ表示）
 
 ```
-  フォント: JetBrains Mono
+  フォント: Geist Mono
   サイズ: 10-12px
   ウェイト: 500
   テキスト変換: uppercase
@@ -370,16 +429,16 @@ description: >
 - 数値データを大きく目立たせる
 - 1スライド/1セクション = 1メッセージ
 - モノクロマティックな配色を基本にする
-- Brand Teal は控えめなアクセントとして使う
-- Public Sans + Noto Sans JP の組み合わせを維持する
-- ボーダー半径 0px のシャープなデザインを貫く
+- emerald 緑（`#00E599`）を単一の外科的アクセントとして最小限に使う（画面5%以下・印刷は無彩）
+- Neue Haas Grotesk 系（web=Geist）＋和文 premium gothic（ヒラギノ / Zen Kaku Gothic New）を維持する
+- 角丸は register 依存にする（印刷/正式=0px・IR財務パネル=16–26px・cover=24–32px）
 
 ### Don't（禁止）
 
 - 装飾的なグラデーション、シャドウ、3Dエフェクト
 - ストックフォトやクリップアート
 - カラフルな配色（虹色チャートなど）
-- 丸みの強い角丸（border-radius > 8px）
+- register を無視した角丸（印刷/正式で角丸を付ける、IR財務パネルを角0にする等）
 - セリフフォント、手書き風フォント
 - 絵文字やカジュアルなアイコン
 - 密集した情報レイアウト
@@ -394,12 +453,12 @@ description: >
 - **スライドサイズ**: 16:9（1920x1080）
 - **背景色**: `#FFFFFF`（デフォルト）/ `#111111`（セクション区切りのみ）
 - **テキスト色**: `#111111`（プライマリ）/ `#525252`（セカンダリ）
-- **フォント**: Public Sans + Noto Sans JP
+- **フォント**: Neue Haas Grotesk 系（web=Geist）＋ヒラギノ / Zen Kaku Gothic New
 - **見出し**: 36-60pt, Regular(400), 字間 -0.02em
 - **KPI数値**: 64-96pt, Bold(700)
 - **本文**: 18-20pt, Light(300)-Regular(400)
 - **マージン**: 上下左右 60px 以上
-- **アクセントライン**: Brand Teal `#0F766E` で控えめに
+- **アクセントライン**: emerald `#00C868` で最小限に（印刷は無彩＋インク下線）
 
 ### ドキュメント（Word / PDF / Google Docs）
 
@@ -433,15 +492,15 @@ description: >
   --muted-foreground: #525252;
 
   /* Brand */
-  --brand: #0f766e;
-  --brand-foreground: #ffffff;
+  --brand: #00C868;
+  --brand-foreground: #000000;
 
   /* Borders */
   --border: #e5e5e5;
 
   /* Typography */
-  --font-sans: "Public Sans", "Noto Sans JP", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  --font-sans: "Neue Haas Grotesk Display Pro", "Neue Haas Grotesk", "Geist", "Helvetica Neue", "Hiragino Kaku Gothic ProN", "Zen Kaku Gothic New", Helvetica, Arial, sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", Menlo, monospace;
 
   /* Shape */
   --radius: 0px;
@@ -506,6 +565,6 @@ body {
 2. **IR/PR資料**: セクション1のカラー + セクション9のトーン&ボイス
 3. **Webページ作成**: セクション12のCSS実装リファレンス
 4. **ドキュメント作成**: セクション2のタイポグラフィ + セクション11のドキュメント指針
-5. **データ可視化**: モノクロマティック基調 + Brand Teal アクセント
+5. **データ可視化**: モノクロ基調（チャートは常にモノクロ・アクセント色を入れない）
 
-**最重要原則**: 白背景 + シャープな幾何学（角丸0px） + モノクロマティック + Public Sans。この4要素がブランドの核心。
+**最重要原則**: モノクロ基調 + 単一の外科的アクセント（emerald・チャートには入れない） + register 依存の角丸 + neo-grotesque（Neue Haas / web=Geist・和文 premium gothic）。不変の核は「モノクロ＋単一アクセント＋チャートは常にモノクロ」。

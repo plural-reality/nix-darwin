@@ -30,8 +30,8 @@ description: >
   --radius-card: 16px;
   --radius-badge: 6px;
   --radius-dot: 50%;
-  --font-sans: "Public Sans", "Noto Sans JP", "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  --font-sans: "Neue Haas Grotesk Display Pro", "Neue Haas Grotesk", "Geist", "Helvetica Neue", "Hiragino Kaku Gothic ProN", "Zen Kaku Gothic New", Helvetica, Arial, sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", Menlo, monospace;
   --slide-pad: 48px;
   --slide-gap: 24px;
 }

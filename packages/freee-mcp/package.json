@@ -1,0 +1,8 @@
+{
+  "name": "freee-mcp-nix-closure",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "freee-mcp": "0.26.7"
+  }
+}

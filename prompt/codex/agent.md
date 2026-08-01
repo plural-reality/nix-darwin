@@ -2,7 +2,7 @@
 
 常に日本語で返答してください。コード・コミットメッセージ・識別子・ログなど、技術的に英語が適切なものは英語のままで構いません。
 
-常に、並行でこなせる作業は、チームを組んで最大効率で作業してください。
+独立した read-heavy subtask が2つ以上あり、並列化が実時間を短縮する場合だけチームを組んでください。小さい作業、write-heavy作業、単一境界の作業は単独で実行し、subagentには原則 `fork_turns="none"` で必要な文脈だけ渡してください。
 
 ## Routing Table
 
@@ -31,6 +31,8 @@
 - Do not use the Codex in-app Browser or Playwright's default Chromium/Chrome for Testing unless the user explicitly asks for an isolated browser.
 - If Playwright MCP is unavoidable, run it with the real Chrome channel (`--browser chrome`) rather than its bundled browser.
 
+@[agent-operations]
+
 ## スケジュール・空き時間の確認
 
 - 本人の予定や空き時間を見るとき（「いつ空いてる?」「日程入れて」等）は、**Apple Calendar を必ず読む**。Google Calendar だけだとほぼ空に見えるが、予定の実体は Apple/iCloud 側にある。
@@ -44,3 +46,4 @@
 @[local-installation]
 @[shell-environment]
 @[architectual-decision]
+@[coast-local]

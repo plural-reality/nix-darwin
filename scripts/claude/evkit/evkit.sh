@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# evkit — Apple カレンダー/リマインダーへ書き込む唯一の client。
+# evkit — Apple カレンダー/リマインダーを読書きする唯一の client。
 #
 #   f(spec JSON on stdin) -> result JSON on stdout
 #
@@ -15,6 +15,7 @@
 # usage:
 #   evkit status                                  # 許可状態を見る
 #   evkit seed                                    # 初回の許可ダイアログを出す(Air の画面で承認)
+#   evkit snapshot            < snapshot.json     # Calendar + Reminders を一括読取
 #   evkit calendar            < events.json
 #   evkit reminders.recurring < spec.json
 #   evkit reminders.geofence  < spec.json
@@ -29,13 +30,13 @@ case "$op" in
   status | seed)
     request="$(printf '{"op":"%s"}' "$op")"
     ;;
-  calendar | reminders.recurring | reminders.geofence)
+  snapshot | calendar | reminders.recurring | reminders.geofence)
     # stdin の spec をそのまま包む。spec の schema は各 skill / 各 .swift が canonical。
     request="$(jq -c --arg op "$op" '{op: $op, spec: .}')"
     ;;
   *)
     printf 'evkit: unknown op %s\n' "$op" >&2
-    printf 'ops: status seed calendar reminders.recurring reminders.geofence\n' >&2
+    printf 'ops: status seed snapshot calendar reminders.recurring reminders.geofence\n' >&2
     exit 64
     ;;
 esac

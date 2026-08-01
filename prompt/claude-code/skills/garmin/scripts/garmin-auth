@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Interactive login. Password/MFA stay in this terminal process; the resulting
+# DI token overwrites the boundary's ephemeral tokenstore. with-garmin-token is
+# the only validator and SOPS writer.
+set -euo pipefail
+
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WITH_TOKEN="$SKILL_DIR/scripts/with-garmin-token"
+GARMINCONNECT_VERSION="0.3.8"
+
+[[ -n "${GARMIN_TOKEN_DIR:-}" ]] ||
+  exec "$WITH_TOKEN" "$0"
+
+GARMIN_TOKEN_OUT="$GARMINTOKENS" \
+  uv run --quiet --with "garminconnect==$GARMINCONNECT_VERSION" \
+    python "$SKILL_DIR/scripts/mint_token.py"

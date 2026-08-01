@@ -156,7 +156,6 @@ let summarizeReminder = { (r: EKReminder) -> ItemSummary in
 
 let run = { (payload: Payload) -> Int32 in
   let store = EKEventStore()
-  let requestDone = DispatchSemaphore(value: 0)
   let saveDone = DispatchSemaphore(value: 0)
 
   let iCloudSource = { () -> EKSource? in
@@ -214,15 +213,10 @@ let run = { (payload: Payload) -> Int32 in
     } ?? { emit(bare(false, "No writable Reminders list found", true)); saveDone.signal() }()
   }
 
-  let requestAccess = { (completion: @escaping (Bool, Error?) -> Void) -> Void in
-    if #available(macOS 14.0, *) { store.requestFullAccessToReminders(completion: completion) }
-    else { store.requestAccess(to: .reminder, completion: completion) }
-  }
-  requestAccess { granted, error in
-    granted ? save() : { emit(bare(false, error?.localizedDescription ?? "Reminders access was not granted", false)); saveDone.signal() }()
-    requestDone.signal()
-  }
-  requestDone.wait(); saveDone.wait()
+  EKEventStore.authorizationStatus(for: .reminder) == .fullAccess
+    ? save()
+    : { emit(bare(false, "Reminders access was not granted; run evkit seed on the MacBook Air", false)); saveDone.signal() }()
+  saveDone.wait()
   return 0
 }
 

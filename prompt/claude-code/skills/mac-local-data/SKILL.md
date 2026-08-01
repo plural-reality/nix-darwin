@@ -2,7 +2,7 @@
 name: mac-local-data
 description: >
   このMacのアプリがローカルに保存したデータを read-only で取り出す skill。
-  2つの形式に対応: (1) SQLite — iMessage の履歴(chat.db) を検索・取得（送信は別途 imessage-send）。
+  2つの形式に対応: (1) SQLite — 署名済みread-only bridge経由でiMessage履歴を検索・取得（送信は別途 imessage-send）。
   (2) Chromium/Electron LevelDB — Claude Desktop / Slack / Notion / Signal / VS Code 等の
   Local Storage・IndexedDB を snappy/zstd 解凍して中身を取り出す（生 grep が効かない圧縮を越える）。
   Beeper のメッセージ取得は beeper-to-scb が canonical なのでそちらへ委譲する。
@@ -17,9 +17,9 @@ description: >
 
 1. **保存場所** — ローカルファイルか、サーバ専用か（サーバ専用なら取れない）
 2. **形式** — SQLite / plist / JSON は即読める。**LevelDB は圧縮で生 grep が効かない**ので専用デコーダ必須
-3. **権限** — このターミナルは Full Disk Access 前提（`~/Library/Messages/chat.db` が読めれば確定）
+3. **権限** — 対象形式ごとの最小brokerへ閉じ込める。Terminal/agent全体のFull Disk Accessを前提にしない
 
-**契約は OS のストレージ形式が持ち、この skill は「どこを・どう読むか」のワークフローと薄いデコーダだけを持つ。** 値の保存場所をハードコードせず、形式ごとのリーダーに委譲する。
+**契約は OS のストレージ形式が持ち、この skill は「どこを・どう読むか」のワークフローと薄いデコーダだけを持つ。** 保護対象への固定pathとTCCはoutermost brokerへ閉じ込め、形式ごとのreaderへ委譲する。
 
 ```
 locate(app data dir)  →  identify(SQLite | LevelDB | plist)  →  decode(形式別 reader)  →  検索/要約
@@ -29,19 +29,29 @@ locate(app data dir)  →  identify(SQLite | LevelDB | plist)  →  decode(形�
 
 ## 1. iMessage（SQLite, 全文ローカル）— 主用途
 
-`~/Library/Messages/chat.db`。iCloud 同期なので **iPhone/iPad/他 Mac で打ったものも全部ここに入る**＝端末横断のコンテキスト。本文は modern macOS では `text` 列が NULL で、`attributedBody`（typedstream NSAttributedString）に入っている → `imessage.py` がデコードする。
+`~/Library/Messages/chat.db` を `imsg-history` で読む。CLI自身はDBへ触れず、固定署名IDの `MessageHistoryBridge.app` がmode `0600` Unix socket越しにallowlist済みread-only queryだけを実行する。Codex/Terminal/PythonへFull Disk Accessを与えない。
 
 ```bash
-python3 ~/.claude/skills/mac-local-data/scripts/imessage.py stats
-python3 ~/.claude/skills/mac-local-data/scripts/imessage.py recent 20
-python3 ~/.claude/skills/mac-local-data/scripts/imessage.py search "サロモン" 10   # attributedBody まで走査
-python3 ~/.claude/skills/mac-local-data/scripts/imessage.py with "818062471623" 40 # 相手ごとのスレッド
-python3 ~/.claude/skills/mac-local-data/scripts/imessage.py list-handles 30        # 既知の番号/メール
+imsg-history status
+imsg-history recent 20
+imsg-history search "検索語" 10
+imsg-history chats "表示名またはhandle" 20
+imsg-history with "電話番号またはメール" 40
+imsg-history chat "chat GUID" 40
 ```
 
-出力は TSV: `date <TAB> me|them <TAB> handle <TAB> text`。パイプして要約する。
+出力はJSONL。message/chat recordの後に必ず`{"type":"end","ok":true,"count":N}`が来る。上限に達したmessage pageは`nextCursor`を返すので、`spec.before`へその`{dateRaw,rowID,chatRowID}`を渡して1000件より古い履歴へ進む。複数chatに属するmessageはmembershipごとに1 record返す。本文には`decodeStatus`があり、`typedstream_heuristic`/`unsupported`/`attachment_only`でも行を捨てない。
+
+```bash
+imsg-history recent 20 \
+  | jq -r 'select(.type == "message") | .message | [.date,.direction,(.sender // "-"),(.text // "")] | @tsv'
+
+printf '%s\n' '{"op":"recent","spec":{"limit":1000,"before":{"dateRaw":1000000000000000000,"rowID":123,"chatRowID":4}}}' \
+  | imsg-history request
+```
 
 - 連絡先名 ↔ 番号の解決は `imessage-send` skill の Contacts.app 検索が canonical（番号が分からなければそちらで引いてから `with`）。
+- `with`はそのhandleが参加するchatを返すため、グループchat内の他participant発言も含む。`message.handle_id`を「会話相手」と誤解しない。
 - **送信はこの skill の責務外** → [[imessage-send]]（送信は必ず確認必須）。
 
 ## 2. Chromium/Electron LevelDB（Claude Desktop / Slack / Notion / Signal / VS Code …）
@@ -78,7 +88,9 @@ PATH はアプリの Application Support フォルダでもよい（再帰的に
 
 - これは Claude 固有ではなく、**ユーザ権限 + Full Disk Access で動く任意プロセスが同じことをできる**という事実。chat.db 等が丸見えである前提で扱う。
 - 抽出した他者の私的内容は**話題だけ要約**し、逐語転記やページ書き込みは最小限に（[[beeper-to-scb]] と同じ規律）。
-- 全て **read-only**（`mode=ro` / temp コピー）。元ストアを一切変更しない。送信・書込は別 skill の責務。
+- 全て **read-only**。短いqueryはlive DBの短いread transaction、全文検索はSQLite Online Backup APIで作るmode `0600` ephemeral snapshotを読む。`immutable=1`や手動`cp`は使わない。送信・書込は別 skill の責務。
+- bridge socketは他ユーザーを排除するが、同一UIDの任意processは呼べる。この限定的なread capabilityを許容する代わりに、Codex等へMail/Safari/Homeまで含むblanket Full Disk Accessを与えない。
+- 添付は件数だけを返し、file pathや実体を開かない。本文decoderはbounded parserであり、`unsupported`を完全な復号と偽らない。
 
 ## 関連
 - [[imessage-send]] — iMessage **送信**（本 skill は読み取り専用）。連絡先解決も canonical。

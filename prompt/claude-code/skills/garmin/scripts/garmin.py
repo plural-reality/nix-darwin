@@ -1,7 +1,7 @@
 """Garmin thin client — token-only, stream-out JSON.
 
-Zero credential knowledge: garminconnect reads the canonical token from the
-GARMINTOKENS env var (injected by `sops exec-env`). Each subcommand is a pure
+Zero credential knowledge: garminconnect reads an ephemeral tokenstore path
+from GARMINTOKENS (injected by `with-garmin-token`). Each subcommand is a pure
 read that emits JSON on stdout. `.fit` is downloaded + parsed server-side here
 (garmin-fit-sdk); callers never touch raw binary.
 
@@ -31,9 +31,10 @@ def _ndays_ago(n: int) -> str:
 
 
 def _client() -> Garmin:
-    # login() with no arg reads GARMINTOKENS from env (>512 chars => loads()).
+    # login() reads the ephemeral tokenstore path from GARMINTOKENS and writes
+    # refreshed state back to that path for the outer boundary to persist.
     os.environ.get("GARMINTOKENS") or sys.exit(
-        json.dumps({"ok": False, "error": "GARMINTOKENS not set — run via the `garmin` wrapper (sops exec-env)"})
+        json.dumps({"ok": False, "error": "GARMINTOKENS not set — run via the `garmin` wrapper"})
     )
     g = Garmin()
     g.login()

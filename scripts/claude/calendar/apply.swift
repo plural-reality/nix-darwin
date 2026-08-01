@@ -71,12 +71,9 @@ func geocode(_ address: String) -> CLLocation? {
 
 // --- EventKit access ---
 let store = EKEventStore()
-let sema = DispatchSemaphore(value: 0)
-var granted = false
-if #available(macOS 14.0, *) { store.requestFullAccessToEvents { ok, _ in granted = ok; sema.signal() } }
-else { store.requestAccess(to: .event) { ok, _ in granted = ok; sema.signal() } }
-_ = sema.wait(timeout: .now() + 30)
-guard granted else { die("DENIED calendar access", 1) }
+guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else {
+    die("DENIED calendar access; run evkit seed on the MacBook Air", 1)
+}
 
 // --- calendar (必ず iCloud) ---
 func iCloudSource() -> EKSource? {

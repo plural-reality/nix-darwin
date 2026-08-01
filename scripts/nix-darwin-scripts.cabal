@@ -52,6 +52,7 @@ executable tar-map
                      , stm
   default-language:    Haskell2010
   default-extensions:  LambdaCase
+                     , ImportQualifiedPost
                      , OverloadedStrings
                      , RecordWildCards
                      , ScopedTypeVariables

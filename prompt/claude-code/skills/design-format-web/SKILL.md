@@ -2,7 +2,7 @@
 name: design-format-web
 description: >
   形式E: Web / LP / デジタルコンテンツ用デザイントークンとパターン集。
-  角丸0px、ライト/ダーク切替、7:5グリッド、KPI 80px。
+  角丸2–6px(web UI register)、ライト/ダーク切替、7:5グリッド、KPI 80px。
   「Webサイト」「LP」「ランディングページ」「Webデザイン」「デジタルコンテンツ」で発動。
   参考: ~/Desktop/plural-reality/plural-reality-design-preview.html
 ---
@@ -19,12 +19,12 @@ description: >
   --foreground: #111111;
   --secondary: #f3f3f3;
   --muted-foreground: #525252;
-  --brand: #0f766e;
+  --brand: #00C868;
   --brand-foreground: #ffffff;
   --border: #e5e5e5;
   --destructive: #ef4444;
-  --font-sans: "Public Sans", "Noto Sans JP", "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", Consolas, monospace;
+  --font-sans: "Neue Haas Grotesk Display Pro", "Neue Haas Grotesk", "Geist", "Helvetica Neue", "Hiragino Kaku Gothic ProN", "Zen Kaku Gothic New", Helvetica, Arial, sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", Menlo, monospace;
   --radius: 0px;
 }
 [data-theme="dark"] {
@@ -32,7 +32,7 @@ description: >
   --foreground: #ffffff;
   --secondary: #1c2127;
   --muted-foreground: #d4d9df;
-  --brand: #2dd4bf;
+  --brand: #00E599;
   --brand-foreground: #000000;
   --border: #383e47;
   --card-bg: #1c2127;

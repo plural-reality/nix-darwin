@@ -106,7 +106,7 @@
                 nixpkgs.hostPlatform = system;
 
                 nixpkgs.overlays = [
-                  inputs.llm-agents.overlays.default
+                  inputs.llm-agents.overlays.shared-nixpkgs
                   # onnxruntime 1.23.2 test code fails with -Werror on macOS (nodiscard warning in graph_test.cc)
                   (final: prev: {
                     pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
@@ -272,6 +272,9 @@
           # XcodeBuildMCP: hermetic MCP server (no npx)
           packages.xcodebuildmcp = import ./packages/xcodebuildmcp { inherit pkgs; };
 
+          # freee MCP: published ESM plus runtime npm closure, fully Nix-pinned.
+          packages.freee-mcp = import ./packages/freee-mcp { inherit pkgs; };
+
           # CodeLayer: AI coding agent (macOS .app + CLI)
           packages.codelayer = import ./packages/codelayer { inherit pkgs; };
 
@@ -322,6 +325,76 @@
           # Formatter for the flake itself
           formatter = pkgs.nixfmt;
 
+          checks.evkit-snapshot =
+            pkgs.runCommand "evkit-snapshot-check"
+              {
+                nativeBuildInputs = [
+                  pkgs.clang
+                  pkgs.swift
+                ];
+              }
+              ''
+                export MACOSX_DEPLOYMENT_TARGET=14.0
+                swiftc -parse-as-library -O ${./scripts/claude/evkit/evkitd.swift} -o evkitd
+                swiftc -parse-as-library -D EVKIT_TESTING \
+                  ${./scripts/claude/evkit/evkitd.swift} \
+                  ${./scripts/claude/evkit/evkitd.test.swift} \
+                  -o evkitd-tests
+                ./evkitd-tests
+                touch "$out"
+              '';
+
+          # Pure core check for the signed Message History bridge. Signing and
+          # Full Disk Access remain explicit activation-time boundaries.
+          checks.message-history-bridge =
+            pkgs.runCommand "message-history-bridge-check"
+              {
+                nativeBuildInputs = [
+                  pkgs.clang
+                  pkgs.swift
+                ];
+                buildInputs = [ pkgs.sqlite ];
+              }
+              ''
+                mkdir sqlite-module
+                cat > sqlite-module/module.modulemap <<'MODULEMAP'
+                module CSQLite [system] {
+                  header "${pkgs.sqlite.dev}/include/sqlite3.h"
+                  link "sqlite3"
+                  export *
+                }
+                MODULEMAP
+                swiftc -D IMSG_HISTORY_TESTING -parse-as-library -Onone \
+                  ${./scripts/claude/imsg-history/message-historyd.swift} \
+                  ${./scripts/claude/imsg-history/message-historyd.test.swift} \
+                  -I sqlite-module \
+                  -lsqlite3 -o message-historyd-tests
+                ./message-historyd-tests
+                touch "$out"
+              '';
+
+          checks.freee-mcp-offline =
+            pkgs.runCommand "freee-mcp-offline-check"
+              {
+                nativeBuildInputs = [
+                  pkgs.gnugrep
+                  self'.packages.freee-mcp
+                ];
+              }
+              ''
+                export HOME="$TMPDIR/home"
+                export FREEE_CLIENT_ID="offline-check"
+                export FREEE_CLIENT_SECRET="offline-check"
+                mkdir -p "$HOME"
+                freee-mcp </dev/null >stdout 2>stderr || {
+                  cat stderr >&2
+                  exit 1
+                }
+                test ! -s stdout
+                grep -F '"version":"0.26.7"' stderr >/dev/null
+                touch "$out"
+              '';
+
           # Migration: nix run github:plural-reality/nix-darwin#migrate
           packages.migrate = pkgs.writeShellApplication {
             name = "migrate";
@@ -350,13 +423,16 @@
           packages.apply = pkgs.writeShellApplication {
             name = "apply";
             text = ''
-              nix flake update nix-darwin-upstream
+              flake_dir="''${NIX_DARWIN_FLAKE:-$PWD}"
+              nix flake update nix-darwin-upstream --flake "$flake_dir"
               # Run all pending migrations from this upstream version
-              ${self'.packages.migrate}/bin/migrate .
-              if command -v darwin-rebuild &>/dev/null; then
-                sudo darwin-rebuild switch --flake .
+              ${self'.packages.migrate}/bin/migrate "$flake_dir"
+              host="$(scutil --get LocalHostName)"
+              nix build "$flake_dir#darwinConfigurations.\"$host\".system" --no-link --print-out-paths
+              if darwin_rebuild="$(command -v darwin-rebuild)"; then
+                sudo "$darwin_rebuild" switch --flake "$flake_dir"
               else
-                sudo nix run nix-darwin -- switch --flake .
+                sudo /nix/var/nix/profiles/default/bin/nix run nix-darwin -- switch --flake "$flake_dir"
               fi
             '';
           };

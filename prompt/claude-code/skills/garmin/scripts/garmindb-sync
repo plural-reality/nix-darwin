@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # GarminDB sync — full-history / incremental import into ~/HealthData + ~/.GarminDb/*.db.
-# Token-only: materializes the canonical SOPS token into GarminDB's token store
-# (no password in GarminConnectConfig.json), then runs garmindb_cli.py.
+# Token-only: runs GarminDB against the same ephemeral tokenstore/writeback
+# boundary as the thin client. No password or persistent plaintext token.
 #
 #   garmindb-sync --all --download --import --analyze            # full history
 #   garmindb-sync --all --download --import --analyze --latest   # incremental update
@@ -9,11 +9,17 @@
 set -euo pipefail
 
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SECRET="$SKILL_DIR/secrets/garmin.enc.yaml"
+WITH_TOKEN="$SKILL_DIR/scripts/with-garmin-token"
+CONFIG="${GARMINDB_CONFIG:-$HOME/.GarminDb/GarminConnectConfig.json}"
+GARMINDB_VERSION="3.8.0"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 
-# 1) refresh GarminDB's token store from the single canonical SOPS secret.
-sops exec-env "$SECRET" \
-  "uv run --quiet --with garminconnect python $(printf '%q' "$SKILL_DIR/scripts/materialize_token.py")"
+[[ -n "${GARMIN_TOKEN_DIR:-}" ]] ||
+  exec "$WITH_TOKEN" "$0" "$@"
 
-# 2) run GarminDB (reads the materialized token; needs no further secret).
-exec uv run --quiet --with garmindb garmindb_cli.py "$@"
+"$PYTHON_BIN" -c \
+  'import json, pathlib, sys; source, dest = map(pathlib.Path, sys.argv[1:]); data = json.loads(source.read_text()); data["credentials"] = {"user": None, "password": None, "password_file": None, "secure_password": False}; dest.write_text(json.dumps(data, indent=2))' \
+  "$CONFIG" "$GARMIN_TOKEN_DIR/GarminConnectConfig.json"
+chmod 0600 "$GARMIN_TOKEN_DIR/GarminConnectConfig.json"
+exec uv run --quiet --with "garmindb==$GARMINDB_VERSION" \
+  garmindb_cli.py --config "$GARMIN_TOKEN_DIR" "$@"

@@ -268,7 +268,7 @@ in
     # SCRAPBOX_SID は置かない(2026-07-05 除去): 回転するセッション cookie を公開 repo +
     # world-readable な /nix/store に固定するのが漏洩経路だった。正本はログイン済み Chrome
     # (scrapbox-sid-refresh.sh が settings.local.json へ自己修復注入)。消費側の
-    # cosense-fetch が実行時に解決する。
+    # cosense-fetch と scrapbox-write/rename ラッパが実行時に解決する。
     # gws encryption key in ~/.config/gws/, not macOS Keychain.
     # Why: Keychain ACL blocks GUI-subprocess access (Claude Code / Cursor), forcing re-auth.
     GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND = "file";

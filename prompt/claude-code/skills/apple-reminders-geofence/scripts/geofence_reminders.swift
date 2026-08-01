@@ -119,7 +119,6 @@ let createAlarm = { (item: ReminderItem) -> EKAlarm in
 
 let run = { (payload: Payload) -> Int32 in
   let store = EKEventStore()
-  let requestDone = DispatchSemaphore(value: 0)
   let saveDone = DispatchSemaphore(value: 0)
 
   let selectedCalendar = { () -> EKCalendar? in
@@ -184,25 +183,12 @@ let run = { (payload: Payload) -> Int32 in
     }()
   }
 
-  let requestAccess = { (completion: @escaping (Bool, Error?) -> Void) -> Void in
-    if #available(macOS 14.0, *) {
-      store.requestFullAccessToReminders(completion: completion)
-    } else {
-      store.requestAccess(to: .reminder, completion: completion)
-    }
-  }
-
-  requestAccess { granted, error in
-    granted
-      ? save()
-      : {
-        emit(emptySummary(false, error?.localizedDescription ?? "Reminders access was not granted", false))
-        saveDone.signal()
-      }()
-    requestDone.signal()
-  }
-
-  requestDone.wait()
+  EKEventStore.authorizationStatus(for: .reminder) == .fullAccess
+    ? save()
+    : {
+      emit(emptySummary(false, "Reminders access was not granted; run evkit seed on the MacBook Air", false))
+      saveDone.signal()
+    }()
   saveDone.wait()
   return 0
 }

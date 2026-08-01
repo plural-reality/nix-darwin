@@ -69,6 +69,8 @@ Codex CLI への渡し方は、まず現在の `codex exec --help` を確認す�
 - Do not use Playwright's default Chromium/Chrome for Testing unless the user explicitly asks for an isolated browser.
 - If Playwright MCP is unavoidable, run it with the real Chrome channel (`--browser chrome`) rather than its bundled browser.
 
+@[agent-operations]
+
 @[unix-principal]
 @[engineering]
 @[ponytail]
@@ -76,3 +78,4 @@ Codex CLI への渡し方は、まず現在の `codex exec --help` を確認す�
 @[local-installation]
 @[shell-environment]
 @[architectual-decision]
+@[coast-local]

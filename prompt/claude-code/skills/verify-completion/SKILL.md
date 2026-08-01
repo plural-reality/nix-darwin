@@ -50,6 +50,20 @@ NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
 | 回帰テスト動作 | Red-Green サイクル検証 | テストが1回通った |
 | エージェント完了 | VCS diff で変更確認 | エージェントの「成功」報告 |
 | 要件充足 | 行ごとのチェックリスト | テストが通った |
+| Scrapbox task完了 | canonical task pageとToDoカンバンの両方をlive再取得。`☑️`、`status:: done`、`completed::`、evidence、旧title 0件を確認 | open titleへの完了ログ追記、task pageだけの再読込 |
+
+## Scrapbox task closure gate
+
+実作業の証拠とtask trackerの整合は別の主張である。送金・提出・公開などの実体を確認しても、task pageとindexをreconcileするまでは「作業は完了、記録更新は未完了」と報告する。
+
+task完了を主張する直前に、`save-to-scrapbox` の closure transactionを実行し、次を同じturnのfresh readbackで証明する。
+
+1. 既存page identityを保ったin-place rename後のcanonical titleが `☑️`。
+2. `ToDoカンバン` のexact task objectが新titleを1件だけ参照。
+3. 直下のmetadataが `status:: done`、`completed::`、検証済みevidenceを持つ。
+4. 旧status title、古い `next_action`、未実行境界が残っていない。
+
+どれか1つでも未確認なら、Scrapboxの更新完了を主張しない。
 
 ## Red Flags - STOP
 

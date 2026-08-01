@@ -20,8 +20,8 @@ description: >
   --bg: #FFFFFF;
   --text: #000000;
   --muted: #555555;
-  --font-sans: "Public Sans", "Noto Sans JP", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  --font-sans: "Neue Haas Grotesk Display Pro", "Neue Haas Grotesk", "Geist", "Helvetica Neue", "Hiragino Kaku Gothic ProN", "Zen Kaku Gothic New", Helvetica, Arial, sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", Menlo, monospace;
 }
 html { font-size: 14px; }
 body { background: var(--bg); line-height: 1.7; }

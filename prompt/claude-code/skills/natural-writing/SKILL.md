@@ -25,13 +25,7 @@ description: >
 | `scrapbox-context` | Scrapbox に書く前の既存ページ検索 |
 | `scrapbox-llm-marking` | Scrapbox の LLM 装飾（薄表示 CSS / UserScript）の仕組み |
 
-Scrapbox に書く場合は、本ガイドの 24 項目に加えて以下を必ず守る:
-
-- 段落（地の文）を書かない。要素ごとに改行・ネストで箇条書きにする
-- 文の途中に強調 `[* …]` を使わない。構造はネストで表現する
-- LLM（あなた）が書いた行は必ず `[( …]` で薄表示にする
-- 複数行の LLM ブロックは先頭に `[claude code.icon]` を一度だけ付ける
-- provenance: `[YYYY/MM/DD]` 日付ブロック → `> [tkgshn.icon] による指示: 「…」` 引用 → `[( …]` 本文 の順で書く
+Scrapbox に書く場合、媒体固有の粒度・階層・リンク・配置・LLM provenance は `save-to-scrapbox` だけを canonical として従う。このページでは重複定義しない。
 
 ---
 

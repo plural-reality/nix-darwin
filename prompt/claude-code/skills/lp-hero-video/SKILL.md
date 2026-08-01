@@ -474,7 +474,7 @@ Plural Reality LP には `SolutionAnimations.tsx` に以下の高品質アニメ
 
 ```
 - 背景: 黒（#000000）、白要素で描画
-- モノクロマティック（カラーは使わない or Brand Teal のみアクセント）
+- モノクロ基調（カラーは使わない or emerald `#00E599` のみ単一アクセント）
 - フォント: var(--font-mono) でテックラベル、var(--font-sans) でUI要素
 - 角丸なし: rx={0} / border-radius: 0px
 - アニメーション: framer-motion の useInView + motion.* で scroll-triggered

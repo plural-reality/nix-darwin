@@ -17,6 +17,7 @@
 
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { realpathSync } from "node:fs";
 
 export const ICON = "[claude code WIP.icon]"; // 半角ブラケットの実アイコンのみ
 export const PROJECTS_DEFAULT = ["plural-reality", "tkgshn-private", "takalog"];
@@ -89,4 +90,14 @@ const main = async () => {
   }
 };
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) main();
+// entrypoint 判定。nix home-manager は symlink farm なので argv[1](=symlink)と
+// import.meta.url(=node が realpath 化した実体)を直接比較すると常に不一致になり main() が起動しない。
+// 両者を realpath 化して比較する。test が import した場合は argv[1]=test ファイルなので発火しない。
+const invokedAsScript = () => {
+  try {
+    return !!process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+};
+if (invokedAsScript()) main();

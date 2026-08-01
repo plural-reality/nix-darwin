@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Serialize access to the rotating Garmin DI token, expose it only as an
+# ephemeral 0600 tokenstore, then write refreshed state back to canonical SOPS.
+set -euo pipefail
+
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+: "${GARMIN_SECRET:?GARMIN_SECRET must point to the writable personal SOPS source}"
+SECRET="$GARMIN_SECRET"
+SECRET_KEY='["garmin_tokens"]'
+SOPS_BIN="${SOPS_BIN:-sops}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+LOCK_FILE="${GARMIN_TOKEN_LOCK:-${TMPDIR:-/tmp}/garmin-token-${UID}.lock}"
+
+[[ $# -gt 0 ]] || { echo "with-garmin-token: command required" >&2; exit 64; }
+
+if [[ "${GARMIN_TOKEN_LOCKED:-0}" != 1 ]]; then
+  set +e
+  lockf -k -t 0 "$LOCK_FILE" env GARMIN_TOKEN_LOCKED=1 "$0" "$@"
+  lock_status=$?
+  set -e
+  [[ $lock_status -ne 75 ]] || echo "Garmin token is busy; retry after the active sync finishes." >&2
+  exit "$lock_status"
+fi
+unset GARMIN_TOKEN_LOCKED
+
+TOKEN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/garmin-token.XXXXXX")"
+TOKEN_FILE="$TOKEN_DIR/garmin_tokens.json"
+ORIGINAL_HASH=""
+
+persist_token() {
+  local current_hash
+  [[ -f "$TOKEN_FILE" && -n "$ORIGINAL_HASH" ]] || return 0
+  current_hash="$(shasum -a 256 "$TOKEN_FILE" | cut -d ' ' -f 1)"
+  [[ "$current_hash" != "$ORIGINAL_HASH" ]] || return 0
+  "$PYTHON_BIN" -c \
+    'import json, pathlib, sys; data = json.loads(pathlib.Path(sys.argv[1]).read_text()); keys = ("di_token", "di_refresh_token", "di_client_id"); sys.exit(0 if isinstance(data, dict) and all(isinstance(data.get(key), str) and data[key] for key in keys) else 65)' \
+    "$TOKEN_FILE" || return $?
+  "$PYTHON_BIN" -c \
+    'import json, pathlib, sys; print(json.dumps(pathlib.Path(sys.argv[1]).read_text()))' \
+    "$TOKEN_FILE" |
+    "$SOPS_BIN" set --value-stdin --idempotent "$SECRET" "$SECRET_KEY" || return $?
+  echo "Garmin token refreshed and persisted to SOPS." >&2
+}
+
+finalize() {
+  local status=$?
+  local persist_status=0
+  trap - EXIT
+  persist_token || persist_status=$?
+  rm -f "$TOKEN_FILE"
+  rmdir "$TOKEN_DIR" 2>/dev/null || true
+  [[ $status -ne 0 ]] && exit "$status"
+  exit "$persist_status"
+}
+
+trap finalize EXIT
+export GARMIN_TOKEN_PATH="$TOKEN_FILE"
+umask 077
+"$SOPS_BIN" decrypt --extract "$SECRET_KEY" "$SECRET" > "$TOKEN_FILE"
+"$PYTHON_BIN" -c \
+  'import json, pathlib, sys; data = json.loads(pathlib.Path(sys.argv[1]).read_text()); keys = ("di_token", "di_refresh_token", "di_client_id"); sys.exit(0 if isinstance(data, dict) and all(isinstance(data.get(key), str) and data[key] for key in keys) else 65)' \
+  "$TOKEN_FILE"
+ORIGINAL_HASH="$(shasum -a 256 "$TOKEN_FILE" | cut -d ' ' -f 1)"
+
+export GARMIN_TOKEN_DIR="$TOKEN_DIR"
+export GARMINTOKENS="$TOKEN_FILE"
+"$@"

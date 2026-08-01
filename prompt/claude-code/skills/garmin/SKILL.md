@@ -11,7 +11,8 @@ description: >-
 # Garmin skill
 
 自分の Garmin Connect データをターミナルから取得する薄いクライアント。
-認証は **canonical トークン1つ**（`secrets/garmin.enc.yaml` を SOPS 復号 → `GARMINTOKENS`）。
+認証は **canonical トークン1つ**（personal profileがbindしたwritable SOPS sourceの
+`garmin_tokens`を一時tokenstoreへ復号）。shared skillは具体的なsecretを含みません。
 パスワードは保存していない。スクリプト自体は credential を一切知らない。
 
 ## 使い方
@@ -21,6 +22,7 @@ description: >-
 
 ```
 scripts/garmin recent [n]          # 直近n件のアクティビティ要約 (default 10)
+scripts/garmin auth                # 対話再認証 → rotating tokenをSOPSへ保存
 scripts/garmin last                # 最新アクティビティ要約
 scripts/garmin activity <id>       # アクティビティ詳細
 scripts/garmin details <id>        # 詳細(時系列メトリクス込み)
@@ -74,15 +76,20 @@ scripts/garmin help                # 一覧
 
 直近のライブ取得とは別に、全履歴 SQLite は `scripts/garmindb-sync` が
 `~/.GarminDb` / `~/HealthData` に sleep/stress/RHR/HRV/weight/activities/monitoring を
-取り込む（同じ canonical トークンを一時 materialize して使用、パスワード不要）。
+取り込む（同じ ephemeral tokenstoreを使用、パスワード不要）。
 初回は重い・長い。`scripts/garmindb-sync --latest` で増分更新。
 
 ## 設計・運用メモ
 
-- ライブラリは **garminconnect**（curl_cffi, garth非依存）1本。`uv run --with` で hermetic 実行。
+- 薄いCLIは **garminconnect 0.3.8**、GarminDBは **3.8.0** を固定。後者が
+  `garminconnect 0.3.3` を内包するが、共有するDI tokenstore schemaは同じ。
+- `scripts/with-garmin-token` が唯一の復号/writeback境界。SOPSを0600一時tokenstoreへ
+  復号し、refreshでrotated tokenが変わった時だけSOPSへ戻し、平文を削除する。
+- concrete bindingはpersonal Home Managerの`GARMIN_SECRET`。Nix store内のskillや
+  read-only sops-nix materializationへはwritebackしない。
+- `lockf`でCLIとGarminDBを直列化し、refresh token rotationの競合を防ぐ。
 - Garmin SSO は 429 が出やすいので **login をループで叩かない**。トークン運用で login はほぼ不要。
-- トークン失効時（パスワード変更等）のみ再生成: `scripts/mint_token.py` を
-  `GARMIN_EMAIL`/`GARMIN_PASSWORD`/`GARMIN_TOKEN_OUT` 付きで実行 →
-  出力を `GARMINTOKENS` として `sops -e secrets/garmin.enc.yaml` に再封入。
+- refresh token失効時（パスワード変更等）のみ `scripts/garmin auth`。パスワード/MFAは
+  その端末で対話入力し、保存しない。成功したDI tokenだけSOPSへ保存する。
 - 詳細な設計判断は `DESIGN.md`。スマホ/Desktop 対応(bridge/MCP)は Phase B（未着手）。
 - Codex でも同じ skill body が `~/.agents/skills/garmin/` から使える（symlink）。

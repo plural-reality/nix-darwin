@@ -64,7 +64,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
 </dict></plist>
 EOF
 
-swiftc -O "$dir/evkitd.swift" -o "$APP/Contents/MacOS/evkitd"
+swiftc -parse-as-library -O "$dir/evkitd.swift" -o "$APP/Contents/MacOS/evkitd"
 codesign --force --sign "$IDENTITY" --identifier "$BUNDLE_ID" "$APP"
 
 echo "evkit: installed $APP" >&2

@@ -23,8 +23,8 @@ Palantir の Impact Study フォーマットを多元現実デザインシステ
   --text: #000000;
   --muted: #666666;
   --rule: #E0E0E0;
-  --font-sans: "Public Sans", "Noto Sans JP", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  --font-sans: "Neue Haas Grotesk Display Pro", "Neue Haas Grotesk", "Geist", "Helvetica Neue", "Hiragino Kaku Gothic ProN", "Zen Kaku Gothic New", Helvetica, Arial, sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", Menlo, monospace;
 }
 body { background: #F0F0F0; font-weight: 300; font-size: 15px; line-height: 1.7; }
 ```

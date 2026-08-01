@@ -253,6 +253,29 @@ let
     '';
   };
 
+  # Read-only iMessage history client. It only speaks the fixed JSON/JSONL
+  # protocol to a per-user signed bridge; Full Disk Access never belongs here.
+  imsgHistory = pkgs.writeShellApplication {
+    name = "imsg-history";
+    runtimeInputs = with pkgs; [
+      coreutils
+      jq
+      netcat
+      openssh
+    ];
+    text = builtins.readFile ../scripts/claude/imsg-history/imsg-history.sh;
+  };
+
+  nixApply = pkgs.writeScriptBin "nix-apply" ''
+    #!${pkgs.bash}/bin/bash
+    exec ${../scripts/nix-apply.sh} "$@"
+  '';
+
+  appleNotesToScrapbox = pkgs.writeScriptBin "apple-notes-to-scrapbox" ''
+    #!${pkgs.bash}/bin/bash
+    exec ${pkgs.nodejs}/bin/node ${../scripts/apple-notes-to-scrapbox.mjs} "$@"
+  '';
+
   # ── Scrapbox writer ─────────────────────────────────────
   # @cosense/std is not in nixpkgs, so we use a managed node_modules
   # directory under ~/.local/share/scrapbox-write/ with activation-time
@@ -261,7 +284,7 @@ let
   # The mjs file is a Nix symlink in the same dir, and node resolves imports
   # relative to the realpath of the script, so we copy it to a temp location
   # alongside node_modules to ensure correct resolution.
-# SID runtime resolution (shared by scrapbox-write / scrapbox-rename): the SID
+  # SID runtime resolution (shared by scrapbox-write / scrapbox-rename): the SID
   # is a rotating Chrome-session cookie, not a static secret. Resolve
   # env → settings.local.json cache → Chrome self-heal; never bake into the store.
   scrapboxSidResolve = ''
@@ -315,6 +338,9 @@ in
     freeeCall
     freeeReconcile
     codexName
+    imsgHistory
+    nixApply
+    appleNotesToScrapbox
 
     # Scrapbox writer
     scrapbox-write

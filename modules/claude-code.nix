@@ -14,6 +14,7 @@ let
   expandTemplatesDir = import ../lib/expand-templates-dir.nix { inherit pkgs lib; };
 
   xcodebuildmcp = import ../packages/xcodebuildmcp { inherit pkgs; };
+  freeeMcp = import ../packages/freee-mcp { inherit pkgs; };
 
   # Claude Desktop uploadable skill ZIPs
   desktopSkills = import ../packages/desktop-skills {
@@ -35,19 +36,11 @@ let
     env = xcodeBuildMcpEnv;
   };
 
-  # freee MCP (会計・人事労務・請求書・工数管理・販売)
-  # Why npx: upstream は bun-only (bun.lock のみ)。
-  # buildNpmPackage 不可、bun2nix は将来の課題。
-  # 版は Nix 文字列で固定 → version drift は封じ込め済み。
-  freeeMcpVersion = "0.26.7";
+  # freee MCP (会計・人事労務・請求書・工数管理・販売)。Published
+  # pre-built ESMとtransitive npm closureをNixで固定し、runtime fetchをしない。
   freeeMcpServer = {
-    command = "${pkgs.nodejs_22}/bin/npx";
-    args = [
-      "-y"
-      "-p"
-      "freee-mcp@${freeeMcpVersion}"
-      "freee-mcp"
-    ];
+    command = "${freeeMcp}/bin/freee-mcp";
+    args = [ ];
   };
 
   context7McpServer = {
@@ -76,6 +69,125 @@ let
   # Agent teams are intentionally not enabled globally: their panel competes with
   # the working terminal. Opt into teams only from a one-off launch environment.
   sharedAgentEnv = inheritedAgentEnv;
+
+  codexReasoningLevels = [
+    {
+      effort = "low";
+      description = "Fast responses with lighter reasoning";
+    }
+    {
+      effort = "medium";
+      description = "Balances speed and reasoning depth for everyday tasks";
+    }
+    {
+      effort = "high";
+      description = "Greater reasoning depth for complex problems";
+    }
+    {
+      effort = "xhigh";
+      description = "Extra high reasoning depth for complex problems";
+    }
+    {
+      effort = "max";
+      description = "Maximum reasoning depth for the hardest problems";
+    }
+    {
+      effort = "ultra";
+      description = "Maximum reasoning with automatic task delegation";
+    }
+  ];
+
+  mkCodexGpt56Model =
+    {
+      slug,
+      displayName,
+      description,
+      defaultReasoningLevel,
+      multiAgentVersion,
+      priority,
+    }:
+    {
+      inherit slug description priority;
+      prefer_websockets = true;
+      support_verbosity = true;
+      default_verbosity = "low";
+      apply_patch_tool_type = "freeform";
+      web_search_tool_type = "text_and_image";
+      input_modalities = [
+        "text"
+        "image"
+      ];
+      supports_image_detail_original = true;
+      truncation_policy = {
+        mode = "tokens";
+        limit = 10000;
+      };
+      supports_parallel_tool_calls = true;
+      tool_mode = "code_mode_only";
+      multi_agent_version = multiAgentVersion;
+      use_responses_lite = true;
+      include_skills_usage_instructions = false;
+      auto_review_model_override = null;
+      context_window = 272000;
+      max_context_window = 272000;
+      auto_compact_token_limit = null;
+      comp_hash = "3000";
+      effective_context_window_percent = 95;
+      reasoning_summary_format = "experimental";
+      default_reasoning_summary = "none";
+      supports_reasoning_summaries = true;
+      display_name = displayName;
+      default_reasoning_level = defaultReasoningLevel;
+      supported_reasoning_levels = codexReasoningLevels;
+      shell_type = "shell_command";
+      visibility = "list";
+      minimal_client_version = "0.144.0";
+      supported_in_api = true;
+      availability_nux = null;
+      upgrade = null;
+      experimental_supported_tools = [ ];
+      supports_search_tool = true;
+      additional_speed_tiers = [ "fast" ];
+      service_tiers = [
+        {
+          id = "priority";
+          name = "Fast";
+          description = "1.5x speed, increased usage";
+        }
+      ];
+      base_instructions = "";
+    };
+
+  codexModelCatalogFile = pkgs.writeText "codex-model-catalog.json" (
+    builtins.toJSON {
+      models = [
+        (mkCodexGpt56Model {
+          slug = "gpt-5.6-sol";
+          displayName = "GPT-5.6 Sol";
+          description = "Latest frontier agentic coding model.";
+          defaultReasoningLevel = "low";
+          multiAgentVersion = "v2";
+          priority = 1;
+        })
+        (mkCodexGpt56Model {
+          slug = "gpt-5.6-terra";
+          displayName = "GPT-5.6 Terra";
+          description = "Balanced agentic coding model for everyday work.";
+          defaultReasoningLevel = "medium";
+          multiAgentVersion = "v2";
+          priority = 2;
+        })
+        (mkCodexGpt56Model {
+          slug = "gpt-5.6-luna";
+          displayName = "GPT-5.6 Luna";
+          description = "Fast and affordable agentic coding model.";
+          defaultReasoningLevel = "medium";
+          multiAgentVersion = "v1";
+          priority = 3;
+        })
+      ];
+    }
+  );
 
   codexConfigPython = pkgs.python313.withPackages (ps: [ ps.tomlkit ]);
 
@@ -284,11 +396,17 @@ let
 
   codexManagedConfig = {
     approval_policy = "never";
-    sandbox_mode = "danger-full-access";
+    # The workspace is the ambient shell/filesystem mutation boundary. MCP,
+    # plugins, and external APIs keep separate capability/consent boundaries.
+    # Wider filesystem writes are injected per task (`--add-dir`) or selected
+    # through an explicit profile.
+    sandbox_mode = "workspace-write";
     suppress_unstable_features_warning = true;
 
-    model = "gpt-5.5";
-    model_reasoning_effort = "xhigh";
+    model = "gpt-5.6-sol";
+    model_catalog_json = "${codexModelCatalogFile}";
+    model_reasoning_effort = "low";
+    service_tier = "priority";
     personality = "pragmatic";
     notify = [
       "${codexNotifyMacos}/bin/codex-notify-macos"
@@ -328,9 +446,15 @@ let
     };
 
     mcp_servers = {
-      XcodeBuildMCP = xcodeBuildMcpServer;
-      freee = freeeMcpServer;
-      context7 = context7McpServer;
+      XcodeBuildMCP = xcodeBuildMcpServer // {
+        enabled = false;
+      };
+      freee = freeeMcpServer // {
+        enabled = false;
+      };
+      context7 = context7McpServer // {
+        enabled = false;
+      };
     };
 
     plugins = {
@@ -385,6 +509,9 @@ in
         command = "bash ${config.home.homeDirectory}/.claude/statusline-command.sh";
       };
       permissions = {
+        # Sessions start in full auto (== --dangerously-skip-permissions).
+        # Must live in USER-scope settings.json (this file) to take effect.
+        defaultMode = "bypassPermissions";
         allow = [
           "Bash(grep:*)"
           "Bash(find:*)"

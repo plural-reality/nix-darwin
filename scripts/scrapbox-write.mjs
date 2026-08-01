@@ -34,6 +34,8 @@ Options:
   -g, --gray            Wrap AI-written lines in the [( …] grey deco (default ON for
                         non-verbatim writes; idempotent; skips code:/table: blocks).
       --no-gray, --human  Write plain (un-greyed). For human-authored content.
+      --allow-open-task   Allow completion-looking text to be written under an open
+                          (⬜/⏳/⏹️/⌛️) task title. Historical notes only; never closure.
   -n, --dry-run         Render Scrapbox lines to stdout without writing
   -h, --help            Show this help
 `;
@@ -66,6 +68,7 @@ const flagOptions = {
   "-g": { gray: true },
   "--no-gray": { gray: false },
   "--human": { gray: false },
+  "--allow-open-task": { allowOpenTask: true },
   "--dry-run": { dryRun: true },
   "-n": { dryRun: true },
   "--help": { help: true },
@@ -90,6 +93,7 @@ const parseArgs = (argv) =>
       dryRun: false,
       verbatim: false,
       gray: undefined,
+      allowOpenTask: false,
       unknownOptions: [],
     }
   );
@@ -118,6 +122,32 @@ const validateBody = (body) =>
   body.trim() === ""
     ? { ok: false, error: "stdin body is empty" }
     : { ok: true, value: body.replace(/\r\n?/g, "\n").replace(/\n$/, "") };
+
+const OPEN_TASK_PREFIX = /^(?:⬜|⏳|⏹️|⌛️)/u;
+const COMPLETION_EVIDENCE = /(?:status::\s*done\b|completed::\s*\d{4}[/-]\d{1,2}[/-]\d{1,2}|完了(?:済み|確認|しました|した)|全額(?:移行|送金|振込|着金)済み|全件(?:すべて)?着金確認)/u;
+const NON_CLOSING_CONTEXT = /(?:完了条件|完了した場合|完了したら|完了予定)/u;
+const isOpenTaskTitle = (title) => OPEN_TASK_PREFIX.test(title.trim());
+const carriesCompletionEvidence = (body) =>
+  body
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .slice(0, 6)
+    .some((line) => COMPLETION_EVIDENCE.test(line) && !NON_CLOSING_CONTEXT.test(line));
+// ponytail: this is deliberately a narrow trust-boundary heuristic. `--allow-open-task`
+// is the explicit escape hatch for historical prose; a future structured task API can
+// replace it when Cosense exposes one transaction spanning title + backlinks + kanban.
+const validateTaskTransition = (args, body) =>
+  isOpenTaskTitle(args.title) && carriesCompletionEvidence(body) && !args.allowOpenTask
+    ? {
+        ok: false,
+        error:
+          "completion evidence cannot be written under an open task title. " +
+          "This would leave the title/backlinks/ToDoカンバン stale. Rename the existing " +
+          "page in place with scrapbox-rename, reconcile the exact kanban task row to " +
+          "status:: done, then read back both surfaces. Use --allow-open-task only for " +
+          "a non-closing historical note",
+      }
+    : { ok: true, value: body };
 
 const foldResult = (result, handlers) =>
   result.ok
@@ -309,7 +339,11 @@ const main = () => {
           .then(validateBody)
           .then((bodyResult) =>
             foldResult(bodyResult, {
-              ok: (body) => writePage(validArgs, body, patchStrategy),
+              ok: (body) =>
+                foldResult(validateTaskTransition(validArgs, body), {
+                  ok: (validBody) => writePage(validArgs, validBody, patchStrategy),
+                  error: die,
+                }),
               error: die,
             })
           ),
@@ -325,4 +359,14 @@ const isEntry = import.meta.url === pathToFileURL(process.argv[1] ?? "").href;
 isEntry && main().catch((error) => die(formatUnknownError(error)));
 
 // Pure grey-marking logic, exported for unit tests and one-off in-place re-marking.
-export { markGrayText, grayCore, grayBodyLines, leadingDeco, matchClose, isAlreadyGray };
+export {
+  carriesCompletionEvidence,
+  grayBodyLines,
+  grayCore,
+  isAlreadyGray,
+  isOpenTaskTitle,
+  leadingDeco,
+  markGrayText,
+  matchClose,
+  validateTaskTransition,
+};

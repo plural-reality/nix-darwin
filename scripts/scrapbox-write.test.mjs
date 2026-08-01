@@ -9,7 +9,17 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { markGrayText, grayCore, grayBodyLines, isAlreadyGray, leadingDeco, matchClose } from "./scrapbox-write.mjs";
+import {
+  carriesCompletionEvidence,
+  grayBodyLines,
+  grayCore,
+  isAlreadyGray,
+  isOpenTaskTitle,
+  leadingDeco,
+  markGrayText,
+  matchClose,
+  validateTaskTransition,
+} from "./scrapbox-write.mjs";
 
 // Faithful port of the canonical ungray() in tkgshn-extension/llm-auto-humanize: melt every
 // gray deco token (chars include '('), keep bare links and non-gray decorations, recurse into
@@ -148,4 +158,34 @@ test("mid-line decoration round-trips: ungray(markGrayText(x)) === x", () => {
   ]) {
     assert.equal(ungrayRef(markGrayText(x)), x, `round-trip on ${x}`);
   }
+});
+
+test("open task titles are recognized without treating completed titles as open", () => {
+  ["⬜task", "⏳task", "⏹️task", "⌛️task"].map((title) =>
+    assert.equal(isOpenTaskTitle(title), true, title)
+  );
+  ["☑️task", "task", "  ☑️task"].map((title) =>
+    assert.equal(isOpenTaskTitle(title), false, title)
+  );
+});
+
+test("completion evidence is distinguished from future completion conditions", () => {
+  [
+    "[( Wiseの50,000 USDをGMOあおぞらへ全額移行済み][codex.icon]",
+    "[( 2026/8/1 完了確認: 8件をreadback済み]",
+    "[( status:: done ／ completed:: 2026/8/1]",
+  ].map((body) => assert.equal(carriesCompletionEvidence(body), true, body));
+  [
+    "[( 完了条件: 8件すべてを確認する]",
+    "[( 完了した場合は担当者へ知らせる]",
+    "[( 次の送金を準備中]",
+  ].map((body) => assert.equal(carriesCompletionEvidence(body), false, body));
+});
+
+test("completion-looking writes under open task titles fail closed unless explicitly historical", () => {
+  const args = { title: "⬜Mozilla grantをGMOへ資金移動する", allowOpenTask: false };
+  const body = "[2026/08/01]\n[( Wiseの50,000 USDをGMOあおぞらへ全額移行済み]";
+  assert.deepEqual(validateTaskTransition(args, body).ok, false);
+  assert.deepEqual(validateTaskTransition({ ...args, title: "☑️Mozilla grantをGMOへ資金移動する" }, body), { ok: true, value: body });
+  assert.deepEqual(validateTaskTransition({ ...args, allowOpenTask: true }, body), { ok: true, value: body });
 });

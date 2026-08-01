@@ -36,12 +36,12 @@ Palantir Construction Whitepaper (2022) のレイアウトを正準パターン�
 :root {
   --bg: #FFFFFF;
   --text: #000000;
-  --accent: #2196F3;       /* 見出し・リンク・矢印 */
+  --accent: #111111;       /* 見出し・リンク・矢印（印刷/正式register=本文無彩・色は写真/図版のみ） */
   --muted: #666666;        /* キャプション・フッター */
   --border: #000000;       /* セクション区切り線 */
   --border-light: #E0E0E0; /* フッター上線・概念グリッド上線 */
-  --font-sans: "Public Sans", "Noto Sans JP", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  --font-sans: "Neue Haas Grotesk Display Pro", "Neue Haas Grotesk", "Geist", "Helvetica Neue", "Hiragino Kaku Gothic ProN", "Zen Kaku Gothic New", Helvetica, Arial, sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", Menlo, monospace;
 }
 body {
   background: #F0F0F0;

@@ -1,0 +1,342 @@
+{
+  "meta": {
+    "name": "Palantir",
+    "description": "Palantir Technologies' authentic visual identity, derived from a FULL read of the primary corpus: all IR/investor decks across 2022–2025 (~330 slides), 6 whitepapers/service-definition docs (66pp), the Airbus partnership deck, and the live palantir.com 'Warp Speed' capture — not downstream replicas. Core DNA: a neo-grotesque (Neue Haas Grotesk / Univers-class) typeface at REGULAR–MEDIUM weight (never bold) with tabular numerals and ink-color underline emphasis — NOT a system font; STRICTLY MONOCHROME charts (color only in photos and embedded product UI); a monochrome charcoal/white base with light↔dark INVERSION as a device; and a SINGLE SURGICAL ACCENT whose HUE VARIES BY ERA/CAMPAIGN (2022 none, 2024 AIP purple #7C3AED, 2025 emerald #00E599 + cyan #35C6E6) — always 1–2 instances, never a solid fill, never inside a chart. Corner radius and accent are register/era-conditional, not brand constants: sharp square print/formal base; softened corners and era accent only on IR/marketing screen surfaces. 多元 fixes emerald #00E599 as its single accent.",
+    "source_references": [
+      "PRIMARY (FULL READ) — Palantir IR/investor decks: Q1'22, Q2'22 (accent = NONE, pure monochrome); Q2'24, Q3'24, Q4'24 (AIP-era purple #7C3AED, gradient #C026D3→#4F46E5); Q1'25, Q3'25, Q4'25 (emerald #00E599 + cyan #35C6E6 delta) — ~330 slides total. Register: warm-grey #D8D8D8 stage, charcoal #1C2127 panels (16–26px), stadium pills, strictly-monochrome bar charts (hollow prior / solid-or-gradient current, dotted +NN% connectors, dashed halo, '//' axis-break), light↔dark inversion",
+      "PRIMARY — 6 whitepapers / service-definition docs (66pp) incl. Palantir Platform: Gotham 'Service Definition Document' (G-Cloud 14) A4 procurement doc. Register: formal/print — background white or warm cream #F2EFE6, pure-black body, color allowed only in photos/diagrams/links/headings (muted blue), narrow left rail + wide body, mandatory decimal numbering, dotted-leader TOC, running header/footer, grayscale facet cover photo",
+      "PRIMARY — Palantir & Airbus Partnership Overview deck (register: marketing/partnership; co-brand lockup 'Palantir • Airbus' — partner logo keeps own color, Palantir monochrome)",
+      "PRIMARY — AmCham Italy 'Palantir AIP Overview' 16:9 company deck (dual-mode dark cover/dividers + light content; sharp ~0-4px corners; monochrome). NOTE: corner registration brackets ⌐ and ±tick strips are SPECIFIC TO THIS marketing deck and NOT present in the IR decks — Drive: デザインシステム/presentations/Whitepapers/AmCham_Italy_Palantir.pdf",
+      "PRIMARY — https://www.palantir.com and /jp LIVE 'Warp Speed' capture (dark charcoal video heroes, 'Scroll to Explore', neo-grotesque display, sparing emerald accent, near-sharp 2–6px UI corners; CTAs 'Request a Demo →' / 'デモの申込はこちら')",
+      "PRIMARY — https://raw.githubusercontent.com/palantir/blueprint/develop/packages/colors/src/colors.ts (authoritative surface ramp: BLACK #111418, DARK_GRAY1-5 #1C2127/#252A31/#2F343C/#383E47/#404854, GRAY1-5 #5F6B7C→#C5CBD3, LIGHT_GRAY1-5 #D3D8DE→#F6F7F9)",
+      "DOWNSTREAM / degraded — ~/Developer/plural-reality/palantir/ (写経 replica): system font (-apple-system), invented #00FF00 terminal-green, generic Tailwind grays. Diff evidence only.",
+      "DOWNSTREAM / degraded — ~/Desktop/plural-reality/plural-reality-design-preview.html + plural-reality-design-system/SKILL.md (多元 adaptation: Teal #0F766E/#2DD4BF + Public Sans — 多元's own brand choices, NOT Palantir DNA)"
+    ],
+    "created_at": "2026-07-04"
+  },
+  "design_system": {
+    "color": {
+      "palette_type": "monochromatic",
+      "primary": {
+        "hex": "#000000",
+        "role": "Primary ink and dominant inverted surface — black text on light, full-bleed near-black (#0E0E10–#141418) background on dark sections, solid button fill"
+      },
+      "secondary": {
+        "hex": "#FFFFFF",
+        "role": "Primary canvas and inverted foreground — page background on light, text/UI on dark sections"
+      },
+      "accent": {
+        "hex": "#00E599",
+        "role": "SINGLE SURGICAL ACCENT whose HUE VARIES BY CAMPAIGN/ERA — it is NOT a fixed brand constant. 2022 IR decks (Q1'22/Q2'22) = NONE, pure monochrome charcoal/white. 2024 AIP-era decks (Q2'24/Q3'24/Q4'24) = purple #7C3AED, applied as a gradient #C026D3→#4F46E5. 2025 decks (Q1'25/Q3'25/Q4'25) + live warpspeed = emerald #00E599 (2-value scale: neon self #00E599 / muted peer #1F9E6E) plus a SECONDARY cyan #35C6E6 (delta / prior-quarter marker). In every era the accent appears in only 1–2 instances per surface, NEVER as a solid fill, and NEVER inside native charts (charts stay strictly monochrome; color lives only in photos and embedded product UI). UI/link weight of emerald ≈ #00C868–#21C77A. 多元 FIXES emerald #00E599 as its single accent. Degradation markers (NOT Palantir): teal #2DD4BF / #0F766E (多元's own web choice), and #00FF00 terminal-green (写経 replica invention)."
+      },
+      "neutral": {
+        "scale": [
+          "#111418",
+          "#1C2127",
+          "#252A31",
+          "#2F343C",
+          "#383E47",
+          "#404854",
+          "#5F6B7C",
+          "#738091",
+          "#8F99A8",
+          "#ABB3BF",
+          "#C5CBD3",
+          "#D3D8DE",
+          "#DCE0E5",
+          "#E5E8EB",
+          "#EDEFF2",
+          "#F6F7F9"
+        ],
+        "usage": "Authoritative Blueprint grayscale. BLACK #111418 + DARK_GRAY1-5 (#1C2127→#404854) = dark charcoal surfaces/cards/borders on inverted & hero sections; GRAY1-5 (#5F6B7C→#C5CBD3) = muted body/caption/icon text and mid rules; LIGHT_GRAY1-5 (#D3D8DE→#F6F7F9) = hairline borders and near-white content fills. IR register adds a warm-grey stage #D8D8D8."
+      },
+      "semantic": {
+        "success": "#00C868",
+        "warning": "#C87619",
+        "error": "#CD4246",
+        "info": "#2D72D2"
+      },
+      "surface": {
+        "background": "#0E0E10",
+        "card": "#1C2127",
+        "elevated": "#252A31"
+      },
+      "contrast_strategy": "high contrast, achromatic, and INVERSION-AS-DEVICE. Dark IR stage background ranges near-black #0E0E10–#1C2127 (2025 decks warm it slightly to #1A1D22); light register uses a warm-grey stage #D8D8D8 with light cards #EFEFEF / #C7C7C7 and pure-black text. The signature move is LIGHT↔DARK INVERSION: a dark panel with white bars/type is mirrored by a light card with black bars/type — the same chart or KPI block flips polarity to separate sections or contrast this-quarter vs prior. Registers: (1) light content = warm-grey #D8D8D8 stage / #EFEFEF–#C7C7C7 cards / black text; (2) dark hero & dividers = near-black #0E0E10–#1C2127 with white display type; (3) IR panels = charcoal #1C2127 secondary #252A31, border #383E47. No gradients (except the era-specific AIP purple accent gradient), no tinted mid-tones."
+    },
+    "typography": {
+      "type_scale": {
+        "display": { "size": "clamp(48px, 6vw, 96px)", "weight": "500", "line_height": "1.05", "tracking": "-0.03em" },
+        "heading_1": { "size": "clamp(40px, 4.5vw, 64px)", "weight": "500", "line_height": "1.1", "tracking": "-0.025em" },
+        "heading_2": { "size": "clamp(30px, 3.5vw, 48px)", "weight": "500", "line_height": "1.15", "tracking": "-0.02em" },
+        "heading_3": { "size": "clamp(22px, 2.5vw, 30px)", "weight": "500", "line_height": "1.3", "tracking": "-0.015em" },
+        "body": { "size": "16px", "weight": "400", "line_height": "1.6", "tracking": "0em" },
+        "body_small": { "size": "14px", "weight": "400", "line_height": "1.5", "tracking": "0em" },
+        "caption": { "size": "13px", "weight": "400", "line_height": "1.5", "tracking": "0.01em" },
+        "overline": { "size": "11px", "weight": "500", "line_height": "1.4", "tracking": "0.12em" }
+      },
+      "font_families": {
+        "heading": "Neue Haas Grotesk / Univers-class neo-grotesque (real neo-grotesque, NOT a system font): even stroke, single-story a, open apertures, near-circular O; used large with tight negative tracking at regular–medium weight. Web tier substitutes 'Geist'. JP pairing for 多元: Hiragino Kaku Gothic ProN / Zen Kaku Gothic New. Fallback: 'Neue Haas Grotesk Display', 'Geist', Univers, 'Helvetica Neue', Helvetica, Arial, sans-serif",
+        "body": "Same neo-grotesque family at regular weight (web tier 'Geist'); JP body Hiragino Kaku Gothic ProN / Zen Kaku Gothic New for 多元; fallback 'Helvetica Neue', Helvetica, Arial, sans-serif",
+        "mono": "SF Mono, ui-monospace, Menlo, Consolas, monospace — reserved for tiny uppercase micro-labels, footer metadata, and monospaced/tabular numerals in stat blocks and chart legends"
+      },
+      "font_style_notes": "Neo-grotesque (Neue Haas Grotesk / Univers-class), NOT a proprietary or system face: constructed letterforms, single-story a, open apertures, optimized for legibility at small sizes on dense dashboards and slides. Weight stays REGULAR–MEDIUM (never bold) — hierarchy comes from scale and negative tracking, not weight; body neutral regular at 1.6. Numerals are TABULAR / MONOSPACED so KPI columns and prior-vs-current deltas align. EMPHASIS = INK-COLOR UNDERLINE ONLY (an underline in the current text color), never a colored word. Signature devices: (1) ink-underline-as-emphasis on key phrases in headlines; (2) tabular numerals for stat blocks / KPIs / page pips / chart axes; (3) tiny UPPERCASE MONO micro-labels for section/category tags and footer metadata. NOT a system font stack — the -apple-system fallback in the 写経 replica is a degradation."
+    },
+    "spacing": {
+      "base_unit": "8px rhythm (4px sub-steps); very large hero/section spacing on a ~100px scale",
+      "scale": ["4px", "8px", "16px", "24px", "32px", "48px", "64px", "96px", "128px", "200px", "300px", "400px"],
+      "content_density": "spacious",
+      "section_rhythm": "Section padding escalates 64 → 96 → 128px responsive, up to 200–400px on hero/marquee bands; alternating light and inverted (near-black/charcoal) full-viewport sections create a strong breathing cadence"
+    },
+    "layout": {
+      "grid_system": "12-column responsive grid; card grids 3–4 cols, feature/split at 7:5 or 1:1; case studies as asymmetric bento/mosaic",
+      "max_content_width": "1280–1440px centered container (screen); A4 portrait for formal/print register",
+      "columns": "1 (mobile) → 2 (md) → 3–4 (lg)",
+      "gutter": "24px–32px",
+      "breakpoints": ["0px", "640px", "768px", "1024px", "1280px", "1536px"],
+      "alignment_tendency": "strict grid, left-aligned copy; centered CTA moments. PRINT/FORMAL register uses a distinctive skeleton: a narrow LEFT RAIL (28–32%, small-caps grey section labels) beside a wide RIGHT BODY, separated and sequenced by hairline rules; text justified; running header/footer; mandatory decimal section numbering; dotted-leader TOC (legal/service-def) or hairline+two-tone-number TOC (narrative)"
+    },
+    "shape": {
+      "border_radius": {
+        "small": "4px",
+        "medium": "16px",
+        "large": "32px",
+        "pill": "9999px"
+      },
+      "border_usage": "REGISTER-CONDITIONAL — sharp base, softened only on IR/marketing screen surfaces. By register: cover/divider panels 24–32px; financial/data panels 16–26px; pill tags = stadium (9999px / full); live web UI (buttons/cards) 2–6px near-sharp; print/formal (service-def A4) 0px square, photos only 4–6px. Borders are 1px hairlines (LIGHT_GRAY #E5E8EB on light, DARK_GRAY4 #383E47 on dark) and are the primary structural device in place of shadow.",
+      "divider_style": "1px solid hairline; full-width section separators, card top-borders, masthead/footer rules; hover promotes border color toward foreground"
+    },
+    "elevation": {
+      "shadow_style": "none",
+      "levels": {
+        "low": "none (rely on 1px border)",
+        "medium": "0 4px 6px rgba(17,20,24,0.06) — restrained card-hover lift only",
+        "high": "0 10px 25px rgba(17,20,24,0.10) — rare card-hover maximum; IR register uses soft studio shadow under matte-3D glyph"
+      },
+      "depth_cues": "overlapping layers, 1px borders, inverted full-bleed color bands, and matte-3D isometric renders; depth via color intensity and studio lighting, not glass/blur"
+    },
+    "iconography": {
+      "style": "outline / line icons, geometric and minimal, single-color currentColor; plus engineering/blueprint marks",
+      "stroke_weight": "1.5px–2px",
+      "size_scale": ["16px", "20px", "24px"],
+      "preferred_set": "Minimal inline SVG chevrons/arrows (trailing → on CTAs; ↳ sub-bullets); product surfaces use Blueprint Icons (open-source Palantir set); decks add stadium/segmented pill tags, page-progress pips (●○○○), breadcrumb, dashed diagonal connectors, and matte isometric 3-D glyphs. NOTE: corner registration brackets (⌐) and ±tick strips are AmCham-marketing-deck-specific and are NOT present in the IR decks."
+    },
+    "motion": {
+      "easing": "cubic-bezier(0, 0, 0.2, 1) (ease-out)",
+      "duration_scale": {
+        "micro": "200ms",
+        "normal": "300ms",
+        "macro": "600ms"
+      },
+      "entrance_pattern": "fade-in + ~20px upward translate on scroll-enter, block-level stagger ~100ms; hero 'Scroll to Explore' linear reveal; looping hero video",
+      "exit_pattern": "simple opacity/color fade, no directional exit",
+      "philosophy": "minimal functional — video loops, fade/scroll-reveal, black↔white hover inversion, subtle image scale (1.05), border-color promotion; no decorative or continuous animation, no particles/3D-scene/shader/glass"
+    },
+    "components": {
+      "button_style": "Sharp-to-slightly-rounded rectangle (register: 0–6px). Primary = solid black/#111418 fill, white text. Secondary/ghost = transparent, black text + 1px black border, hover inverts to black fill + white text. ~48px tall, medium (500), 14–16px, trailing → on CTAs. IR register may use emerald-filled or pill CTAs.",
+      "input_style": "Sharp rectangle, 1px solid border, no inner shadow; rare on marketing surfaces",
+      "card_style": "Charcoal (#1C2127) on dark or near-white on light, 1px hairline border (often top-border only), radius per register (0–4px overview/formal, 2–6px web, 20–24px IR panels), no resting shadow; hover raises subtle shadow and scales contained image 1.05",
+      "navigation_pattern": "Fixed/sticky top bar ~64px, 1px bottom border, bold wordmark + Q mark left, small muted text links right; formal docs use running header (product + Gotham logo + Q) and footer (page no. + confidentiality)",
+      "modal_style": "Sharp high-contrast panel, 1px border, dimmed backdrop (no glass)",
+      "list_style": "Border-separated rows / top-border cards; arrow bullets (→ / ↳); em-dash '——' lead-ins; MANDATORY NUMBERING in formal register (decimal sections '1.0', '01–' lists). TOC style splits by register: dotted-leader TOC for legal/service-def docs; hairline-rule + two-tone-number TOC for narrative decks.",
+      "component_notes": "Everything rectangular and border-defined; signature interaction = button/border black↔white inversion on hover. CHARTS ARE STRICTLY MONOCHROME — no red/blue/green in any native chart; the only color on the page lives in photos and embedded product-UI screenshots. Chart signature: prior-period = HOLLOW OUTLINE bar; current-period = SOLID white/black bar OR a white→grey gradient bar; dotted diagonal '+NN%' connectors link the two; a DASHED HALO RING marks the latest data point; axis discontinuities use an axis-break '//'; legends are mono UPPERCASE. Page-progress pips (●○○○) double as literal dot-matrix data counts. ORNAMENT component language: stadium/segmented pill tags ([Q4│Business Update]), tiny uppercase mono micro-labels, hairline MULTI-BAND footers, dashed connectors, breadcrumb, and matte isometric 3-D glyphs rendered with soft studio light. Oversized tabular KPI numerals (regular–medium, never bold) act as standalone components. NOTE: corner registration brackets (⌐) and ±tick strips are AmCham-marketing-deck-specific, NOT present in IR decks."
+    }
+  },
+  "design_style": {
+    "aesthetic": {
+      "mood": ["serious", "authoritative", "precise", "restrained", "engineered"],
+      "visual_metaphor": "command console / precision instrument — a charcoal-and-white operating surface where data, typography, and blueprint marks are the only ornament",
+      "era_influence": "Swiss International Typographic Style meets contemporary defense/enterprise console and technical-blueprint aesthetics",
+      "genre": "enterprise / government & defense B2B, high-trust deep-tech",
+      "personality_traits": ["confident", "disciplined", "meticulous", "unsentimental", "elite"],
+      "adjectives": ["monochromatic", "charcoal", "sharp", "high-contrast", "engineered", "sober"]
+    },
+    "visual_language": {
+      "complexity": "minimal",
+      "ornamentation": "subtle accents",
+      "whitespace_usage": "generous — large section padding (up to 300–400px), constrained measure, one message per section",
+      "visual_weight_distribution": "heavy typography and full-bleed inverted/video sections anchor the page; imagery, thin borders, and blueprint marks stay recessive",
+      "focal_strategy": "single hero element per section — a bold headline or oversized tabular KPI numeral carries each viewport",
+      "contrast_level": "very high (charcoal/black on white, and inverted)",
+      "texture_usage": "flat — no gradients/noise (except the era-specific AIP purple accent gradient #C026D3→#4F46E5); monochrome high-contrast photography, looping video, matte-3D isometric renders. ORNAMENT supplies the only 'texture': stadium/segmented pill tags, tiny uppercase mono micro-labels, hairline multi-band footers, dashed diagonal connectors, page-progress pips (●○○) doubling as dot-matrix data counts, and grayscale folded-paper facet cover imagery. (Corner brackets ⌐ and ±tick strips are AmCham-deck-specific, not IR.)"
+    },
+    "composition": {
+      "hierarchy_method": "scale contrast + spatial isolation (huge bold headings and tabular KPI numerals isolated in whitespace), reinforced by typographic weight and underline-as-emphasis",
+      "balance_type": "asymmetric (left-aligned copy on strict grid; bento/mosaic case grids) with symmetric centered CTA moments",
+      "flow_direction": "top-to-bottom vertical narrative, alternating light/inverted bands; 'Scroll to Explore' linear reveal",
+      "grouping_strategy": "1px borders, grid gutters, and hairline-ruled footers group content; numbered steps and dotted-leader TOC sequence formal docs",
+      "negative_space_role": "structural and expressive — whitespace is the primary compositional material, signaling confidence and clarity"
+    },
+    "imagery": {
+      "photo_treatment": "high-contrast, low-saturation, near-monochrome documentary/product imagery; grayscale folded-paper facet abstractions; looping product-reel video; 16:9 / 4:3 crops, object-cover",
+      "illustration_style": "essentially none — favors real product UI, matte-3D isometric glyph renders, abstract data/tech footage",
+      "graphic_elements": "hairline rules and multi-band footers, oversized tabular numerals, monochrome bar charts (hollow-outline prior / solid or gradient current, dotted +NN% connectors, dashed halo ring, '//' axis-break), thin arrow/chevron SVGs (→ / ↳), stadium pill tags, page pips (also dot-matrix counts), rectangular frames, matte isometric 3-D glyphs (corner brackets ⌐ / ±tick strips only in AmCham marketing decks)",
+      "pattern_usage": "none (blueprint marks are structural, not decorative pattern)",
+      "image_shape": "hard rectangles, no rounded corners on media, full-bleed or grid-clipped"
+    },
+    "interaction_feel": {
+      "feedback_style": "subtle and immediate — color/border inversion and mild shadow lift on hover",
+      "hover_behavior": "buttons invert fill/text; cards raise shadow and scale image 1.05; links underline / turn emerald; borders promote toward foreground",
+      "transition_personality": "fade-subtle / snappy — 200–300ms ease-out color and opacity, nothing bouncy",
+      "loading_style": "minimal — simple fade-in with static poster frames behind hero video",
+      "microinteraction_density": "low — a small, deliberate set of interactions, no ambient motion"
+    },
+    "brand_voice_in_ui": {
+      "tone": "confident, technical, understated authority; lets data, outcomes, and mission gravity speak",
+      "formality": "formal / enterprise-defense",
+      "cta_style": "direct imperative — 'Request a Demo →' / 'Start Building →' / 'デモの申込はこちら', trailing arrow",
+      "empty_state_approach": "sparse and factual — plain statement, no illustration or playful copy",
+      "error_tone": "neutral, precise, non-apologetic"
+    }
+  },
+  "visual_effects": {
+    "overview": {
+      "effect_intensity": "subtle-accent",
+      "performance_tier": "lightweight",
+      "fallback_strategy": "reduce to CSS / static snapshot — hero video degrades to a static poster frame; scroll-reveal respects prefers-reduced-motion",
+      "primary_technology": "CSS transitions + keyframes with autoplay/muted/looping <video> backgrounds; NO WebGL/Canvas/particles/shaders"
+    },
+    "background_effects": {
+      "type": "video-bg",
+      "description": "Live palantir.com heroes use full-bleed autoplay/muted/loop product-reel videos over near-black charcoal (#0E0E10–#141418), dimmed. Non-video sections are flat solid black/white/charcoal or warm-grey (#D8D8D8) IR stage — no gradients or generative art.",
+      "technology": "HTML5 <video autoplay muted loop playsinline> with object-cover + darkening overlay",
+      "params": {
+        "color_palette": ["#0E0E10", "#111418", "#1C2127", "#252A31", "#D8D8D8", "#FFFFFF"],
+        "speed": "real-time looping footage, calm cadence",
+        "density": "full-viewport single video layer",
+        "opacity": "~0.4 video with dark overlay; solid for non-video sections",
+        "blend_mode": "normal (darkened via opacity/overlay, no blend mode)"
+      }
+    },
+    "particle_systems": {
+      "enabled": false,
+      "type": "none",
+      "description": "No particle systems. Palantir's restraint precludes floating dots, confetti, or connected-node fields.",
+      "technology": "none",
+      "params": {
+        "count": "0",
+        "shape": "none",
+        "size_range": "none",
+        "movement_pattern": "none",
+        "color_behavior": "none",
+        "interaction": "none",
+        "spawn_area": "none"
+      }
+    },
+    "3d_elements": {
+      "enabled": false,
+      "type": "none",
+      "description": "No real-time WebGL/Three.js 3D scenes. The matte-black isometric extruded glyph in decks/hero is a pre-rendered raster image with soft studio lighting, not an interactive 3D scene.",
+      "technology": "none (pre-rendered raster)",
+      "params": {
+        "renderer": "none",
+        "lighting": "soft studio (baked into raster render)",
+        "camera": "none",
+        "materials": "matte charcoal (baked)",
+        "geometry": "isometric extruded glyph (baked)",
+        "post_processing": [],
+        "interaction_model": "none"
+      }
+    },
+    "shader_effects": {
+      "enabled": false,
+      "type": "none",
+      "description": "No custom GLSL/shader effects.",
+      "technology": "none",
+      "params": {
+        "uniforms": "none",
+        "vertex_manipulation": "none",
+        "fragment_output": "none",
+        "noise_type": "none",
+        "distortion": "none"
+      }
+    },
+    "scroll_effects": {
+      "parallax": {
+        "enabled": false,
+        "layers": "0",
+        "depth_range": "none",
+        "speed_curve": "none"
+      },
+      "scroll_triggered_animations": {
+        "enabled": true,
+        "trigger_points": "on section/element enter viewport (~15–25% threshold)",
+        "animation_type": "fade-up (opacity 0→1 + ~20px translateY), block-level stagger; oversized KPI numerals may reveal/count on enter",
+        "scrub_behavior": "triggered (play once on enter), not scrubbed"
+      },
+      "scroll_morphing": {
+        "enabled": false,
+        "description": "No scroll-linked geometry morphing. Live site uses a linear 'Scroll to Explore' narrative with discrete reveals."
+      }
+    },
+    "text_effects": {
+      "type": "none",
+      "description": "No split-letter, glitch, gradient-fill, or 3D-extrude text effects. Emphasis is pure scale, tight negative tracking, and ink-color underline-as-emphasis (weight stays regular–medium, never bold). Only text motion is the shared fade-up entrance reveal.",
+      "technology": "CSS (weight/scale/tracking/underline, shared fadeInUp)",
+      "params": {
+        "split_strategy": "none",
+        "animation_per_unit": "none",
+        "stagger": "~100ms (block-level entrance only, not per-character)",
+        "effect_style": "none"
+      }
+    },
+    "cursor_effects": {
+      "enabled": false,
+      "type": "none",
+      "description": "Default system cursor; no custom cursor, magnetic buttons, spotlight, or trail.",
+      "params": {
+        "shape": "none",
+        "size": "none",
+        "blend_mode": "none",
+        "trail": "none",
+        "interaction_zone": "none"
+      }
+    },
+    "image_effects": {
+      "type": "reveal-clip",
+      "description": "Restrained: card images scale 1.05 on hover inside a fixed overflow-hidden frame (~300ms); images/sections fade-up on scroll-enter. Photography treated toward monochrome/high-contrast. No RGB-shift, tilt, or distortion.",
+      "technology": "CSS transform + transition, overflow-hidden clip frame, IntersectionObserver reveal",
+      "params": {
+        "filter_pipeline": ["high-contrast", "desaturate-toward-monochrome"],
+        "hover_transform": "scale(1.05)",
+        "reveal_animation": "fade-up on viewport enter",
+        "distortion_type": "none"
+      }
+    },
+    "glassmorphism_neumorphism": {
+      "enabled": false,
+      "style": "none",
+      "params": {
+        "blur_radius": "none",
+        "transparency": "none",
+        "border_treatment": "opaque 1px solid hairline (not glass)",
+        "shadow_type": "none / subtle hover drop only",
+        "light_source_angle": "none"
+      }
+    },
+    "canvas_drawings": {
+      "enabled": false,
+      "type": "none",
+      "description": "No Canvas 2D generative art or interactive drawing on brand surfaces. Data shown as typography/KPIs, video, and product screenshots.",
+      "technology": "none",
+      "params": {
+        "draw_method": "none",
+        "animation_loop": "none",
+        "color_scheme": "none",
+        "responsiveness": "none",
+        "interaction": "none"
+      }
+    },
+    "svg_animations": {
+      "enabled": false,
+      "type": "none",
+      "description": "SVG used statically for arrow/chevron icons and blueprint marks; no path-draw, morph, or stroke animation.",
+      "params": {
+        "animation_method": "none",
+        "path_morphing": "none",
+        "stroke_animation": "none",
+        "filter_effects": "none"
+      }
+    },
+    "composite_notes": "REGISTER-CONDITIONAL + ERA-VARIABLE model is the master rule (this reflects a FULL read of all IR decks 2022–2025 plus whitepapers/service-def, Airbus, and live warpspeed). Shared brand core across every register and era: neo-grotesque (Neue Haas Grotesk / Univers-class) type at regular–medium weight with tabular numerals and ink-color underline emphasis, monochrome charcoal/white base, 1px hairline borders, minimal-functional motion, and STRICTLY MONOCHROME CHARTS (no red/blue/green natively — color lives only in photos and embedded product UI). Chart signature: hollow-outline prior bar, solid or white→grey-gradient current bar, dotted diagonal +NN% connectors, dashed halo ring on the latest point, '//' axis-break, mono uppercase legends. Ornament: stadium/segmented pill tags, mono micro-labels, hairline multi-band footers, dashed connectors, breadcrumb, page pips (also dot-matrix data counts), matte isometric 3-D glyphs — corner brackets ⌐ / ±tick strips are AmCham-deck-specific, NOT IR. LIGHT↔DARK INVERSION is a deliberate device (dark panel + white bars ⇔ light card + black bars). ACCENT IS ERA/CAMPAIGN-VARIABLE, never a fixed constant, always 1–2 instances, never a solid fill, never inside a chart: 2022 = none (pure monochrome); 2024 AIP-era = purple #7C3AED gradient #C026D3→#4F46E5; 2025 + live = emerald #00E599 (2-value: neon #00E599 / muted #1F9E6E) + secondary cyan #35C6E6 for deltas. 多元 fixes emerald #00E599 as its single accent. Register variance: (A) SCREEN / IR / MARKETING — softened corners (live UI 2–6px, financial panels 16–26px, cover/divider 24–32px, stadium pills), era accent, warm-grey #D8D8D8 stage (light cards #EFEFEF/#C7C7C7) or near-black #0E0E10–#1C2127 (2025 warmer #1A1D22) video/data heroes; (B) PRINT / FORMAL (service-def A4, company-overview deck) — 0px square corners (photos 4–6px), background WHITE or warm cream #F2EFE6, body text PURE BLACK monochrome, BUT color IS allowed in photos/diagrams/links and (whitepaper) headings (e.g. muted blue), narrow left rail (28–32%, small-caps grey labels) + wide right body + hairline rules, mandatory decimal numbering, dotted-leader TOC (legal) or hairline+two-tone-number TOC (narrative), em-dash '——' lead-ins, arrow bullets → / ↳. CO-BRAND: partner logos keep their OWN color while Palantir stays monochrome, joined in a 'Palantir • partner' slash/bullet lockup (per Airbus deck). Effects layer is deliberately near-empty: full-bleed looping product-reel video + alternating light/charcoal bands + one fade-up scroll-reveal + black↔white hover inversion; everything else plain CSS. particles / real-time 3D / shaders / canvas / cursor tricks / glassmorphism = enabled:false — inventing any violates the brand. DEGRADATION DIFF: the 写経 replica lost the real typeface (system -apple-system), invented a #00FF00 accent, and used generic Tailwind grays; the 多元 preview adds its own teal (#0F766E/#2DD4BF) + Public Sans — a legitimate 多元 choice but NOT Palantir DNA. This artifact is the canonical Palantir Design DNA restored from a full primary-source read."
+  }
+}
