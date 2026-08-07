@@ -261,14 +261,17 @@ in
   # Environment variables
   home.sessionVariables = {
     MANPATH = ":/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/share/man";
-    SHELL = "zsh";
+    # 絶対パスであること。裸の "zsh" だと $SHELL を「実行可能なログインシェル」として
+    # 検査・exec するツールが落ちる(実測: Codex Desktop の remote SSH が
+    # "requires SHELL to point to an executable login shell" で接続失敗)。
+    # 値が zsh なのは意図どおり(対話ログインは fish、エージェント/スクリプトは POSIX 系)。
+    SHELL = "/bin/zsh";
     PAGER = "less";
     LESS = "-R";
     SOPS_AGE_KEY_FILE = "${config.home.homeDirectory}/.config/sops/age/keys.txt";
     # SCRAPBOX_SID は置かない(2026-07-05 除去): 回転するセッション cookie を公開 repo +
-    # world-readable な /nix/store に固定するのが漏洩経路だった。正本はログイン済み Chrome
-    # (scrapbox-sid-refresh.sh が settings.local.json へ自己修復注入)。消費側の
-    # cosense-fetch と scrapbox-write/rename ラッパが実行時に解決する。
+    # world-readable な /nix/store に固定するのが漏洩経路だった。消費側は
+    # scrapbox_session.py でsettings/env候補をlive検証し、無効ならfail closedする。
     # gws encryption key in ~/.config/gws/, not macOS Keychain.
     # Why: Keychain ACL blocks GUI-subprocess access (Claude Code / Cursor), forcing re-auth.
     GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND = "file";
