@@ -24,13 +24,14 @@ import os
 import json
 import argparse
 import subprocess
+import shutil
 import zipfile
 import time
 import datetime
 
 from common import msg_text, canon, esc
 
-SCRAPBOX_WRITE = os.path.expanduser("~/.local/bin/scrapbox-write")
+SCRAPBOX_WRITE = shutil.which("scrapbox-write") or "scrapbox-write"
 import os, sys  # noqa: E402
 sys.path.insert(0, os.path.expanduser("~/.claude/scripts/lib"))
 from normalize import normalize  # 表記ゆれ正規化(Scrapbox 書き込み境界)

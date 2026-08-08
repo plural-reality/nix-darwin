@@ -21,6 +21,7 @@ import os
 import json
 import argparse
 import subprocess
+import shutil
 import urllib.parse
 import time
 
@@ -30,7 +31,7 @@ from ingest import clean_title, jst, HUB
 CACHE_DIR = os.path.expanduser("~/.claude/.cache/claude-log-to-scb")
 EXTRACTED_PATH = os.path.join(CACHE_DIR, "extracted.jsonl")
 ARCHIVE_ROOT = os.path.expanduser("~/.claude/data/claude-export")
-SCRAPBOX_WRITE = os.path.expanduser("~/.local/bin/scrapbox-write")
+SCRAPBOX_WRITE = shutil.which("scrapbox-write") or "scrapbox-write"
 import os, sys  # noqa: E402
 sys.path.insert(0, os.path.expanduser("~/.claude/scripts/lib"))
 from normalize import normalize  # 表記ゆれ正規化(Scrapbox 書き込み境界)

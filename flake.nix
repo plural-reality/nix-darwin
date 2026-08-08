@@ -275,6 +275,9 @@
           # freee MCP: published ESM plus runtime npm closure, fully Nix-pinned.
           packages.freee-mcp = import ./packages/freee-mcp { inherit pkgs; };
 
+          # Official Plaud CLI, pinned for personal lifelog adapters.
+          packages.plaud-cli = import ./packages/plaud-cli { inherit pkgs; };
+
           # CodeLayer: AI coding agent (macOS .app + CLI)
           packages.codelayer = import ./packages/codelayer { inherit pkgs; };
 

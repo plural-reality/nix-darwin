@@ -5,6 +5,7 @@
 # 分類・要約・書込(LLM判断)は次セッションの人間起動に委ねる(daily-report スキル本来の設計)。
 # pending は最適化であって必須依存ではない: 無くても daily-report は手動で完全に動作する。
 set -euo pipefail
+umask 077
 
 # session-summary.sh が呼ぶ要約用 claude(CLAUDE_DAILY_SUMMARY=1)の SessionEnd では gather しない(再帰防止)。
 [ "${CLAUDE_DAILY_SUMMARY:-}" = "1" ] && exit 0
@@ -16,6 +17,7 @@ LOCKDIR="$CACHE/.lock.d"
 FRESH=1800                                # 直近30分に gather 済みなら再取得しない(clear/compact 連発の無駄打ち防止)
 
 mkdir -p "$CACHE"
+chmod 700 "$CACHE"
 
 # 二重起動防止: mkdir は atomic(macOS に flock が無いため採用)。取れなければ別プロセスが収集中 → 退避。
 mkdir "$LOCKDIR" 2>/dev/null || exit 0

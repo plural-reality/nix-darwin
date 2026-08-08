@@ -17,22 +17,6 @@ set -uo pipefail
 # --- 再帰ガード: 要約用 claude 自身の SessionEnd を握りつぶす ---
 [ "${CLAUDE_DAILY_SUMMARY:-}" = "1" ] && exit 0
 
-# --- 完了通知: 「前セッションをここに保存したよ」をユーザーへ。
-#     terminal-notifier があれば -open でクリック→ブラウザで Scrapbox ページが開く。
-#     無ければ osascript(クリック不可だが URL は読める)へフォールバック。SessionStart の
-#     stdout はユーザー画面に出ないため、確実に見せられるのはこのデスクトップ通知だけ。
-notify_saved() {
-  local proj="$1" msg="$2" url="$3"
-  if command -v terminal-notifier >/dev/null 2>&1; then
-    terminal-notifier -title "📝 Claude Code" -subtitle "✅ 前セッションを記録 (${proj})" \
-      -message "${msg}" -open "${url}" -sound Glass -group "claude-daily-report" >/dev/null 2>&1 || true
-  else
-    osascript -e 'on run argv' \
-      -e 'display notification (item 2 of argv) with title "📝 Claude Code" subtitle (item 1 of argv) sound name "Glass"' \
-      -e 'end run' "✅ 前セッションを記録 (${proj})" "${msg} — ${url}" >/dev/null 2>&1 || true
-  fi
-}
-
 readonly input="$(cat)"
 readonly sid="$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null || true)"
 readonly tpath="$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null || true)"
@@ -100,8 +84,6 @@ readonly cleaned="$(printf '%s' "$raw" | tr -d '\n' | sed 's/```json//g; s/```//
 # 妥当な JSON(project と summary がある)だけを採用し、session_id と time を刻んで追記。
 # hash(=sid[:8]) はシェルが決定的に付与する唯一のハッシュ(daily-flush.py が work の #hash に使う)。
 printf '%s' "$cleaned" | jq -e '.project and .summary' >/dev/null 2>&1 || exit 0
-readonly proj="$(printf '%s' "$cleaned" | jq -r '.project')"
-readonly oneline="$(printf '%s' "$cleaned" | jq -r '.summary')"
 printf '%s' "$cleaned" | jq -c \
   --arg sid "$sid" --arg time "$(TZ=Asia/Tokyo date +%H:%M)" --arg hash "${sid:0:8}" \
   '{project, summary, session_id: $sid, time: $time, hash: $hash}' \
@@ -110,10 +92,6 @@ printf '%s' "$cleaned" | jq -c \
 # 要約を1件追記できたので、その日の全 summaries を Scrapbox 日付ページへ反映(冪等・project ごと)。
 # async hook 内なので元セッションをブロックしない。SCRAPBOX_SID は settings.json env から継承。
 # 副作用として last-saved.json(記録先 URL の唯一の機械可読ソース)も更新される。
+# 2026-08-08: 記録先 URL をデスクトップ通知で見せる処理はここにあったが、通知全廃で削除した。
+# URL が要るときは $CACHE/last-saved.json を直接読む。
 python3 "$HOME/.claude/scripts/daily-flush.py" "$DATE" >/dev/null 2>&1 || true
-
-# --- ユーザーへ完了通知。URL は daily-flush.py が書いた last-saved.json から引く
-#     (scrapbox 名の権威は daily-flush の PROJECTS 一箇所に集約 → ここでは再定義しない)。
-readonly LAST="$CACHE/last-saved.json"
-readonly url="$( { [ -f "$LAST" ] && jq -r --arg p "$proj" '.pages[]? | select(.project==$p) | .url' "$LAST" 2>/dev/null | head -1; } || true )"
-[ -n "$url" ] && notify_saved "$proj" "$oneline" "$url"

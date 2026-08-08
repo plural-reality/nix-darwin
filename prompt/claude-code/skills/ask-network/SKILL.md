@@ -170,10 +170,7 @@ Facebook や Slack の広いコミュニティに投げる用の汎用文も1つ
 
 ## 認証情報
 
-### Scrapbox
-```
-SCRAPBOX_SID=s%3ASHE-0nIW3e5263L9Hm4BeQf0aRSSQpFC.uVtaUJ7Wwu%2B6HtCS8tPE7Zb0CuAlLCtmNMWUGWp49Yo
-```
+Scrapbox session は `scrapbox_session.py` の検証済み実行時resolverだけを使う。SIDをskill、prompt、log、出力へ書かない。
 
 ## 対応プロジェクト
 

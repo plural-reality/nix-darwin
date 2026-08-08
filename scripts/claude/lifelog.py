@@ -5,38 +5,71 @@ Sources:
   calendar  : osascript/AppleScript → Calendar.app（Mac公式カレンダー＝全アカウント集約。
               Apple Event 送信元が /usr/bin/osascript なのでオートメーション権限が
               claude 自動更新に左右されない。生DB(Calendar.sqlitedb)直読はFDA失効で不可）
-  limitless : pendant.py へ委譲（export → 当日jsonlを読む）
-  sessions  : Claude(~/.claude/projects/*/*.jsonl) + Codex(~/.codex/history.jsonl)
+  limitless : pendant.py へ委譲（指定日の全ページをJSON streamとして読む）
+  mori      : Mori MCPからSession一覧→全文Transcriptだけを同期。Journalは取得しない。
+  plaud     : Plaud公式CLI経由で全文Transcriptを同期。要約ではなく一次記録を使う。
+  sessions  : Claude(~/.claude/projects/*/*.jsonl) + Codex(~/.codex/sessions/**/*.jsonl)
   typeless  : Typeless の音声入力DB（sqlite, refined_text + 入力先アプリ文脈）
-  gmail     : himalaya(IMAP) の当日封筒メタ（time/from/subject/id）。本文は転記せず index のみ。
+  gmail     : himalaya(IMAP) の「すべてのメール」当日封筒メタ（送受信/time/相手/subject/id）。
+              本文は転記せず index のみ。
               本文は `himalaya message read -a gmail <id>` で live 取得する契約（world-model.md）。
   beeper    : Beeper Desktop のローカル HTTP API（127.0.0.1:23373）。Slack/iMessage/
               Twitter/Telegram/Matrix 等を集約した当日メッセージ。MCP ランタイム不要
               （token を読んで直接叩く）。低優先(bot等)除外。これが日次の canonical な
               「自分の1日」に含まれる5番目のソース（要約/書込は beeper-to-scb skill が担う）。
+  scrapbox  : Scrapbox API の当日更新ページメタ（private/plural/takalog）。本文は日付ページ側で
+              必要なものだけ読み、ここでは title/time/link の index に留める。
+  coast     : Coast Local CLI の当日利用メタ（録画時間/session/top app/domain）。OCR/画像は取得しない。
 
-各 source は `fetch_<name>(date) -> list[dict]`。失敗時は [] を返し stderr に warn（gather を壊さない）。
+各 source は `fetch_<name>(date) -> JSON value`。失敗時は空値を返し stderr に warn（gather を壊さない）。
 出力は JSON（daily-report skill が分類・キュレートして日付ページへ転記）。
 
 Usage:
   python3 lifelog.py gather [YYYY-MM-DD] [--pretty]
-  python3 lifelog.py calendar|limitless|sessions|typeless|beeper [YYYY-MM-DD]
+  python3 lifelog.py calendar|limitless|mori|plaud|sessions|typeless|gmail|beeper|scrapbox|coast [YYYY-MM-DD]
 """
 from __future__ import annotations
 import argparse, glob, json, os, re, shlex, sqlite3, subprocess, sys
 from datetime import datetime, timezone, timedelta
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 JST = timezone(timedelta(hours=9))
 HOME = os.path.expanduser("~")
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(SCRIPT_DIR, "lib"))
+from scrapbox_session import resolve_session, resolve_sid
 
 # Calendar.app で「チェック済（可視）」のカレンダーだけ取り込む allowlist（他人/別用途は除外）。
 # Calendar.app のサイドバーのチェック状態に対応。変えたい時はここを編集。
-# 祝日カレンダー(日本の祝日 / Japan Holidays)は意図的に除外: ライフログのイベントとして無価値で、
-# かつ繰り返し予定が大量にあり AppleScript の `whose` が激重(タイムアウト)になるため。
+# 本人の予定として扱うのは Calendar.app でチェックしているこの一覧だけ。
+# Intervals.icu はトレーニング計画（可動）だが、その日の行動記録には含める。
 CHECKED_CALENDARS = [
-    "Business ", "ルーティーン", "Takaの予定",
-    "Shunsuke Takagi (General)", "takagi@plural-reality.com",
+    "Taka の予定", "takagi@plural-reality.com", "Shunsuke Takagi (General)",
+    "Business ", "ルーティーン", "Intervals.icu", "日本の祝日",
 ]
+
+OK_STATE = "取得済み"
+EMPTY_STATE = "記録なし"
+TRANSIENT_STATE = "一時的に取得できません"
+AUTH_STATE = "認証が必要"
+
+
+@dataclass(frozen=True)
+class SourceResult:
+    data: Any
+    state: str
+    detail: str = ""
+
+
+def _present(data: Any, detail: str = "") -> SourceResult:
+    empty = data == [] or data == {} or data is None
+    return SourceResult(data if data is not None else [], EMPTY_STATE if empty else OK_STATE, detail)
+
+
+def _failed(state: str, detail: str, data: Any = None) -> SourceResult:
+    return SourceResult([] if data is None else data, state, detail)
 
 
 def _today() -> str:
@@ -54,24 +87,43 @@ set day of sd to __D__
 set ed to sd + (1 * days)
 set wanted to {__WANTED__}
 set out to ""
+set okCount to 0
+set errorCount to 0
 tell application "Calendar"
   repeat with cn in wanted
     try
       set cal to first calendar whose name is cn
+      set okCount to okCount + 1
       repeat with e in (every event of cal whose start date ≥ sd and start date < ed)
         set sdt to start date of e
         set hh to text -2 thru -1 of ("0" & ((hours of sdt) as string))
         set mm to text -2 thru -1 of ("0" & ((minutes of sdt) as string))
         set out to out & ((allday event of e) as string) & tab & hh & ":" & mm & tab & cn & tab & (summary of e) & linefeed
       end repeat
+    on error
+      set errorCount to errorCount + 1
     end try
   end repeat
 end tell
-return out
+return "__META__" & tab & okCount & tab & errorCount & linefeed & out
 '''
 
+_CALENDAR_RETRYABLE_ERRORS = (
+    "Connection Invalid",
+    "Error received in message reply",
+)
 
-def fetch_calendar(d: str) -> list[dict]:
+
+def _run_calendar_script(script: str) -> subprocess.CompletedProcess[str]:
+    command = ["osascript", "-e", script]
+    first = subprocess.run(command, capture_output=True, text=True, timeout=120)
+    retryable = first.returncode != 0 and any(
+        marker in first.stderr for marker in _CALENDAR_RETRYABLE_ERRORS)
+    return (subprocess.run(command, capture_output=True, text=True, timeout=120)
+            if retryable else first)
+
+
+def fetch_calendar(d: str) -> SourceResult:
     y, m, day = (int(x) for x in d.split("-"))
     wanted = ", ".join('"%s"' % c for c in CHECKED_CALENDARS)
     script = (_CAL_AS.replace("__Y__", str(y)).replace("__M__", str(m))
@@ -81,42 +133,50 @@ def fetch_calendar(d: str) -> list[dict]:
     # best-effort（タイムアウトで [] を返す）。高速化には EventKit が要るが Calendars TCC 権限が必要で、
     # 現状は osascript の Automation 権限のみ通る(EventKit は未認証=空)ため AppleScript を採用。
     try:
-        r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=120)
+        r = _run_calendar_script(script)
     except Exception as e:
         print(f"[warn] calendar (osascript) timed out/failed (best-effort, skipped): {type(e).__name__}", file=sys.stderr)
-        return []
+        return _failed(TRANSIENT_STATE, type(e).__name__)
     if r.returncode != 0:
         print(f"[warn] calendar (osascript) error: {r.stderr.strip()[:200]}", file=sys.stderr)
-        return []
+        return _failed(TRANSIENT_STATE, "Calendar.appから取得できませんでした")
     out = []
-    for line in r.stdout.splitlines():
+    rows = r.stdout.splitlines()
+    meta = rows[0].split("\t") if rows else []
+    if len(meta) != 3 or meta[0] != "__META__":
+        return _failed(TRANSIENT_STATE, "Calendar応答に検証情報がありません")
+    ok_count, error_count = int(meta[1]), int(meta[2])
+    for line in rows[1:]:
         parts = line.split("\t")
         if len(parts) < 4:
             continue
         out.append({"time": parts[1], "allday": parts[0].strip().lower() == "true",
                     "calendar": parts[2].strip(), "summary": "\t".join(parts[3:]).strip()})
     out.sort(key=lambda e: e["time"])
-    return out
+    return (_failed(TRANSIENT_STATE, f"確認成功{ok_count}件 / 失敗{error_count}件", out)
+            if ok_count == 0 or error_count else _present(out, f"{len(out)}件"))
 
 
 # ---------- limitless : delegate to pendant.py ----------
-def fetch_limitless(d: str) -> list[dict]:
-    pend = os.path.join(HOME, ".claude/scripts/pendant.py")
+def fetch_limitless(d: str) -> SourceResult:
+    # リポジトリ直実行と Home Manager 投影後の両方で、同じ sibling adapter を使う。
+    pend = os.path.join(SCRIPT_DIR, "pendant.py")
     try:
-        subprocess.run(["python3", pend, "export", "--since", d, "--source", "limitless"],
-                       capture_output=True, text=True, timeout=120)
+        result = subprocess.run(
+            ["python3", pend, "-f", "json", "date", d, "--source", "limitless"],
+            capture_output=True, text=True, timeout=120)
     except Exception as e:
-        print(f"[warn] limitless export failed: {e}", file=sys.stderr)
-    path = os.path.join(HOME, ".claude/data/pendant-export/limitless", f"{d}.jsonl")
-    if not os.path.exists(path):
-        return []
-    seen = {}
-    for line in open(path):
-        try:
-            u = json.loads(line)["unified"]
-        except Exception:
-            continue
-        seen[u.get("id")] = u
+        print(f"[warn] limitless fetch failed: {type(e).__name__}", file=sys.stderr)
+        return _failed(TRANSIENT_STATE, type(e).__name__)
+    if result.returncode != 0:
+        print(f"[warn] limitless fetch error: {result.stderr.strip()[:200]}", file=sys.stderr)
+        state = AUTH_STATE if "401" in result.stderr or "403" in result.stderr else TRANSIENT_STATE
+        return _failed(state, "Limitless APIから取得できませんでした")
+    try:
+        items = json.loads(result.stdout)
+    except Exception:
+        return _failed(TRANSIENT_STATE, "Limitless応答を解釈できませんでした")
+    seen = {u.get("id"): u for u in items if u.get("id")}
     # `title`/`headings` は Limitless の自動生成サマリで品質が低い(同じ "新しい仕事について" が
     # 量産される・STTノイズや他者私事をそのまま見出し化する)。鵜呑み禁止。LLM が実際に要約できるよう
     # 生トランスクリプト本文(`text`)も渡す。daily-report skill はこの `text` を読んで要約する。
@@ -126,7 +186,7 @@ def fetch_limitless(d: str) -> list[dict]:
             "text": _limitless_text(u.get("markdown", "") or "")}
            for u in seen.values()]
     out.sort(key=lambda e: e["time"])
-    return out
+    return _present(out, f"{len(out)}件")
 
 
 def _limitless_text(md: str, cap: int = 1800) -> str:
@@ -135,6 +195,54 @@ def _limitless_text(md: str, cap: int = 1800) -> str:
     strip = lambda s: re.sub(r"^-\s+.*?\):\s*", "", re.sub(r"^##\s+", "", s.strip()))
     body = [t for t in (strip(ln) for ln in md.splitlines()) if t]
     return "\n".join(body)[:cap]
+
+
+# ---------- Mori / Plaud : provider sync -> canonical daily JSONL ----------
+def _transcript_archive_root() -> Path:
+    return Path(os.environ.get(
+        "LIFELOG_TRANSCRIPT_DIR", "~/.claude/data/pendant-export")).expanduser()
+
+
+def _archived_transcripts(source: str, d: str) -> list[dict]:
+    path = _transcript_archive_root() / source / f"{d}.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def _transcript_preview(row: dict, cap: int = 1800) -> str:
+    text = "\n".join(
+        str(item.get("text", "")) for item in row.get("utterances", [])
+        if item.get("text"))
+    return text[:cap]
+
+
+def _fetch_synced_transcripts(source: str, d: str, command: list[str]) -> SourceResult:
+    result = subprocess.run(command, capture_output=True, text=True, timeout=900)
+    rows = _archived_transcripts(source, d)
+    out = [{"time": str(row.get("start_time", ""))[11:16],
+            "title": row.get("title", ""),
+            "text": _transcript_preview(row),
+            "utterance_count": len(row.get("utterances", [])),
+            "archive": str(_transcript_archive_root() / source / f"{d}.jsonl")}
+           for row in rows]
+    if result.returncode == 0:
+        return _present(out, f"{len(out)}件 / 全文はarchive")
+    state = AUTH_STATE if result.returncode == 2 else TRANSIENT_STATE
+    detail = (result.stderr.strip().splitlines() or [f"{source} sync failed"])[-1][:200]
+    return _failed(state, detail, out)
+
+
+def fetch_mori(d: str) -> SourceResult:
+    return _fetch_synced_transcripts(
+        "mori", d,
+        [sys.executable, os.path.join(SCRIPT_DIR, "mori.py"), "sync", "--from", d, "--to", d])
+
+
+def fetch_plaud(d: str) -> SourceResult:
+    return _fetch_synced_transcripts(
+        "plaud", d,
+        [sys.executable, os.path.join(SCRIPT_DIR, "plaud-sync.py"), "--from", d, "--to", d])
 
 
 # ---------- sessions : Claude + Codex ----------
@@ -215,10 +323,7 @@ def _claude_session(path: str, d: str):
             "".join(b.get("text", "") for b in c if isinstance(b, dict) and b.get("type") == "text")
             if isinstance(c, list) else "")
         text = text.strip()
-        if on_day and isinstance(c, list):  # その日に書いた Scrapbox ページ(work[].links 用)
-            for b in c:
-                if isinstance(b, dict) and b.get("type") == "tool_use":
-                    scrapbox.update(_scrapbox_targets(str((b.get("input") or {}).get("command", ""))))
+        # command dispatchだけでは保存・readbackを証明できないため、tool_useからScrapbox linkを推測しない。
         if o.get("type") == "user" and on_day and text and not text.startswith("<") and "Caveat" not in text[:30] and not first_prompt:
             first_prompt, first_time = " ".join(text.split())[:160], t.strftime("%H:%M")
         if o.get("type") == "assistant" and on_day and text:
@@ -226,7 +331,7 @@ def _claude_session(path: str, d: str):
     return (first_prompt, first_time, last_assistant, sorted(scrapbox)) if first_prompt else None
 
 
-def fetch_sessions(d: str) -> list[dict]:
+def fetch_sessions(d: str) -> SourceResult:
     out = []
     for f in glob.glob(os.path.join(HOME, ".claude/projects/*/*.jsonl")):
         if os.path.basename(os.path.dirname(f)) == "subagents":
@@ -244,32 +349,66 @@ def fetch_sessions(d: str) -> list[dict]:
         out.append({"agent": "claude", "hash": os.path.basename(f)[:8], "time": info[1],
                     "project": os.path.basename(os.path.dirname(f)),
                     "prompt": info[0], "last": info[2], "scrapbox": info[3]})
-    hist = os.path.join(HOME, ".codex/history.jsonl")
-    if os.path.exists(hist):
-        byses = {}
-        for line in open(hist):
-            try:
-                o = json.loads(line)
-                t = datetime.fromtimestamp(int(o.get("ts")), JST)
-            except Exception:
+    # history.jsonl は旧 UI の入力履歴で、現在の Codex Desktop task は sessions/**/*.jsonl が正本。
+    # 当日更新された rollout だけを読み、user_message と最後の agent_message を1 taskへ畳む。
+    codex: dict[str, dict] = {}
+    roots = (os.path.join(HOME, ".codex/sessions/**/*.jsonl"),
+             os.path.join(HOME, ".codex/archived_sessions/**/*.jsonl"))
+    for f in (path for pattern in roots for path in glob.glob(pattern, recursive=True)):
+        try:
+            if datetime.fromtimestamp(os.path.getmtime(f), JST).strftime("%Y-%m-%d") < d:
                 continue
-            if t.strftime("%Y-%m-%d") != d:
-                continue
-            byses.setdefault(o.get("session_id", ""), []).append((t, o.get("text", "")))
-        for sid, items in byses.items():
-            items.sort()
-            out.append({"agent": "codex", "hash": (sid or "")[:8],
-                        "time": items[0][0].strftime("%H:%M"), "project": "codex",
-                        "prompt": " ".join(items[0][1].split())[:160], "last": "", "scrapbox": []})
+            info = _codex_session(f, d)
+        except Exception:
+            continue
+        if info:
+            codex[info["session_id"]] = info
+    out.extend(codex.values())
     out.sort(key=lambda e: e["time"] or "99:99")
-    return out
+    return _present(out, f"{len(out)}件")
+
+
+def _codex_session(path: str, d: str) -> dict | None:
+    meta, first_prompt, first_time, final = {}, "", "", ""
+    active = False
+    sid = Path(path).stem.rsplit("-", 5)[-1]
+    for line in open(path):
+        try:
+            o = json.loads(line)
+        except Exception:
+            continue
+        payload = o.get("payload") or {}
+        if o.get("type") == "session_meta":
+            meta = payload
+            sid = payload.get("id") or sid
+        try:
+            t = datetime.fromisoformat((o.get("timestamp") or "").replace("Z", "+00:00")).astimezone(JST)
+        except Exception:
+            t = None
+        if not t or t.strftime("%Y-%m-%d") != d or o.get("type") != "event_msg":
+            continue
+        kind = payload.get("type")
+        text = str(payload.get("message") or "").strip()
+        if kind == "user_message" and text and not first_prompt:
+            first_prompt, first_time = " ".join(text.split())[:160], t.strftime("%H:%M")
+        if kind == "agent_message" and text and payload.get("phase") == "final_answer":
+            final = " ".join(text.split())[:200]
+        if kind == "agent_message" and text and payload.get("phase") != "final_answer":
+            active = True
+    if not first_prompt:
+        return None
+    cwd = str(meta.get("cwd") or "")
+    return {"agent": "codex", "hash": str(sid)[:8], "time": first_time,
+            "project": os.path.basename(cwd.rstrip("/")) or "codex", "prompt": first_prompt,
+            "last": final, "state": "完了" if final else "作業中" if active else "状態未確認",
+            "scrapbox": [], "session_id": sid}
 
 
 # ---------- typeless : sqlite (UTC created_at → JST) ----------
-def fetch_typeless(d: str) -> list[dict]:
+def fetch_typeless(d: str) -> SourceResult:
     db = os.path.join(HOME, "Library/Application Support/Typeless/typeless.db")
     if not os.path.exists(db):
-        return []
+        return _failed(TRANSIENT_STATE, "Typeless DBがありません")
     try:
         con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
         rows = con.execute(
@@ -279,30 +418,47 @@ def fetch_typeless(d: str) -> list[dict]:
         con.close()
     except Exception as e:
         print(f"[warn] typeless failed: {e}", file=sys.stderr)
-        return []
-    return [{"time": (r[0] or "")[11:16], "app": r[1] or "", "text": (r[2] or "").strip()} for r in rows]
+        return _failed(TRANSIENT_STATE, type(e).__name__)
+    out = [{"time": (r[0] or "")[11:16], "app": r[1] or "", "text": (r[2] or "").strip()} for r in rows]
+    return _present(out, f"{len(out)}件")
 
 
-# ---------- gmail : himalaya(IMAP) envelopes, metadata index only ----------
-def fetch_gmail(d: str) -> list[dict]:
-    """himalaya(IMAP) で当日(JST)受信の Gmail 封筒メタを取得（time/from/subject/id）。
+# ---------- gmail : himalaya(IMAP) all-mail envelopes, metadata index only ----------
+def fetch_gmail(d: str) -> SourceResult:
+    """himalaya(IMAP) で当日(JST)送受信の Gmail 封筒メタを取得。
     本文は転記しない（index のみ）。本文が要るときは `himalaya message read -a gmail <id>` で
-    live 取得する契約（world-model.md）。直近 200 件を取得して Python 側で当日 JST に絞る
-    （himalaya の after/before クエリ構文がバージョン依存で不安定なため）。best-effort。"""
-    try:
-        r = subprocess.run(
-            ["himalaya", "envelope", "list", "-a", "gmail", "-o", "json", "-s", "200"],
-            capture_output=True, text=True, timeout=60)
-    except Exception as e:
-        print(f"[warn] gmail (himalaya) failed (best-effort, skipped): {type(e).__name__}", file=sys.stderr)
-        return []
-    if r.returncode != 0:
-        print(f"[warn] gmail (himalaya) error: {r.stderr.strip()[:200]}", file=sys.stderr)
-        return []
-    try:
-        envs = json.loads(r.stdout)
-    except Exception:
-        return []
+    live 取得する契約（world-model.md）。対象日をIMAP queryで先に絞り、全pageを取得してからJSTで
+    再検証する。新しいメールが500件以上あっても過去日のbackfillを欠落させない。"""
+    folder = "[Gmail]/すべてのメール"
+    day = datetime.strptime(d, "%Y-%m-%d").date()
+    previous, following = day - timedelta(days=1), day + timedelta(days=1)
+    page_size, max_pages = 200, 50
+    envs, complete, error_text = [], False, ""
+    for page in range(1, max_pages + 1):
+        try:
+            result = subprocess.run(
+                ["himalaya", "envelope", "list", "-a", "gmail", "-f", folder,
+                 "-o", "json", "-s", str(page_size), "-p", str(page),
+                 "after", previous.isoformat(), "and", "before", following.isoformat(),
+                 "order", "by", "date", "asc"],
+                capture_output=True, text=True, timeout=60)
+        except Exception as error:
+            return _failed(TRANSIENT_STATE, type(error).__name__)
+        if result.returncode != 0:
+            error_text = result.stderr.strip()
+            if page > 1 and "out of bound" in error_text.casefold():
+                complete = True
+                break
+            state = AUTH_STATE if any(code in error_text.casefold() for code in ("auth", "login", "credential")) else TRANSIENT_STATE
+            return _failed(state, "Gmailから取得できませんでした", envs)
+        try:
+            batch = json.loads(result.stdout)
+        except Exception:
+            return _failed(TRANSIENT_STATE, "Gmail応答を解釈できませんでした", envs)
+        envs.extend(batch)
+        if len(batch) < page_size:
+            complete = True
+            break
 
     def _jst(dt: str):
         try:
@@ -310,36 +466,48 @@ def fetch_gmail(d: str) -> list[dict]:
         except Exception:
             return None
 
+    try:
+        import tomllib
+        cfg = Path(HOME, "Library/Application Support/himalaya/config.toml")
+        own = ((tomllib.loads(cfg.read_text()).get("accounts") or {}).get("gmail") or {}).get("email", "")
+    except Exception:
+        own = ""
+    unique = {str(e.get("id", "")): e for e in envs if e.get("id") is not None}
     out = []
-    for e in envs:
+    for e in unique.values():
         t = _jst(e.get("date", ""))
         if not t or t.strftime("%Y-%m-%d") != d:
             continue
-        frm = e.get("from") or {}
+        frm, to = e.get("from") or {}, e.get("to") or {}
+        sent = bool(own) and (frm.get("addr") or "").casefold() == own.casefold()
+        peer = to if sent else frm
         out.append({"time": t.strftime("%H:%M"),
+                    "direction": "送信" if sent else "受信",
+                    "peer": peer.get("name") or peer.get("addr") or "",
                     "from": frm.get("name") or frm.get("addr") or "",
                     "subject": (e.get("subject") or "").strip(),
-                    "id": str(e.get("id", ""))})
+                    "id": str(e.get("id", "")), "folder": folder})
     out.sort(key=lambda e: e["time"])
-    return out
+    return (_present(out, f"{len(out)}件") if complete
+            else _failed(TRANSIENT_STATE, f"{max_pages * page_size}件の安全上限に到達", out))
 
 
 # ---------- beeper : Beeper Desktop local HTTP API (no MCP runtime needed) ----------
-def fetch_beeper(d: str) -> list[dict]:
+def fetch_beeper(d: str) -> SourceResult:
     """Beeper Desktop のローカル API から当日(JST)のメッセージを取得。token を直読して
     /v1/messages/search を date 範囲で叩く。低優先(bot/通知)は excludeLowPriority で除外。
     limit 上限は 20 なので cursor=oldestCursor + direction=before で遡って全件ページング
-    （重複なし・最大25ページ=500件で打ち切り）。chats[chatID].title でチャット名を解決。
+    （重複なし・安全上限100ページ=2,000件）。chats[chatID].title でチャット名を解決。
     Beeper API は文字列内に生の制御文字を返すため json.loads(strict=False) で読む。
     失敗時は取得済みの partial を返す (best-effort, gather を壊さない)。"""
     import urllib.request, urllib.parse
     token_path = os.path.join(HOME, ".config/beeper/token")
     if not os.path.exists(token_path):
-        return []
+        return _failed(AUTH_STATE, "Beeper tokenがありません")
     try:
         token = open(token_path).read().strip()
     except Exception:
-        return []
+        return _failed(AUTH_STATE, "Beeper tokenを読めません")
     nd = (datetime.strptime(d, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
     base = {"dateAfter": f"{d}T00:00:00+09:00", "dateBefore": f"{nd}T00:00:00+09:00",
             "excludeLowPriority": "true", "limit": 20}
@@ -355,16 +523,22 @@ def fetch_beeper(d: str) -> list[dict]:
     items: list[dict] = []
     chats: dict = {}
     cursor = None
+    has_more = False
+    partial_error = ""
     try:
-        for _ in range(25):  # bounded: <=500 msgs/day
+        for _ in range(100):  # bounded: <=2,000 msgs/day
             data = _page(cursor)
             items += data.get("items") or []
             chats.update(data.get("chats") or {})
             cursor = data.get("oldestCursor")
-            if not data.get("hasMore") or not cursor:
+            has_more = bool(data.get("hasMore") and cursor)
+            if not has_more:
                 break
     except Exception as e:
         print(f"[warn] beeper API unreachable/failed (best-effort, partial): {type(e).__name__}", file=sys.stderr)
+        partial_error = type(e).__name__
+    if has_more:
+        print("[warn] beeper reached safety limit (2,000 messages; partial)", file=sys.stderr)
 
     def _jst(ts: str) -> str:
         try:
@@ -372,22 +546,27 @@ def fetch_beeper(d: str) -> list[dict]:
         except Exception:
             return ""
 
-    out = [{"time": _jst(m.get("timestamp", "")),
-            "chat": (chats.get(m.get("chatID", ""), {}) or {}).get("title", ""),
-            "sender": m.get("senderName", ""),
-            "sent": bool(m.get("isSender")),
-            "text": (m.get("text") or "").strip()}
-           for m in items if (m.get("text") or "").strip()]
-    out.sort(key=lambda e: e["time"])
-    return out
+    rows = [{"time": _jst(m.get("timestamp", "")),
+             "chat": (chats.get(m.get("chatID", ""), {}) or {}).get("title", "") or "チャット名なし",
+             "sent": bool(m.get("isSender"))}
+            for m in items]
+    grouped = {chat: [row for row in rows if row["chat"] == chat] for chat in {row["chat"] for row in rows}}
+    out = [{"chat": chat, "first": min((row["time"] for row in group), default=""),
+            "last": max((row["time"] for row in group), default=""), "count": len(group),
+            "sent_count": sum(1 for row in group if row["sent"]),
+            "received_count": sum(1 for row in group if not row["sent"])}
+           for chat, group in grouped.items()]
+    out.sort(key=lambda e: (e["first"], e["chat"]))
+    return (_failed(TRANSIENT_STATE, partial_error or "2,000件の安全上限に到達", out)
+            if partial_error or has_more else _present(out, f"{sum(e['count'] for e in out)}件 / {len(out)}チャット"))
 
 
-def fetch_wip(d: str) -> list[dict]:
+def fetch_wip(d: str) -> SourceResult:
     """wip-crawl 自動処理のダイジェスト(~/.claude/.cache/wip-crawl/<date>.jsonl)。
     1行=1ページ処理 {time,project,title,summary,url,status}。未処理日は []。best-effort。"""
     path = os.path.join(HOME, ".claude/.cache/wip-crawl", f"{d}.jsonl")
     if not os.path.exists(path):
-        return []
+        return _present([], "0件")
     out = []
     try:
         with open(path, encoding="utf-8") as f:
@@ -400,18 +579,120 @@ def fetch_wip(d: str) -> list[dict]:
                         pass
     except Exception as e:
         print(f"[warn] wip digest failed: {e}", file=sys.stderr)
-        return []
+        return _failed(TRANSIENT_STATE, type(e).__name__)
     out.sort(key=lambda e: e.get("time", ""))
-    return out
+    return _present(out, f"{len(out)}件")
+
+
+# ---------- scrapbox : updated-page metadata only ----------
+def fetch_scrapbox(d: str) -> SourceResult:
+    """当日更新されたページの index。本文や私信を gather JSON に複製しない。"""
+    import urllib.request
+    session = resolve_session()
+    sid = session.sid
+    if not sid:
+        print("[warn] scrapbox SID unavailable (best-effort, skipped)", file=sys.stderr)
+        state = AUTH_STATE if session.state == "認証が必要" else TRANSIENT_STATE
+        return _failed(state, session.detail or "Scrapbox sessionを確認できません")
+    start = datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=JST)
+    end = start + timedelta(days=1)
+
+    def pages(project: str) -> tuple[list[dict], bool]:
+        acc = []
+        complete = False
+        for skip in range(0, 500, 100):
+            url = f"https://scrapbox.io/api/pages/{project}?limit=100&skip={skip}&sort=updated"
+            req = urllib.request.Request(
+                url, headers={"Cookie": f"connect.sid={sid}", "User-Agent": "personal-ops/1.0"})
+            data = json.loads(urllib.request.urlopen(req, timeout=12).read().decode("utf-8"))
+            batch = data.get("pages") or []
+            acc += [p for p in batch
+                    if start <= datetime.fromtimestamp(int(p.get("updated", 0)), JST) < end]
+            if len(batch) < 100 or (batch and datetime.fromtimestamp(int(batch[-1].get("updated", 0)), JST) < start):
+                complete = True
+                break
+        return ([{"time": datetime.fromtimestamp(int(p.get("updated", 0)), JST).strftime("%H:%M"),
+                  "project": project, "title": p.get("title", ""),
+                  "link": f"/{project}/{p.get('title', '')}"} for p in acc if p.get("title")], complete)
+
+    out = []
+    failures = []
+    for project in ("tkgshn-private", "plural-reality", "takalog"):
+        try:
+            batch, complete = pages(project)
+            out += batch
+            failures += ([] if complete else [f"{project}: 500件上限"])
+        except Exception as e:
+            print(f"[warn] scrapbox API failed for {project} (best-effort, partial): {type(e).__name__}",
+                  file=sys.stderr)
+            failures.append(f"{project}: {type(e).__name__}")
+    ordered = sorted(out, key=lambda e: (e["time"], e["project"], e["title"]))
+    return (_failed(TRANSIENT_STATE, " / ".join(failures), ordered)
+            if failures else _present(ordered, f"{len(ordered)}件"))
+
+
+# ---------- coast : aggregate metadata only (no OCR/screenshots) ----------
+def fetch_coast(d: str) -> SourceResult:
+    """Coast Local の低機微な利用メタだけを取得。録画本文は明示的調査時まで読まない。"""
+    coast = os.path.join(HOME, ".local/bin/coast")
+    if not os.path.exists(coast):
+        return _failed(TRANSIENT_STATE, "Coast Local CLIがありません", {})
+
+    def run(args: list[str]) -> dict:
+        r = subprocess.run([coast, *args, "--tr", d, "--json"], capture_output=True, text=True, timeout=30)
+        if r.returncode != 0 or not r.stdout.strip():
+            raise RuntimeError("Coast Local CLI returned no usable result")
+        data = json.loads(r.stdout)
+        if not isinstance(data, dict):
+            raise RuntimeError("Coast Local CLI returned an unexpected shape")
+        return data
+
+    try:
+        usage = run(["usage", "time"])
+        sessions = run(["usage", "sessions", "--gap", "10"])
+        apps = run(["usage", "top-applications", "--limit", "12"])
+        domains = run(["usage", "top-domains", "--limit", "12"])
+        data = {"recorded_seconds": usage.get("recorded_seconds", 0),
+                "recorded_human": usage.get("recorded_seconds_human", "0s"),
+                "sessions": sessions.get("sessions", []), "session_count": sessions.get("session_count", 0),
+                "applications": apps.get("items", []), "domains": domains.get("items", [])}
+        return SourceResult(data, OK_STATE if data["recorded_seconds"] or data["session_count"] else EMPTY_STATE,
+                            f"録画{data['recorded_human']} / {data['session_count']}まとまり")
+    except Exception as e:
+        print(f"[warn] coast CLI failed (best-effort, skipped): {type(e).__name__}", file=sys.stderr)
+        return _failed(TRANSIENT_STATE, type(e).__name__, {})
 
 
 SOURCES = {"calendar": fetch_calendar, "limitless": fetch_limitless,
+           "mori": fetch_mori, "plaud": fetch_plaud,
            "sessions": fetch_sessions, "typeless": fetch_typeless,
-           "gmail": fetch_gmail, "beeper": fetch_beeper, "wip": fetch_wip}
+           "gmail": fetch_gmail, "beeper": fetch_beeper, "scrapbox": fetch_scrapbox,
+           "coast": fetch_coast, "wip": fetch_wip}
+SOURCE_NAMES = {"calendar": "Apple Calendar", "limitless": "Limitless",
+                "mori": "Mori Transcript", "plaud": "Plaud Transcript",
+                "sessions": "エージェント作業", "typeless": "Typeless", "gmail": "Gmail",
+                "beeper": "Beeper", "scrapbox": "Scrapbox", "coast": "Coast Local",
+                "wip": "WIP自動処理"}
+
+
+def _capture(name: str, d: str) -> SourceResult:
+    try:
+        value = SOURCES[name](d)
+    except Exception as error:
+        print(f"[warn] {name} collector failed closed: {type(error).__name__}", file=sys.stderr)
+        return _failed(TRANSIENT_STATE, type(error).__name__, {} if name == "coast" else [])
+    result = value if isinstance(value, SourceResult) else _present(value)
+    data = (result.data | {"state": result.state}
+            if name == "coast" and isinstance(result.data, dict) else result.data)
+    return SourceResult(data, result.state, result.detail)
 
 
 def gather(d: str) -> dict:
-    return {"date": d, **{name: fn(d) for name, fn in SOURCES.items()}}
+    outcomes = {name: _capture(name, d) for name in SOURCES}
+    return {"date": d, **{name: outcome.data for name, outcome in outcomes.items()},
+            "collection": [{"name": SOURCE_NAMES[name], "state": outcome.state,
+                            **({"detail": outcome.detail} if outcome.detail else {})}
+                           for name, outcome in outcomes.items()]}
 
 
 def main():
@@ -421,7 +702,7 @@ def main():
     p.add_argument("--pretty", action="store_true")
     a = p.parse_args()
     d = a.date or _today()
-    result = gather(d) if a.command == "gather" else SOURCES[a.command](d)
+    result = gather(d) if a.command == "gather" else _capture(a.command, d).data
     print(json.dumps(result, ensure_ascii=False, indent=2 if a.pretty else None))
 
 

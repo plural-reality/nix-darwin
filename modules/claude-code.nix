@@ -4,6 +4,7 @@
   config,
   pkgs,
   lib,
+  userConfig,
   # Upstream repo's real on-disk path, injected by the launcher flake (null otherwise →
   # skills fall back to the Nix-store snapshot, keeping this module checkout-layout agnostic).
   upstreamPath ? null,
@@ -48,11 +49,31 @@ let
     args = [ ];
   };
 
+  # Personal remote MCP bindings are declared once by the downstream flake and
+  # projected into each client's native schema. OAuth credentials remain mutable
+  # runtime state and are never copied into the Nix store.
+  remoteMcpServers = userConfig.remoteMcpServers or { };
+
+  claudeCodeRemoteMcpServers = builtins.mapAttrs (_: server: {
+    type = "http";
+    inherit (server) url;
+  }) remoteMcpServers;
+
+  codexRemoteMcpServers = builtins.mapAttrs (
+    _: server:
+    {
+      inherit (server) url;
+      enabled = true;
+    }
+    // (server.codex or { })
+  ) remoteMcpServers;
+
+  codexMcpOauthCallback = userConfig.codexMcpOauthCallback or null;
+
   # SCRAPBOX_SID is deliberately NOT here: the SID is a rotating session cookie
-  # whose canonical source is the logged-in Chrome profile (self-healed into
-  # ~/.claude/settings.local.json by scrapbox-sid-refresh.sh). Projecting it here
+  # whose runtime cache is outside Nix and validated by scrapbox_session.py. Projecting it here
   # bakes a plaintext credential into the world-readable /nix/store settings.json
-  # (leaked once already). cosense-fetch resolves the SID at runtime instead.
+  # (leaked once already). Readers/writers use the same fail-closed runtime adapter.
   sharedAgentEnvNames = [
     "GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND"
     "SOPS_AGE_KEY_FILE"
@@ -365,32 +386,16 @@ let
 
   agentFiles = builtins.foldl' (acc: profile: acc // (mkAgentAttrs profile)) { } agentProfiles;
 
-  codexNotifyMacos = pkgs.writeShellApplication {
-    name = "codex-notify-macos";
-    runtimeInputs = [
-      pkgs.coreutils
-      pkgs.gnused
-      pkgs.jq
-      pkgs.llm-agents.codex
-    ];
+  # Codex の turn 終了フック。以前はここでデスクトップ通知も出していたが、通知は全廃した
+  # (2026-08-08)。残っている責務はセッションの自動命名だけなので、名前もそれに合わせる。
+  # `notify` は Codex にとって唯一の turn-end フック口であり、`codex-name --auto` の
+  # 自動呼び出し口はここ1箇所だけ(手動 CLI は shared-scripts.nix の `codex-name`)。
+  codexTurnEndNameHook = pkgs.writeShellApplication {
+    name = "codex-name-on-turn-end";
+    runtimeInputs = [ pkgs.llm-agents.codex ];
     text = ''
       set -u
-
-      INPUT_JSON="''${1:-{}}"
-
       ${pkgs.nodejs_22}/bin/node --experimental-strip-types ${../scripts/codex-name.ts} --auto >/dev/null 2>&1 || true
-
-      MSG="$(${pkgs.jq}/bin/jq -r '."last-assistant-message" // "Codex task completed"' <<<"$INPUT_JSON" 2>/dev/null || echo "Codex task completed")"
-      MSG_SINGLE="$(printf "%s" "$MSG" | tr '\n\r\t' '   ' | sed -E 's/[[:space:]]+/ /g' | cut -c1-180)"
-      TITLE="Codex"
-
-      /usr/bin/osascript - "$MSG_SINGLE" "$TITLE" <<'APPLESCRIPT'
-      on run argv
-        set msg to item 1 of argv
-        set ttl to item 2 of argv
-        display notification msg with title ttl
-      end run
-      APPLESCRIPT
     '';
   };
 
@@ -409,7 +414,7 @@ let
     service_tier = "priority";
     personality = "pragmatic";
     notify = [
-      "${codexNotifyMacos}/bin/codex-notify-macos"
+      "${codexTurnEndNameHook}/bin/codex-name-on-turn-end"
     ];
 
     tui = {
@@ -455,7 +460,8 @@ let
       context7 = context7McpServer // {
         enabled = false;
       };
-    };
+    }
+    // codexRemoteMcpServers;
 
     plugins = {
       "computer-use@openai-bundled" = {
@@ -468,6 +474,10 @@ let
         enabled = true;
       };
     };
+  }
+  // lib.optionalAttrs (codexMcpOauthCallback != null) {
+    mcp_oauth_callback_port = codexMcpOauthCallback.port;
+    mcp_oauth_callback_url = codexMcpOauthCallback.url;
   };
 
   codexManagedConfigFile = pkgs.writeText "codex-managed-config.json" (
@@ -654,17 +664,8 @@ in
               ];
             }
           ];
-          Notification = [
-            {
-              hooks = [
-                {
-                  type = "command";
-                  async = true;
-                  command = ''MSG=$(jq -r '.message // "あなたの操作を待っています"'); SUB=$(printf '%s' "$MSG" | grep -qi permission && echo "🔐 承認が必要です" || echo "⏳ 入力待ちです"); osascript -e 'on run argv' -e 'display notification (item 2 of argv) with title "Claude Code" subtitle (item 1 of argv) sound name "Glass"' -e 'end run' "$SUB" "$MSG" 2>/dev/null || true'';
-                }
-              ];
-            }
-          ];
+          # Notification hook は登録しない(2026-08-08 廃止)。入力待ち・承認待ちのデスクトップ
+          # 通知だけが唯一の用途だったため、通知全廃と同時にフックごと外した。
           UserPromptSubmit = [
             {
               hooks = [
@@ -710,11 +711,7 @@ in
                   type = "command";
                   command = "${pkgs.python313}/bin/python3 ${homeDir}/.claude/scripts/stop-reflect-nudge.py";
                 }
-                {
-                  type = "command";
-                  async = true;
-                  command = ''DIR=$(jq -r '(.cwd // "") | sub("/+$"; "") | sub(".*/"; "")'); osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title "Claude Code" subtitle "✅ 作業完了" sound name "Ping"' -e 'end run' "''${DIR:+''${DIR}の}応答が完了しました" 2>/dev/null || true'';
-                }
+                # 応答完了のデスクトップ通知はここにあったが廃止(2026-08-08)。
               ];
             }
           ];
@@ -779,7 +776,7 @@ in
     # Idempotent: replaces .mcpServers entirely (not deep-merge) so removals
     # from Nix propagate correctly. All other keys are preserved.
     CLAUDE_JSON="$HOME/.claude.json"
-    MCP='${builtins.toJSON { }}'
+    MCP='${builtins.toJSON claudeCodeRemoteMcpServers}'
 
     if [ -f "$CLAUDE_JSON" ]; then
       ${pkgs.jq}/bin/jq --argjson mcp "$MCP" '.mcpServers = $mcp' "$CLAUDE_JSON" \

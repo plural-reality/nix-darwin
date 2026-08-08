@@ -13,13 +13,30 @@ import {
   carriesCompletionEvidence,
   grayBodyLines,
   grayCore,
+  guardPatchStrategy,
   isAlreadyGray,
   isOpenTaskTitle,
   leadingDeco,
+  linesDigest,
   markGrayText,
   matchClose,
   validateTaskTransition,
 } from "./scrapbox-write.mjs";
+
+test("CAS guard accepts an unchanged base and rejects a concurrent edit", () => {
+  const expected = linesDigest(["Page", " old"]);
+  const strategy = guardPatchStrategy("Page", expected, () => ["Page", " new"]);
+  assert.deepEqual(strategy([{ text: "Page" }, { text: " old" }]), ["Page", " new"]);
+  assert.throws(
+    () => strategy([{ text: "Page" }, { text: " human edit" }]),
+    /concurrent edit detected/,
+  );
+});
+
+test("CAS guard canonicalizes a not-yet-created page as a title-only page", () => {
+  const strategy = guardPatchStrategy("New Page", linesDigest(["New Page"]), () => ["New Page", " body"]);
+  assert.deepEqual(strategy([]), ["New Page", " body"]);
+});
 
 // Faithful port of the canonical ungray() in tkgshn-extension/llm-auto-humanize: melt every
 // gray deco token (chars include '('), keep bare links and non-gray decorations, recurse into

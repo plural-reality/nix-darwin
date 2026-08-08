@@ -13,6 +13,8 @@
 // Environment:
 //   SCRAPBOX_SID — connect.sid cookie value (URL-decoded, starts with "s:")
 
+import { createHash } from "node:crypto";
+
 const usage = `Usage:
   scrapbox-write --title "Page Title" [--project plural-reality] [--mode replace|append|prepend] [--dry-run]
   scrapbox-write -t "Meeting Notes" -p plural-reality --append < body.txt
@@ -36,6 +38,8 @@ Options:
       --no-gray, --human  Write plain (un-greyed). For human-authored content.
       --allow-open-task   Allow completion-looking text to be written under an open
                           (⬜/⏳/⏹️/⌛️) task title. Historical notes only; never closure.
+      --expect-sha256 <h> Replace only when the current canonical line array has this
+                          SHA-256. Concurrent edits abort instead of being overwritten.
   -n, --dry-run         Render Scrapbox lines to stdout without writing
   -h, --help            Show this help
 `;
@@ -55,6 +59,7 @@ const optionsWithValue = {
   "--title": "title",
   "-t": "title",
   "--mode": "mode",
+  "--expect-sha256": "expectSha256",
 };
 
 const flagOptions = {
@@ -94,6 +99,7 @@ const parseArgs = (argv) =>
       verbatim: false,
       gray: undefined,
       allowOpenTask: false,
+      expectSha256: undefined,
       unknownOptions: [],
     }
   );
@@ -111,6 +117,8 @@ const validateArgs = (argv, args, patchStrategy) => {
     ? { ok: false, error: `unknown option: ${args.unknownOptions.join(", ")}` }
   : !process.env.SCRAPBOX_SID && !args.dryRun
     ? { ok: false, error: "SCRAPBOX_SID environment variable is not set" }
+  : args.expectSha256 !== undefined && !/^[0-9a-f]{64}$/.test(args.expectSha256)
+    ? { ok: false, error: "--expect-sha256 requires 64 lowercase hexadecimal characters" }
   : !args.title || args.title.trim() === ""
     ? { ok: false, error: "--title (-t) is required" }
   : !patchStrategy
@@ -280,6 +288,14 @@ const bodyToLines = (title, body, verbatim, gray) => {
   return [title, ...grayed.map(verbatim ? (line) => line : indentBodyLine)];
 };
 const lineText = (line) => typeof line === "string" ? line : line.text;
+const linesDigest = (lines) =>
+  createHash("sha256").update(JSON.stringify(lines)).digest("hex");
+const guardPatchStrategy = (title, expected, strategy) => (currentLines) => {
+  const current = currentLines.length === 0 ? [title] : currentLines.map(lineText);
+  return expected === undefined || linesDigest(current) === expected
+    ? strategy(currentLines)
+    : (() => { throw new Error("concurrent edit detected; write aborted"); })();
+};
 const withBlankSeparator = (lines) =>
   lines.length <= 1 || isBlankLine(lines.at(-1) ?? "")
     ? lines
@@ -319,7 +335,16 @@ const effectiveGray = (args) => !args.verbatim && args.gray !== false;
 const writePage = (args, body, patchStrategy) =>
   args.dryRun
     ? Promise.resolve(renderDryRun(args.title, body, args.verbatim, effectiveGray(args)))
-    : patchPage(args.project, args.title, patchStrategy(args.title, body, args.verbatim, effectiveGray(args)), process.env.SCRAPBOX_SID)
+    : patchPage(
+        args.project,
+        args.title,
+        guardPatchStrategy(
+          args.title,
+          args.expectSha256,
+          patchStrategy(args.title, body, args.verbatim, effectiveGray(args)),
+        ),
+        process.env.SCRAPBOX_SID,
+      )
       .then((result) =>
         result.ok
           ? process.stdout.write(`https://scrapbox.io/${args.project}/${encodeURIComponent(args.title)}\n`)
@@ -366,6 +391,8 @@ export {
   isAlreadyGray,
   isOpenTaskTitle,
   leadingDeco,
+  linesDigest,
+  guardPatchStrategy,
   markGrayText,
   matchClose,
   validateTaskTransition,

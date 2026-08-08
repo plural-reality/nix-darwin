@@ -8,7 +8,8 @@ hashバッククォート・前後日ナビ・インデント)と書き込み(ve
 
 stdin の curated JSON:
 {
-  "date": "2026-05-30", "project": "tkgshn-private", "template": "pin-diary"|"plain",
+  "date": "2026-05-30", "project": "tkgshn-private",
+  "template": "pin-diary"|"team"|"activity-takalog",
   "icon": "tkgshn",
   "schedule": [{"time":"09:00","allday":true,"summary":"Bike...","calendar":"ルーティーン"}],
   "lifelog":  [{"time":"11:23","summary":"...","links":["関連ページ名"]}],   // links は任意。本文の直下に一段下げて [被リンク] を出す
@@ -33,17 +34,25 @@ Usage:
 Env: SCRAPBOX_SID
 """
 from __future__ import annotations
-import json, os, re, subprocess, sys
+import hashlib, json, os, re, subprocess, sys
 from datetime import date as date_cls, timedelta
 
 HOME = os.path.expanduser("~")
-SBX_DIR = os.path.join(HOME, ".local/share/scrapbox-write")
-sys.path.insert(0, os.path.expanduser("~/.claude/scripts/lib"))
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(SCRIPT_DIR, "lib"))
 from normalize import normalize  # 表記ゆれ正規化(Scrapbox 書き込み境界)
-VERBATIM = os.path.join(SBX_DIR, "_sbx_patch_verbatim.mjs")
+from scrapbox_session import resolve_sid
 HABBIT_DEFAULT = [" 30min: workout", " 3times: [meditation]"]
 
 GMAIL_HEADER = "[📧 Gmail]"
+TAKALOG_HEADERS = {
+    "LimitlessFull": "[** Limitless全文]", "Messages": "[** 今日のメッセージ]",
+    "Gmail": "[** 今日のメール]", "work": "[** エージェント作業]",
+    "Scrapbox": "[** Scrapbox更新]", "Coast": "[** Coast Local]",
+    "Collection": "[** 収集状況]", "Weekly": "[** 今週の確認]",
+}
+TEMPLATE_PROJECT = {"pin-diary": "tkgshn-private", "team": "plural-reality",
+                    "activity-takalog": "takalog"}
 
 # 日報ページのブロックモデル(canonical)。ページ = 順序付きブロック列。
 #   order   = ブロックの正準順序。missing な管理ブロックを挿入する際のアンカー。
@@ -52,7 +61,7 @@ GMAIL_HEADER = "[📧 Gmail]"
 #             これ以外のブロック(Habbit/Task/Notes/メモ + ユーザー独自セクション)は
 #             既存ページから verbatim で位置ごと保持する(=絶対に上書きしない)。
 #   default = 新規ページのときだけ生成する人間記入用の空スキャフォールド。
-# Gmail は機微情報なので pin-diary(tkgshn-private)に載せず takalog へ分離(build_gmail_takalog)。
+# Gmail は機微情報なので pin-diary(tkgshn-private)に載せず activity-takalog へ分離する。
 DIARY = {
     "pin-diary": {
         "order": ["~preamble", "icon", "Habbit", "Task", "Schedule", "Limitless", "work", "Notes", "nav"],
@@ -64,10 +73,19 @@ DIARY = {
         "managed": {"Schedule", "yatta", "nav"},
         "default": [("memo", [])],
     },
+    "takalog": {
+        "order": ["~preamble", "Collection", "Schedule", "LimitlessFull", "Messages", "Gmail",
+                  "work", "Scrapbox", "Coast", "Weekly", "nav"],
+        "managed": {"Collection", "Schedule", "LimitlessFull", "Messages", "Gmail", "work",
+                    "Scrapbox", "Coast", "Weekly", "nav"},
+        "default": [],
+    },
 }
 KEY_HEADER = {"Habbit": "[** Habbit]", "Task": "[** Task]", "Notes": "[** Notes]", "memo": "[** メモ]"}
 HEADER_KEY = {**{v: k for k, v in KEY_HEADER.items()},
-              "[** やったこと]": "yatta", "[** Schedule]": "Schedule"}
+              **{v: k for k, v in TAKALOG_HEADERS.items()},
+              "[** やったこと]": "yatta", "[** Schedule]": "Schedule",
+              GMAIL_HEADER: "Gmail"}
 
 
 def _d(s: str) -> date_cls:
@@ -94,6 +112,7 @@ _TRIM = re.compile(r"^(\s*)(.*?)(\s*)$", re.S)
 
 
 def mark_gray(text: str) -> str:
+    text = normalize(text)
     def wrap(seg: str) -> str:
         lead, core, trail = _TRIM.match(seg).groups()
         return (seg if _CODE_SPAN.fullmatch(seg)
@@ -130,13 +149,62 @@ def lifelog_lines(items: list[dict]) -> list[str]:
 
 def gmail_lines(items: list[dict]) -> list[str]:
     # LLM が収集した機微情報の index。件名/差出人は灰色マーク(LLM印)で包み、himalaya-id は
-    # backtick で濃いまま残す。本文は転記せず `himalaya message read -a gmail <id>` で live 取得。
+    # folder+id をbacktickで残す。本文は転記せず `himalaya message read --preview -f <folder> <id>` で読む。
     out = []
     for e in items:
-        frm = (e.get("from", "") or "").strip()
+        direction = (e.get("direction", "受信") or "受信").strip()
+        peer = (e.get("peer") or e.get("from") or "").strip()
         subj = (e.get("subject", "") or "").strip()
-        out.append(" " + mark_gray(f"{e.get('time', '')} ✉️ {frm}: {subj} `#{e.get('id', '')}`"))
+        folder = (e.get("folder") or "INBOX").strip()
+        out.append(" " + mark_gray(
+            f"{e.get('time', '')} ✉️ {direction} / {peer}: {subj} `{folder} #{e.get('id', '')}`"))
     return out
+
+
+def message_lines(items: list[dict]) -> list[str]:
+    return [" " + mark_gray(
+        (f"{e.get('first', '')}〜{e.get('last', '')} 💬 {e.get('chat') or 'チャット名なし'}: "
+         f"送信{e.get('sent_count', 0)}件・受信{e.get('received_count', 0)}件・計{e.get('count', 0)}件"
+         if "count" in e else
+         f"{e.get('time', '')} 💬 {'送信' if e.get('sent') else '受信'} / "
+         f"{e.get('chat') or 'チャット名なし'}")) for e in items]
+
+
+def limitless_page_lines(items: list[dict]) -> list[str]:
+    return [" " + mark_gray(
+        f"{str(e.get('start', ''))[11:16]}〜{str(e.get('end', ''))[11:16]} 🎙️ "
+        f"{e.get('count', 0)}件・{e.get('characters', 0):,}文字 [{e.get('link', '')}]") for e in items]
+
+
+def scrapbox_lines(items: list[dict]) -> list[str]:
+    return [" " + mark_gray(f"{e.get('time', '')} 🗒️ [{e.get('link') or '/' + e.get('project', '') + '/' + e.get('title', '')}]")
+            for e in items]
+
+
+def _duration_ja(seconds: int) -> str:
+    h, rest = divmod(max(0, int(seconds or 0)), 3600)
+    m, s = divmod(rest, 60)
+    return "".join(x for x in (f"{h}時間" if h else "", f"{m}分" if m else "", f"{s}秒" if s or not (h or m) else ""))
+
+
+def coast_lines(data: dict) -> list[str]:
+    apps = "、".join(f"{e.get('display_name') or e.get('identifier')} {_duration_ja(e.get('recorded_seconds', 0))}"
+                    for e in (data.get("applications") or [])[:8])
+    domains = "、".join(f"{e.get('identifier')} {_duration_ja(e.get('recorded_seconds', 0))}"
+                       for e in (data.get("domains") or [])[:8])
+    base = [" " + mark_gray(
+        f"録画 {_duration_ja(data.get('recorded_seconds', 0))} / 作業のまとまり {data.get('session_count', 0)}件")]
+    return base + ([" " + mark_gray(f"主なアプリ: {apps}")] if apps else []) \
+        + ([" " + mark_gray(f"主なサイト: {domains}")] if domains else [])
+
+
+def collection_lines(items: list[dict]) -> list[str]:
+    return [" " + mark_gray(f"{e.get('name', '')}: {e.get('state', '')}"
+                             + (f"（{e.get('detail')}）" if e.get("detail") else "")) for e in items]
+
+
+def weekly_lines(items: list) -> list[str]:
+    return [" " + mark_gray(str(e.get("summary", "")) if isinstance(e, dict) else str(e)) for e in items]
 
 
 def work_line(w: dict) -> str:
@@ -163,26 +231,38 @@ def is_header(line: str, icon: str) -> bool:
             or bool(_NAV_LINE.match(s)) or bool(_SECTION.match(s)))
 
 
-# daily-report 自身が生成する本文行のパターン。管理ブロックを再生成する際、これに該当しない非空行は
-# 「人間が直接書いた行」とみなして保持する(=管理ブロックに人間記入を吸収させて消さないための識別)。
-# 生成行 = 管理見出し / 灰色マーク [( を含む行 (work/lifelog/gmail/links/@cal/↔関連 はすべて灰色) / Schedule の📅行。
-# 「行頭が [(」でなく「[( を含む」で判定する理由: summary が backtick コードスパンで始まると mark_gray が
-# コード span を装飾の外へ出すため行頭が `code` になる(例 ` `foo` [( を直した] `#h`)。startswith では
-# これを foreign 誤判定して旧生成行が残り続け冪等性が壊れる(Codexレビュー指摘・実証済)。
-# ceiling(ponytail): 灰色 [( … や `HH:MM~ 📅` 形式は機械側の規約。人間がこの形をそのまま手書きすると
-# 生成行と区別できず再生成で消える。人間記入は素のテキストで書く前提(= [( /📅 形式を手打ちしない)。
-_SCHEDULE_LINE = re.compile(r"^(終日|\d{1,2}:\d{2}~) 📅 ")
+_OWNED_RE = re.compile(r"^\s*\[\( 日報の自動記録: (\d+)行 / sha256:([0-9a-f]{64})\]$")
 
 
-def is_generated(line: str, icon: str) -> bool:
-    s = line.strip()
-    return (not s or is_header(line, icon)
-            or "[(" in s or bool(_SCHEDULE_LINE.match(s)))
+def _line_digest(lines: list[str]) -> str:
+    payload = json.dumps(lines, ensure_ascii=False, separators=(",", ":")).encode()
+    return hashlib.sha256(payload).hexdigest()
 
 
-def foreign_lines(block_lines: list[str], icon: str) -> list[str]:
-    """管理ブロックの既存本文から「人間が書いた行」だけを抜き出す(生成行・空行は除く)。"""
-    return [ln for ln in block_lines if ln.strip() and not is_generated(ln, icon)]
+def owned_block(lines: list[str]) -> list[str]:
+    """見出し直下へ本文行数を明示し、見た目ではなく所有権で次回の置換範囲を決める。"""
+    body = lines[1:]
+    return ([lines[0], f" [( 日報の自動記録: {len(body)}行 / sha256:{_line_digest(body)}]", *body]
+            if lines else [])
+
+
+def foreign_lines(block_lines: list[str], icon: str, generated: list[str] | None = None,
+                  migrate_legacy_exact: bool = False) -> list[str]:
+    """明示markerで所有した行だけを除き、それ以外は装飾を問わず人間行として保持する。"""
+    body = block_lines[1:] if block_lines and is_header(block_lines[0], icon) else block_lines
+    if not body:
+        return []
+    marker = _OWNED_RE.match(body[0])
+    if marker is None:
+        legacy = ([generated[0], *generated[2:]] if generated and len(generated) >= 2 else [])
+        if migrate_legacy_exact and legacy and block_lines[:len(legacy)] == legacy:
+            return _rstrip_blanks(block_lines[len(legacy):])
+        raise RuntimeError("旧形式の管理ブロックです。人間行を守るため自動移行を中止しました")
+    count, expected = int(marker.group(1)), marker.group(2)
+    owned, kept = body[1:1 + count], body[1 + count:]
+    if len(owned) != count or _line_digest(owned) != expected or any(_OWNED_RE.match(line) for line in kept):
+        raise RuntimeError("日報の自動記録範囲が編集されています。人間行を守るため書込みを中止しました")
+    return _rstrip_blanks(kept)
 
 
 def block_key(header: str, icon: str) -> str:
@@ -214,7 +294,7 @@ def parse_blocks(lines: list[str], icon: str) -> list[tuple[str, list[str]]]:
 
 
 def merge_blocks(existing: list[tuple[str, list[str]]], managed: dict[str, list[str]],
-                 template: str, icon: str) -> list[tuple[str, list[str]]]:
+                 template: str, icon: str, migrate_legacy_exact: bool = False) -> list[tuple[str, list[str]]]:
     """既存ブロック列に管理ブロックをマージ。管理 key は位置ごと再生成(無ければ正準位置へ挿入)、
     それ以外の foreign ブロックは順序ごと verbatim 保持する。管理ブロック内に人間が書いた行
     (foreign_lines)は再生成後も末尾に残す = 当日空で削除される管理ブロックの人間記入も失わない。
@@ -228,9 +308,10 @@ def merge_blocks(existing: list[tuple[str, list[str]]], managed: dict[str, list[
         if k in managed:                       # 生成内容は最初の出現にだけ付ける(重複ブロックを正規化)
             gen = [] if k in regenerated else managed[k]
             regenerated.add(k)
-            return (k, gen + foreign_lines(lines, icon))
+            return (k, gen + foreign_lines(lines, icon, gen or managed[k], migrate_legacy_exact))
         if k in managed_keys:                  # 当日空(=managed に無い): 生成行は捨て人間行は残す
-            return (k, foreign_lines(lines, icon))
+            foreign = foreign_lines(lines, icon)
+            return (k, ([lines[0], *foreign] if foreign and lines else []))
         return (k, lines)                      # foreign: verbatim 保持
 
     result = [b for b in (keep(k, lines) for k, lines in existing) if b[1]]
@@ -261,15 +342,30 @@ def render_managed(c: dict, template: str, icon: str) -> dict[str, list[str]]:
     (= merge_blocks 側で「当日空 → 既存ブロックを削除」になる)。"""
     nav = [nav_line(c["date"])]
     sched = ["[** Schedule]"] + schedule_lines(c.get("schedule", []))
-    return (
-        {"icon": [f"[{icon}.icon]"], "Schedule": sched, "nav": nav}
-        | ({"Limitless": ["[Limitlessライフログ]"] + lifelog_lines(c["lifelog"])} if c.get("lifelog") else {})
-        | ({"work": ["[claude code.icon]"] + work_lines(c.get("work", []), c.get("crosslink"))}
-           if (c.get("work") or c.get("crosslink")) else {})
-        if template == "pin-diary" else
-        {"Schedule": sched, "nav": nav,
-         "yatta": ["[** やったこと]"] + work_lines(c.get("work", []), c.get("crosslink")) + lifelog_lines(c.get("lifelog", []))}
-    )
+    pin = ({"icon": owned_block([f"[{icon}.icon]"]), "Schedule": owned_block(sched),
+            "nav": owned_block(nav)}
+        | ({"Limitless": owned_block(["[Limitlessライフログ]"] + lifelog_lines(c["lifelog"]))} if c.get("lifelog") else {})
+        | ({"work": owned_block(["[claude code.icon]"] + work_lines(c.get("work", []), c.get("crosslink")))}
+           if (c.get("work") or c.get("crosslink")) else {}))
+    team = {"Schedule": owned_block(sched), "nav": owned_block(nav),
+            "yatta": owned_block(["[** やったこと]"] + work_lines(c.get("work", []), c.get("crosslink"))
+                                  + lifelog_lines(c.get("lifelog", [])))}
+    takalog = ({"nav": owned_block(nav)}
+        | ({"Collection": owned_block([TAKALOG_HEADERS["Collection"]] + collection_lines(c["collection"]))}
+           if c.get("collection") else {})
+        | ({"Schedule": owned_block(sched)} if c.get("schedule") else {})
+        | ({"LimitlessFull": owned_block([TAKALOG_HEADERS["LimitlessFull"]] + limitless_page_lines(c["limitless_pages"]))}
+           if c.get("limitless_pages") else {})
+        | ({"Messages": owned_block([TAKALOG_HEADERS["Messages"]] + message_lines(c["messages"]))}
+           if c.get("messages") else {})
+        | ({"Gmail": owned_block([TAKALOG_HEADERS["Gmail"]] + gmail_lines(c["gmail"]))} if c.get("gmail") else {})
+        | ({"work": owned_block([TAKALOG_HEADERS["work"]] + work_lines(c["work"], None))} if c.get("work") else {})
+        | ({"Scrapbox": owned_block([TAKALOG_HEADERS["Scrapbox"]] + scrapbox_lines(c["scrapbox"]))}
+           if c.get("scrapbox") else {})
+        | ({"Coast": owned_block([TAKALOG_HEADERS["Coast"]] + coast_lines(c["coast"]))}
+           if c.get("coast") and c["coast"].get("state") == "取得済み" else {})
+        | ({"Weekly": owned_block([TAKALOG_HEADERS["Weekly"]] + weekly_lines(c["weekly"]))} if c.get("weekly") else {}))
+    return {"pin-diary": pin, "team": team, "takalog": takalog}[template]
 
 
 def default_blocks(template: str, icon: str) -> list[tuple[str, list[str]]]:
@@ -277,61 +373,27 @@ def default_blocks(template: str, icon: str) -> list[tuple[str, list[str]]]:
     return [(k, [KEY_HEADER[k]] + list(body)) for k, body in DIARY[template]["default"]]
 
 
-def build_diary(c: dict, existing: list[str] | None, template: str) -> list[str]:
+def build_diary(c: dict, existing: list[str] | None, template: str,
+                migrate_legacy_exact: bool = False) -> list[str]:
     """pin-diary / team 共通。新規 → デフォルトスキャフォールド、既存 → ブロック分解を土台に、
     管理ブロックだけ再生成し、Notes/メモ/Habbit/Task + ユーザー独自セクションは位置ごと保持。"""
     icon = c.get("icon", "tkgshn")
     base = parse_blocks(existing, icon) if existing is not None else default_blocks(template, icon)
-    return flatten_blocks(merge_blocks(base, render_managed(c, template, icon), template, icon))
-
-
-def build_plain(c: dict) -> list[str]:
-    icon = c.get("icon", "tkgshn")
-    out = [f" [{icon}.icon] [claude code.icon]"]
-    out += [" " + l for l in work_lines(c.get("work", []), c.get("crosslink"))]
-    if c.get("lifelog"):
-        out += [" [Limitlessライフログ]"] + [" " + l for l in lifelog_lines(c["lifelog"])]
-    out += ["", f" {nav_line(c['date'])}"]
-    return out
-
-
-# ---------- Gmail を takalog へ分離(機微情報) ----------
-def strip_gmail_block(lines: list[str]) -> list[str]:
-    """既存ページから [📧 Gmail] ブロック(ヘッダ + インデント子行)だけを除去し、他は保持する。"""
-    out, skip = [], False
-    for ln in lines:
-        s = ln.strip()
-        if s == GMAIL_HEADER:
-            skip = True
-            continue
-        if skip:
-            if ln.startswith(" ") or s == "":
-                continue  # ブロック内の子行・空行は捨てる
-            skip = False    # 非インデント行が来たらブロック終わり
-        out.append(ln)
-    return _rstrip_blanks(out)
-
-
-def build_gmail_takalog(c: dict, existing: list[str]) -> list[str]:
-    """takalog 用。機微な Gmail index を [📧 Gmail] ブロックとして upsert(冪等)。
-    既存 Gmail ブロックを除去 → 新ブロックをタイトル直下(逆時系列)に置き、他(todays-task 等)は保持。"""
-    block = [GMAIL_HEADER] + gmail_lines(c.get("gmail", []))
-    rest = strip_gmail_block(existing)
-    if len(block) == 1:          # gmail 無し → 既存の Gmail ブロックを消すだけ
-        return rest
-    return _rstrip_blanks(block + (["", *rest] if rest else []))
+    return flatten_blocks(merge_blocks(base, render_managed(c, template, icon), template, icon,
+                                       migrate_legacy_exact))
 
 
 # ---------- Scrapbox I/O ----------
 def fetch_lines(project: str, title: str) -> list[str] | None:
-    sid = os.environ.get("SCRAPBOX_SID", "")
+    sid = resolve_sid()
     from urllib.parse import quote
     # 日付タイトル(YYYY/M/D)のスラッシュは path 区切りでなくタイトルの一部なので safe="" で
     # 完全に percent-encode する。これを怠ると API がタイトルを途中までと誤認し全 date ページが
     # 404 → 既存ページを「新規」と誤判定 → 空テンプレで全体上書きする(=主たる上書きバグ)。
     url = f"https://scrapbox.io/api/pages/{project}/{quote(title, safe='')}/text"
     r = subprocess.run(["curl", "-s", "-o", "-", "-w", "\n%{http_code}", url,
-                        "-H", f"Cookie: connect.sid={sid}"], capture_output=True, text=True)
+                        "-H", f"Cookie: connect.sid={sid}", "-H", "User-Agent: personal-ops/1.0"],
+                       capture_output=True, text=True)
     *body, code = r.stdout.split("\n")
     code = code.strip()
     # 200=既存(body[0]はtitle) / 404=真に不在(=新規ページ) / それ以外=一時障害。
@@ -346,44 +408,35 @@ def _raise(msg: str):
     raise RuntimeError(msg)
 
 
-HELPER_SRC = r'''import { patch } from "@cosense/std/websocket";
-import { readFileSync } from "node:fs";
-const die = (m) => { process.stderr.write(`patch-verbatim: ${m}\n`); process.exit(1); };
-const argv = process.argv.slice(2);
-const dry = argv.includes("--dry");
-const file = argv.find((a) => !a.startsWith("-"));
-!file && die("usage: node _sbx_patch_verbatim.mjs <spec.json> [--dry]");
-const { project, title, lines } = JSON.parse(readFileSync(file, "utf-8"));
-(!project || !title || !Array.isArray(lines)) && die("spec must have {project, title, lines[]}");
-const finalLines = lines[0] === title ? lines : [title, ...lines];
-const run = dry ? Promise.resolve(process.stdout.write(finalLines.join("\n") + "\n"))
-  : !process.env.SCRAPBOX_SID ? Promise.resolve(die("SCRAPBOX_SID not set"))
-  : patch(project, title, () => finalLines, { sid: process.env.SCRAPBOX_SID })
-      .then((r) => (r && r.ok !== false)
-        ? process.stdout.write(`OK https://scrapbox.io/${project}/${encodeURIComponent(title)}\n`)
-        : die(`patch failed: ${JSON.stringify(r)}`));
-run.catch((e) => die(e?.message ?? String(e)));
-'''
+def validate_target(project: str, template: str) -> None:
+    expected = TEMPLATE_PROJECT.get(template)
+    if expected is None:
+        raise RuntimeError(f"未対応templateです: {template}")
+    if project != expected:
+        raise RuntimeError(f"{template} は {expected} 専用です。機微情報の誤送信を中止しました")
 
 
-def ensure_helper():
-    if not os.path.exists(VERBATIM):
-        open(VERBATIM, "w").write(HELPER_SRC)
-
-
-def write_verbatim(project: str, title: str, body: list[str], dry: bool) -> str:
-    ensure_helper()
-    spec = os.path.join(SBX_DIR, "_daily_spec.json")
-    json.dump({"project": project, "title": title, "lines": [normalize(title)] + [normalize(x) for x in body]},
-              open(spec, "w"), ensure_ascii=False)
-    args = ["node", "--preserve-symlinks", VERBATIM, spec] + (["--dry"] if dry else [])
-    last = ""
+def write_verbatim(project: str, title: str, body: list[str], dry: bool,
+                   base: list[str] | None) -> str:
+    expected = body
+    base_lines = [title] if base is None else [title, *base]
+    args = ["scrapbox-write", "--project", project, "--title", title,
+            "--mode", "replace", "--verbatim", "--expect-sha256", _line_digest(base_lines)] \
+        + (["--dry-run"] if dry else [])
+    attempts = []
     for _ in range(1 if dry else 3):
-        r = subprocess.run(args, cwd=SBX_DIR, capture_output=True, text=True)
-        last = (r.stdout + r.stderr).strip()
-        if dry or last.startswith("OK") or last.split("\n")[-1].startswith("OK"):
+        result = subprocess.run(args, input="\n".join(expected) + "\n",
+                                capture_output=True, text=True)
+        attempts.append(result)
+        if result.returncode == 0 or "concurrent edit detected" in result.stderr:
             break
-    return last
+    last_result = attempts[-1]
+    last = (last_result.stdout + last_result.stderr).strip()
+    written = last_result.returncode == 0
+    verified = dry or (written and _rstrip_blanks(fetch_lines(project, title) or []) == _rstrip_blanks(expected))
+    return (last if dry else
+            f"OK https://scrapbox.io/{project}/{title} — 保存・再読込確認済み" if verified else
+            f"ERROR {project}/{title} — 書込後の再読込が一致しません: {last[:240]}")
 
 
 def main():
@@ -391,21 +444,30 @@ def main():
     dry = "--dry-run" in sys.argv or "--dry" in sys.argv
     c = json.load(sys.stdin)
     template = c.get("template", "pin-diary")
+    try:
+        validate_target(c.get("project", ""), template)
+    except RuntimeError as error:
+        sys.exit(f"daily-page: {error}")
     title = _fmt(_d(c["date"]))
     try:
         existing = (fetch_lines(c["project"], title)
-                    if cmd == "write" and template in ("pin-diary", "team", "gmail-takalog") else None)
+                    if cmd in ("write", "migrate") and template in TEMPLATE_PROJECT else None)
     except RuntimeError as e:
         sys.exit(f"daily-page: {e} — 既存ページを取得できないため上書きを中止しました")
-    body = (build_diary(c, existing, template) if template in ("pin-diary", "team")
-            else build_gmail_takalog(c, existing or []) if template == "gmail-takalog"
-            else build_plain(c))
+    try:
+        body = (build_diary(c, existing, "takalog", cmd == "migrate") if template == "activity-takalog"
+                else build_diary(c, existing, template, cmd == "migrate"))
+    except RuntimeError as error:
+        sys.exit(f"daily-page: {error}")
     if cmd == "render":
         print("\n".join(body))
-    elif cmd == "write":
-        print(write_verbatim(c["project"], title, body, dry))
+    elif cmd in ("write", "migrate"):
+        result = write_verbatim(c["project"], title, body, dry, existing)
+        print(result)
+        if not dry and not result.startswith("OK"):
+            raise SystemExit(1)
     else:
-        sys.exit("usage: daily-page.py render|write [--dry-run]  (curated JSON on stdin)")
+        sys.exit("usage: daily-page.py render|write|migrate [--dry-run]  (curated JSON on stdin)")
 
 
 if __name__ == "__main__":

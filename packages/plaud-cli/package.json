@@ -1,0 +1,8 @@
+{
+  "name": "plaud-cli-nix-wrapper",
+  "private": true,
+  "version": "0.3.6",
+  "dependencies": {
+    "@plaud-ai/cli": "0.3.6"
+  }
+}

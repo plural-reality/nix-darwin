@@ -1,0 +1,4 @@
+interface:
+  display_name: "名刺取り込み"
+  short_description: "名刺画像と直近ログから人物・会話・接点をScrapboxへ整理"
+  default_prompt: "Use $ingest-business-card to OCR the attached business card, identify the meeting from recent logs, and prepare a verified Scrapbox person page."

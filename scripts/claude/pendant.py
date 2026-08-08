@@ -8,23 +8,14 @@ import json
 import os
 import sys
 import tomllib
+import urllib.parse
+import urllib.request
+import urllib.error
+import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
-
-PENDANT_VENDOR_DIR = Path.home() / ".claude" / "vendor" / "pendant"
-
-if PENDANT_VENDOR_DIR.exists():
-    sys.path.insert(0, str(PENDANT_VENDOR_DIR))
-
-try:
-    import httpx
-except ModuleNotFoundError as exc:
-    raise ModuleNotFoundError(
-        "pendant.py requires 'httpx'. Install it with: "
-        "uv pip install --target ~/.claude/vendor/pendant httpx"
-    ) from exc
 
 # ---------------------------------------------------------------------------
 # Data Models
@@ -97,16 +88,12 @@ class LimitlessClient:
     def __init__(self, api_key: str, tz: str = "Asia/Tokyo"):
         self.api_key = api_key
         self.tz = tz
-        self.client = httpx.Client(
-            base_url=self.BASE,
-            headers={"X-API-Key": self.api_key},
-            timeout=30,
-        )
-
     def _get(self, path: str, params: dict | None = None) -> dict:
-        r = self.client.get(path, params=params)
-        r.raise_for_status()
-        return r.json()
+        query = urllib.parse.urlencode(params or {})
+        request = urllib.request.Request(
+            f"{self.BASE}{path}" + (f"?{query}" if query else ""),
+            headers={"X-API-Key": self.api_key, "User-Agent": "pendant/1.0"})
+        return json.loads(urllib.request.urlopen(request, timeout=30).read().decode())
 
     def search(self, query: str, limit: int = 5) -> list[Conversation]:
         data = self._get("/lifelogs", {
@@ -132,7 +119,10 @@ class LimitlessClient:
             params["cursor"] = cursor
         data = self._get("/lifelogs", params)
         logs = data.get("data", {}).get("lifelogs", [])
-        next_cursor = data.get("data", {}).get("nextCursor")
+        # Limitless exposes pagination metadata separately from the payload:
+        # {"data":{"lifelogs":[...]},"meta":{"lifelogs":{"nextCursor":...}}}.
+        # Reading data.nextCursor silently stopped after the first page.
+        next_cursor = data.get("meta", {}).get("lifelogs", {}).get("nextCursor")
         return [self._to_conversation(l) for l in logs], next_cursor
 
     def get_lifelog(self, lifelog_id: str) -> Conversation:
@@ -171,7 +161,7 @@ class LimitlessClient:
         )
 
     def close(self):
-        self.client.close()
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -201,11 +191,13 @@ class PendantAPI:
     def by_date(self, date_str: str, source: str = "all") -> list[Conversation]:
         results: list[Conversation] = []
         if source in ("all", "limitless"):
-            try:
-                convos, _ = self.limitless.get_lifelogs(limit=50, date=date_str)
-                results.extend(convos)
-            except Exception as e:
-                print(f"[warn] Limitless failed: {e}", file=sys.stderr)
+            def all_pages(cursor: str | None = None,
+                          seen: frozenset[str] = frozenset()) -> list[Conversation]:
+                convos, next_cursor = self.limitless.get_lifelogs(
+                    limit=10, date=date_str, cursor=cursor)
+                return convos + (all_pages(next_cursor, seen | {next_cursor})
+                                 if next_cursor and next_cursor not in seen else [])
+            results.extend(all_pages())
         results.sort(key=lambda c: c.start_time or "", reverse=True)
         return results
 
@@ -233,16 +225,16 @@ class Exporter:
 
     def export_limitless(self, since: str | None = None) -> int:
         out_dir = self.config.export_dir / "limitless"
-        out_dir.mkdir(parents=True, exist_ok=True)
+        out_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
+        out_dir.chmod(0o700)
         meta_path = out_dir / "_metadata.json"
         meta = self._load_meta(meta_path)
 
-        count = 0
         cursor = None
-        files: dict[str, Path] = {}
+        records: dict[str, dict[str, dict]] = {}
 
         while True:
-            convos, next_cursor = self.api.limitless.get_lifelogs(limit=50, cursor=cursor)
+            convos, next_cursor = self.api.limitless.get_lifelogs(limit=10, cursor=cursor)
             if not convos:
                 break
 
@@ -253,17 +245,8 @@ class Exporter:
                     next_cursor = None
                     break
 
-                if date_key not in files:
-                    fp = out_dir / f"{date_key}.jsonl"
-                    files[date_key] = fp
-
-                with open(files[date_key], "a") as f:
-                    record = {
-                        "unified": _conv_to_dict(c),
-                        "raw": c.raw,
-                    }
-                    f.write(json.dumps(record, ensure_ascii=False) + "\n")
-                count += 1
+                record = {"unified": _conv_to_dict(c), "raw": c.raw}
+                records.setdefault(date_key, {})[c.id] = record
             else:
                 cursor = next_cursor
                 if not cursor:
@@ -271,8 +254,20 @@ class Exporter:
                 continue
             break
 
+        ordered = {day: sorted(day_records.values(), key=lambda row: (
+            row["unified"].get("start_time", ""), row["unified"].get("id", "")))
+                   for day, day_records in records.items()}
+        for day, rows in ordered.items():
+            with tempfile.NamedTemporaryFile("w", dir=out_dir, delete=False) as tmp:
+                tmp.writelines(json.dumps(row, ensure_ascii=False) + "\n" for row in rows)
+                path = Path(tmp.name)
+            path.chmod(0o600)
+            path.replace(out_dir / f"{day}.jsonl")
+
+        count = sum(len(rows) for rows in ordered.values())
+
         meta["last_export"] = datetime.now(timezone.utc).isoformat()
-        meta["total_exported"] = meta.get("total_exported", 0) + count
+        meta["total_exported"] = count
         self._save_meta(meta_path, meta)
         return count
 
@@ -282,7 +277,11 @@ class Exporter:
         return {}
 
     def _save_meta(self, path: Path, meta: dict):
-        path.write_text(json.dumps(meta, indent=2, ensure_ascii=False))
+        with tempfile.NamedTemporaryFile("w", dir=path.parent, delete=False) as tmp:
+            tmp.write(json.dumps(meta, indent=2, ensure_ascii=False))
+            temporary = Path(tmp.name)
+        temporary.chmod(0o600)
+        temporary.replace(path)
 
 
 # ---------------------------------------------------------------------------
@@ -418,8 +417,8 @@ def main():
             print(f"Limitless: exported {n} conversations", file=sys.stderr)
             print(f"Total: {n} conversations exported", file=sys.stderr)
 
-    except httpx.HTTPStatusError as e:
-        print(f"API error: {e.response.status_code} — {e.response.text[:200]}", file=sys.stderr)
+    except urllib.error.HTTPError as e:
+        print(f"API error: HTTP {e.code}", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

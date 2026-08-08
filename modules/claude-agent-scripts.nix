@@ -14,10 +14,22 @@
 # Runtime deps several scripts assume on PATH (document/provide separately; see
 # docs/nix-agent-tooling-runbook.md): python3 (stdlib only), node (pw.mjs), and the
 # himalaya / cosense-fetch / scrapbox-write CLIs.
-{ ... }:
+{ lib, ... }:
+let
+  claudeAgentScripts = builtins.path {
+    path = ../scripts/claude;
+    name = "claude-agent-scripts";
+    filter =
+      path: type:
+      let
+        name = builtins.baseNameOf path;
+      in
+      name != "__pycache__" && !(lib.hasSuffix ".pyc" name);
+  };
+in
 {
   home.file.".claude/scripts" = {
-    source = ../scripts/claude;
+    source = claudeAgentScripts;
     recursive = true;
   };
 }

@@ -3,9 +3,9 @@ name: pendant-context
 description: "Limitless AIペンダントのライフログを検索し、ユーザーの質問に関連する会話・文脈を自動取得して回答に活用する。トリガー: 「最近話したこと」「昨日の会話」「何か約束してたっけ」「ペンダントで調べて」「ライフログ」「最近喋ったこと」など、過去の対面・音声会話の参照。"
 ---
 
-# Pendant Context スキル — Limitless ライフログ検索
+# Pendant Context スキル — Transcriptライフログ検索
 
-Limitless AIペンダントのライフログを検索し、関連コンテキストを回答に組み込む。
+Limitlessを検索し、Mori/Plaudの正規化済みTranscript archiveも同じ会話スキーマで参照する。
 
 ## ツール
 
@@ -63,6 +63,16 @@ python3 ~/.claude/scripts/pendant.py <command> [options]
 ```
 
 エクスポート先: `~/.claude/data/pendant-export/limitless/YYYY-MM-DD.jsonl`
+
+Mori/Plaudも同じ日次JSONL契約へ同期される。
+
+```bash
+transcript-sync
+```
+
+- `mori/YYYY-MM-DD.jsonl`: Mori Sessionに対応する全文Transcript。Journalは保存しない。
+- `plaud/YYYY-MM-DD.jsonl`: Plaud公式CLIから取得した全文Transcript。
+- `limitless/YYYY-MM-DD.jsonl`: Limitless APIから取得した全文Transcript。
 
 ## 出力フォーマット
 

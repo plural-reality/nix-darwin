@@ -253,6 +253,24 @@ let
     '';
   };
 
+  # Read-only Mori MCP adapter. OAuth/runtime state remains outside Nix.
+  mori = pkgs.writeShellApplication {
+    name = "mori";
+    runtimeInputs = [ pkgs.python313 ];
+    text = ''
+      exec "$HOME/.claude/scripts/mori.py" "$@"
+    '';
+  };
+
+  # One schedule target for Mori, Limitless, and the official Plaud CLI.
+  transcriptSync = pkgs.writeShellApplication {
+    name = "transcript-sync";
+    runtimeInputs = [ pkgs.python313 ];
+    text = ''
+      exec "$HOME/.claude/scripts/transcript-sync.py" "$@"
+    '';
+  };
+
   # Read-only iMessage history client. It only speaks the fixed JSON/JSONL
   # protocol to a per-user signed bridge; Full Disk Access never belongs here.
   imsgHistory = pkgs.writeShellApplication {
@@ -264,6 +282,31 @@ let
       openssh
     ];
     text = builtins.readFile ../scripts/claude/imsg-history/imsg-history.sh;
+  };
+
+  # Read-only Apple Photos client. The stable signed bridge owns Photos TCC;
+  # this client only speaks the fixed JSON/JSONL protocol over a mode-0600 socket.
+  photoLibrary = pkgs.writeShellApplication {
+    name = "photo-library";
+    runtimeInputs = with pkgs; [
+      coreutils
+      jq
+      netcat
+    ];
+    text = builtins.readFile ../scripts/claude/photo-library/photo-library.sh;
+  };
+
+  # Weekly snapshot-difference driver. PhotoKit/Vision remain inside the signed
+  # bridge; this outer launcher owns only minimal local manifests and review jobs.
+  photoCardScan = pkgs.writeShellApplication {
+    name = "photo-card-scan";
+    runtimeInputs = [
+      pkgs.python3
+      photoLibrary
+    ];
+    text = ''
+      exec ${pkgs.python3}/bin/python3 ${../scripts/claude/photo-library/photo-card-scan.py} "$@"
+    '';
   };
 
   nixApply = pkgs.writeScriptBin "nix-apply" ''
@@ -284,25 +327,14 @@ let
   # The mjs file is a Nix symlink in the same dir, and node resolves imports
   # relative to the realpath of the script, so we copy it to a temp location
   # alongside node_modules to ensure correct resolution.
-  # SID runtime resolution (shared by scrapbox-write / scrapbox-rename): the SID
-  # is a rotating Chrome-session cookie, not a static secret. Resolve
-  # env → settings.local.json cache → Chrome self-heal; never bake into the store.
-  scrapboxSidResolve = ''
-    if [ -z "''${SCRAPBOX_SID:-}" ]; then
-      SCRAPBOX_SID=$(${pkgs.jq}/bin/jq -r '.env.SCRAPBOX_SID // empty' "$HOME/.claude/settings.local.json" 2>/dev/null || true)
-      [ -z "$SCRAPBOX_SID" ] && SCRAPBOX_SID=$(bash "$HOME/.claude/scripts/scrapbox-sid-refresh.sh" 2>/dev/null || true)
-      export SCRAPBOX_SID
-    fi
-  '';
-
   scrapbox-write = pkgs.writeScriptBin "scrapbox-write" ''
     #!${pkgs.bash}/bin/bash
     SBDIR="$HOME/.local/share/scrapbox-write"
-    ${scrapboxSidResolve}
     # Ensure a writable copy of the script exists next to node_modules
     # (Nix symlinks into the store break ESM resolution)
     cp -Lf "$SBDIR/scrapbox-write.mjs" "$SBDIR/_run.mjs" 2>/dev/null || true
-    exec ${pkgs.nodejs}/bin/node "$SBDIR/_run.mjs" "$@"
+    exec ${pkgs.python3}/bin/python3 "$HOME/.claude/scripts/lib/scrapbox_session.py" exec \
+      ${pkgs.nodejs}/bin/node "$SBDIR/_run.mjs" "$@"
   '';
 
   # ── Scrapbox renamer ────────────────────────────────────
@@ -313,9 +345,9 @@ let
   scrapbox-rename = pkgs.writeScriptBin "scrapbox-rename" ''
     #!${pkgs.bash}/bin/bash
     SBDIR="$HOME/.local/share/scrapbox-write"
-    ${scrapboxSidResolve}
     cp -Lf "$SBDIR/scrapbox-rename.mjs" "$SBDIR/_run_rename.mjs" 2>/dev/null || true
-    exec ${pkgs.nodejs}/bin/node "$SBDIR/_run_rename.mjs" "$@"
+    exec ${pkgs.python3}/bin/python3 "$HOME/.claude/scripts/lib/scrapbox_session.py" exec \
+      ${pkgs.nodejs}/bin/node "$SBDIR/_run_rename.mjs" "$@"
   '';
 in
 {
@@ -338,7 +370,11 @@ in
     freeeCall
     freeeReconcile
     codexName
+    mori
+    transcriptSync
     imsgHistory
+    photoLibrary
+    photoCardScan
     nixApply
     appleNotesToScrapbox
 
@@ -350,6 +386,12 @@ in
     pkgs.python313Packages.markitdown
     pkgs.python313Packages.trafilatura
   ];
+
+  # `home-manager.useUserPackages` の system profile 切替は root 権限を要する。
+  # 同じNix derivationを user-owned launcher layerにも投影し、Home Manager単独の
+  # activation直後から古い `/etc/profiles/per-user` を経由せず利用可能にする。
+  home.file.".local/bin/scrapbox-write".source = "${scrapbox-write}/bin/scrapbox-write";
+  home.file.".local/bin/scrapbox-rename".source = "${scrapbox-rename}/bin/scrapbox-rename";
 
   # prompt-review collector (nix-shell shebang, self-contained)
   home.file.".local/bin/prompt-review-collect" = {
