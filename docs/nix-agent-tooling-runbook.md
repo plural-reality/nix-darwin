@@ -77,29 +77,34 @@ ls -1 "$(nix build .#desktop-skills --no-link --print-out-paths)" | rg '^<skill>
 
 Claude's self-learning memory is the harness-native auto-memory at `~/.claude/projects/<project>/memory/` (canonical, auto-injected at SessionStart). It is NOT Nix-managed: it is mutated only through the `self-learn` skill, which writes one fact per file plus a one-line `MEMORY.md` pointer and reads back to verify. Do not hand-edit it from Nix activation, and do not route Claude memory writes into `~/.codex/memories` (Claude never reads that path, so writes there never reach it). `~/.codex/memories` is Codex's own store only.
 
-## Downstream Refresh
+## Downstream Promotion
 
-When `/etc/nix-darwin` imports this repo by `path:`, refresh only that lock input before expecting the active system to see local source changes:
+`/private/etc/nix-darwin` is the deployment root. Its `flake.lock` is the one
+input graph consumed by a system switch. The root itself is not represented in
+that lock, so a lock file alone cannot make a dirty deployment root reproducible.
 
-```bash
-DOWNSTREAM="${DOWNSTREAM:-/etc/nix-darwin}"
-nix flake update nix-darwin-upstream --flake "$DOWNSTREAM"
+Do not build or activate from a development checkout. Make edits in a dedicated
+Git worktree, update an input explicitly there, validate both Darwin hosts, then
+commit and fast-forward the live checkout. The `apply` entry point is deliberately
+fail-closed: it rejects a dirty or untracked deployment root, disables dirty Nix
+inputs, never updates `flake.lock`, and verifies `/run/current-system` after the
+switch.
+
+```text
+feature worktree -> explicit lock update -> host builds -> commit/review
+  -> fast-forward clean /private/etc/nix-darwin -> ./apply -> live readback
 ```
 
-Then build the active system:
+Use an immutable Git input for the shared upstream. Do not set `upstreamPath`
+for a deployed profile: it would turn Claude skill files into out-of-store links
+to a mutable checkout and bypass the lock.
 
-```bash
-nix build "$DOWNSTREAM#darwinConfigurations.\"$(scutil --get LocalHostName)\".system" \
-  --no-link --print-out-paths
-```
+Migrations are an explicit, versioned source change. Run them in the feature
+worktree, review and commit their result, rather than letting `apply` mutate the
+live deployment root.
 
-Only activate after the build is known good:
-
-```bash
-sudo darwin-rebuild switch --flake "$DOWNSTREAM"
-```
-
-If the goal is only to inspect projected files, build first and inspect the store output instead of switching.
+If the goal is only to inspect projected files, build the locked source first and
+inspect the store output instead of switching.
 
 ## Narrow Validation Patterns
 
@@ -137,5 +142,6 @@ If live links are shadowed by local directories, do not edit generated files. Mo
 - Do not edit `~/.codex/skills` or `~/.claude/skills` as source.
 - Claude memory is the harness-native store under `~/.claude/projects/<project>/memory/` (mutated via the `self-learn` skill); do not route Claude writes into `~/.codex/memories`.
 - Do not use `nix flake update` without an input name unless the task is dependency refresh.
+- Do not run `nix flake update`, a migration, or `darwin-rebuild switch` from a dirty deployment root.
 - Do not use familiarity or DX as a reason to add another config boundary.
 - Keep local path assumptions in the downstream launcher layer; shared modules should express the abstract contract.

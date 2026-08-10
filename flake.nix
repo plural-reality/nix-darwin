@@ -74,6 +74,11 @@
                     ];
                     builders-use-substitutes = true;
                     accept-flake-config = true;
+                    # A system generation must be reproducible from committed sources.
+                    # Development remains possible in a separate worktree, but a dirty
+                    # tree is never a valid Nix input for build or activation.
+                    allow-dirty = false;
+                    allow-dirty-locks = false;
                     extra-substituters = [
                       "https://cache.numtide.com"
                       "https://plural-reality.cachix.org"
@@ -101,7 +106,14 @@
                   };
                 };
 
-                system.configurationRevision = self.rev or self.dirtyRev or null;
+                assertions = [
+                  {
+                    assertion = self ? rev;
+                    message = "nix-darwin upstream must be a committed Git revision, not a dirty source tree";
+                  }
+                ];
+
+                system.configurationRevision = self.rev;
                 system.stateVersion = 6;
                 nixpkgs.hostPlatform = system;
 
@@ -322,6 +334,26 @@
           # Formatter for the flake itself
           formatter = pkgs.nixfmt;
 
+          # Keep the deployment boundary fail-closed. This is intentionally a
+          # small contract check rather than a system activation test.
+          checks.immutable-apply-contract =
+            pkgs.runCommand "immutable-apply-contract-check"
+              {
+                nativeBuildInputs = [
+                  pkgs.gnugrep
+                  self'.packages.apply
+                ];
+              }
+              ''
+                script="${self'.packages.apply}/bin/apply"
+                grep -F -- 'status --porcelain=v1 --untracked-files=all' "$script" >/dev/null
+                grep -F -- '--no-write-lock-file' "$script" >/dev/null
+                grep -F -- '--option allow-dirty false' "$script" >/dev/null
+                ! grep -F -- 'nix flake update nix-darwin-upstream' "$script"
+                ! grep -F -- '/bin/migrate' "$script"
+                touch "$out"
+              '';
+
           # Migration: nix run github:plural-reality/nix-darwin#migrate
           packages.migrate = pkgs.writeShellApplication {
             name = "migrate";
@@ -347,17 +379,45 @@
           };
 
           # Apply: invoked from a downstream flake via `nix run .#apply`.
+          # It consumes the already-locked source graph and never updates a lock
+          # file or mutates the downstream checkout.
           packages.apply = pkgs.writeShellApplication {
             name = "apply";
+            runtimeInputs = with pkgs; [
+              coreutils
+              git
+              nix
+            ];
             text = ''
-              nix flake update nix-darwin-upstream
-              # Run all pending migrations from this upstream version
-              ${self'.packages.migrate}/bin/migrate .
-              if command -v darwin-rebuild &>/dev/null; then
-                sudo darwin-rebuild switch --flake .
+              flake_dir="''${NIX_DARWIN_FLAKE:-$PWD}"
+              test -z "$(git -C "$flake_dir" status --porcelain=v1 --untracked-files=all)" || {
+                printf '%s\n' "refusing deployment: downstream worktree is dirty: $flake_dir" >&2
+                exit 1
+              }
+              host="$(scutil --get LocalHostName)"
+              system_path="$(nix build \
+                --no-write-lock-file \
+                --option allow-dirty false \
+                --option allow-dirty-locks false \
+                "$flake_dir#darwinConfigurations.\"$host\".system" \
+                --no-link --print-out-paths)"
+              if darwin_rebuild="$(command -v darwin-rebuild)"; then
+                sudo "$darwin_rebuild" switch \
+                  --flake "$flake_dir" \
+                  --no-write-lock-file \
+                  --option allow-dirty false \
+                  --option allow-dirty-locks false
               else
-                sudo nix run nix-darwin -- switch --flake .
+                sudo /nix/var/nix/profiles/default/bin/nix run nix-darwin -- switch \
+                  --flake "$flake_dir" \
+                  --no-write-lock-file \
+                  --option allow-dirty false \
+                  --option allow-dirty-locks false
               fi
+              test "$(realpath /run/current-system)" = "$system_path" || {
+                printf '%s\n' "activation mismatch: expected $system_path, got $(realpath /run/current-system)" >&2
+                exit 1
+              }
             '';
           };
 
