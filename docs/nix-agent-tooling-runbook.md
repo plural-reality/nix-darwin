@@ -90,6 +90,12 @@ fail-closed: it rejects a dirty or untracked deployment root, disables dirty Nix
 inputs, never updates `flake.lock`, and verifies `/run/current-system` after the
 switch.
 
+The live deployment checkout may be owned by `root:wheel` to prevent ordinary
+tools from editing it. `apply` performs its cleanliness read with optional Git
+locks disabled, so a read-only clean checkout remains deployable. Promote only a
+reviewed fast-forward commit with `sudo git -C /private/etc/nix-darwin ...`; make
+all source edits in a separate user-owned clone or worktree.
+
 ```text
 feature worktree -> explicit lock update -> host builds -> commit/review
   -> fast-forward clean /private/etc/nix-darwin -> ./apply -> live readback
