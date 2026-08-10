@@ -1,0 +1,4 @@
+interface:
+  display_name: "note執筆"
+  short_description: "本人の眼差しと出典を保ったnote記事の執筆・推敲"
+  default_prompt: "$note-writing を使い、過去の資料と対話をたどって私の眼差しを保ったnote記事を書いてください。"
