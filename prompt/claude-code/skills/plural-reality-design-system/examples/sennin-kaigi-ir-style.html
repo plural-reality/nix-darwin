@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>千人会議 - 合同会社 多元現実</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700&family=Public+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: #E8E8E8;
+  font-family: 'Public Sans', 'Noto Sans JP', sans-serif;
+  color: #1E1E1E;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page-wrapper {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.slide {
+  background: #C5C5C5;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  padding: 48px;
+  position: relative;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* --- Typography --- */
+h1, h2, h3, h4 {
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+.slide-title {
+  font-size: 28px;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  color: #1E1E1E;
+  margin-bottom: 8px;
+}
+
+.slide-subtitle {
+  font-size: 14px;
+  color: #5A5A5A;
+  font-weight: 400;
+  line-height: 1.7;
+  max-width: 90%;
+}
+
+/* --- Badge --- */
+.badge {
+  display: inline-block;
+  background: #1E1E1E;
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 14px;
+  border-radius: 6px;
+  letter-spacing: 0.04em;
+  margin-bottom: 16px;
+  width: fit-content;
+}
+
+/* --- Navigation Dots --- */
+.nav-dots {
+  display: flex;
+  gap: 8px;
+  position: absolute;
+  bottom: 48px;
+  right: 48px;
+}
+
+.nav-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.nav-dot.active {
+  background: #FFFFFF;
+}
+
+.nav-dots-dark .nav-dot {
+  background: rgba(30, 30, 30, 0.2);
+}
+
+.nav-dots-dark .nav-dot.active {
+  background: #1E1E1E;
+}
+
+/* --- Dark Card --- */
+.dark-card {
+  background: #1E1E1E;
+  border-radius: 16px;
+  padding: 32px;
+  color: #FFFFFF;
+}
+
+.dark-card .muted {
+  color: #8A8A8A;
+}
+
+/* --- Grid Layouts --- */
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
+
+.grid-4 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 16px;
+}
+
+.grid-5 {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+/* --- Separator --- */
+.separator {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  margin: 16px 0;
+}
+
+/* --- Accent --- */
+.accent {
+  color: #0F766E;
+}
+
+.accent-bg {
+  background: #0F766E;
+}
+
+/* --- Placeholder --- */
+.placeholder {
+  background: #2F2F2F;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8A8A8A;
+  font-size: 14px;
+  min-height: 120px;
+}
+
+/* --- Checkmark --- */
+.check-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #FFFFFF;
+  margin-bottom: 8px;
+}
+
+.check-icon {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  border-radius: 50%;
+  background: #0F766E;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #FFFFFF;
+  font-weight: 700;
+}
+
+/* --- Table --- */
+.ir-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: #FFFFFF;
+}
+
+.ir-table th {
+  text-align: left;
+  padding: 8px 10px;
+  font-weight: 500;
+  font-size: 11px;
+  color: #8A8A8A;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.ir-table td {
+  padding: 7px 10px;
+  font-weight: 400;
+}
+
+.ir-table tr:nth-child(even) td {
+  background: #2F2F2F;
+}
+
+.ir-table .highlight {
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+/* --- Icon placeholder --- */
+.icon-circle {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  border-radius: 50%;
+  background: #2F2F2F;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+
+.icon-circle.accent-bg {
+  background: #0F766E;
+}
+
+/* --- Step number --- */
+.step-num {
+  font-size: 24px;
+  font-weight: 700;
+  color: #0F766E;
+  margin-bottom: 4px;
+}
+
+/* --- Metric box --- */
+.metric-box {
+  background: #2F2F2F;
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+}
+
+.metric-box .metric-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: #0F766E;
+  margin-bottom: 2px;
+}
+
+.metric-box .metric-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #FFFFFF;
+  margin-bottom: 4px;
+}
+
+.metric-box .metric-desc {
+  font-size: 11px;
+  color: #8A8A8A;
+}
+
+/* ============================================
+   SLIDE 1 - COVER
+   ============================================ */
+.slide-cover {
+  padding: 0;
+}
+
+.slide-cover .cover-card {
+  background: #1E1E1E;
+  border-radius: 16px;
+  flex: 1;
+  margin: 24px;
+  padding: 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+}
+
+.cover-title {
+  font-size: 96px;
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  color: #FFFFFF;
+  line-height: 1.1;
+  margin-bottom: 24px;
+}
+
+.cover-subtitle {
+  font-size: 18px;
+  font-weight: 400;
+  color: #8A8A8A;
+  line-height: 1.8;
+  margin-bottom: 16px;
+  max-width: 700px;
+}
+
+.cover-org {
+  font-size: 15px;
+  color: #FFFFFF;
+  font-weight: 400;
+  margin-bottom: 48px;
+}
+
+.cover-footer {
+  position: absolute;
+  bottom: 40px;
+  left: 64px;
+  font-size: 13px;
+  color: #8A8A8A;
+}
+
+.cover-dots {
+  position: absolute;
+  bottom: 40px;
+  right: 64px;
+  display: flex;
+  gap: 8px;
+}
+
+/* ============================================
+   SLIDE 2 - CHALLENGE CARDS
+   ============================================ */
+.slide-challenge .cards-area {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  margin-top: 20px;
+}
+
+.challenge-card {
+  background: #1E1E1E;
+  border-radius: 16px;
+  padding: 28px;
+  color: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+}
+
+.challenge-card .card-title {
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.challenge-card .card-body {
+  font-size: 13px;
+  color: #8A8A8A;
+  line-height: 1.7;
+}
+
+/* ============================================
+   SLIDE 3 - TRADEOFF
+   ============================================ */
+.slide-tradeoff .content-area {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 24px;
+  margin-top: 16px;
+}
+
+.matrix-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.matrix-grid {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  max-width: 320px;
+}
+
+.matrix-axis-y {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 30px;
+  width: 30px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  color: #5A5A5A;
+}
+
+.matrix-axis-x {
+  position: absolute;
+  bottom: 0;
+  left: 30px;
+  right: 0;
+  height: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  color: #5A5A5A;
+}
+
+.matrix-field {
+  position: absolute;
+  top: 0;
+  left: 30px;
+  right: 0;
+  bottom: 30px;
+  border-left: 1px solid #5A5A5A;
+  border-bottom: 1px solid #5A5A5A;
+}
+
+.matrix-item {
+  position: absolute;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.matrix-item.outlined {
+  border: 1.5px solid #5A5A5A;
+  color: #1E1E1E;
+  background: transparent;
+}
+
+.matrix-item.filled {
+  background: #0F766E;
+  color: #FFFFFF;
+  border: none;
+  box-shadow: 0 2px 12px rgba(15, 118, 110, 0.3);
+}
+
+.matrix-item-ws {
+  top: 10%;
+  left: 8%;
+}
+
+.matrix-item-baisoku {
+  top: 20%;
+  left: 35%;
+}
+
+.matrix-item-survey {
+  top: 65%;
+  right: 5%;
+  left: auto;
+}
+
+.matrix-sub {
+  font-size: 9px;
+  font-weight: 400;
+  margin-top: 2px;
+  opacity: 0.7;
+}
+
+.tradeoff-table-area {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.key-insight {
+  background: #2F2F2F;
+  border-radius: 10px;
+  padding: 14px 18px;
+  font-size: 12px;
+  color: #FFFFFF;
+  line-height: 1.6;
+  border-left: 3px solid #0F766E;
+}
+
+/* ============================================
+   SLIDE 4 - 5 STEPS
+   ============================================ */
+.slide-steps .steps-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.steps-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.step-card {
+  background: #1E1E1E;
+  border-radius: 12px;
+  padding: 20px 16px;
+  color: #FFFFFF;
+  position: relative;
+}
+
+.step-card .step-title {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.step-card .step-desc {
+  font-size: 11px;
+  color: #8A8A8A;
+  line-height: 1.6;
+}
+
+.step-arrow {
+  position: absolute;
+  right: -10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #5A5A5A;
+  font-size: 14px;
+  z-index: 1;
+}
+
+.metrics-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+/* ============================================
+   SLIDE 5 - PRODUCT DEMO
+   ============================================ */
+.slide-demo {
+  padding: 0;
+}
+
+.slide-demo .demo-card {
+  background: #1E1E1E;
+  border-radius: 16px;
+  flex: 1;
+  margin: 24px;
+  padding: 48px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.demo-placeholder {
+  flex: 1;
+  background: #2F2F2F;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8A8A8A;
+  font-size: 18px;
+  margin: 24px 0;
+  min-height: 200px;
+}
+
+.demo-url {
+  text-align: center;
+  font-size: 14px;
+  color: #8A8A8A;
+  margin-top: auto;
+}
+
+/* ============================================
+   SLIDES 6-8 - FEATURES
+   ============================================ */
+.slide-feature .feature-content {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 16px;
+}
+
+.slide-feature .feature-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.slide-feature .feature-right {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.slide-feature .feature-right .placeholder {
+  width: 100%;
+  height: 100%;
+  min-height: 180px;
+}
+
+.feature-cards {
+  display: grid;
+  gap: 12px;
+  margin-top: auto;
+}
+
+.feature-cards.cols-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.feature-cards.cols-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.feature-mini-card {
+  background: #1E1E1E;
+  border-radius: 12px;
+  padding: 20px;
+  color: #FFFFFF;
+}
+
+.feature-mini-card .mini-title {
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.feature-mini-card .mini-desc {
+  font-size: 11px;
+  color: #8A8A8A;
+  line-height: 1.6;
+}
+
+/* ============================================
+   SLIDE 8 - REPORT PLACEHOLDERS
+   ============================================ */
+.report-placeholders {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+}
+
+.report-placeholders .placeholder {
+  min-height: 100px;
+  font-size: 12px;
+}
+
+/* ============================================
+   SLIDE 9 - OTHER FEATURES
+   ============================================ */
+.slide-others .others-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.other-card {
+  background: #1E1E1E;
+  border-radius: 16px;
+  padding: 28px;
+  color: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+}
+
+.other-card .other-title {
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 10px;
+}
+
+.other-card .other-desc {
+  font-size: 13px;
+  color: #8A8A8A;
+  line-height: 1.7;
+}
+
+/* ============================================
+   SLIDE 10 - USE CASES
+   ============================================ */
+.slide-usecase .usecase-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.usecase-card {
+  background: #1E1E1E;
+  border-radius: 16px;
+  padding: 32px;
+  color: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+}
+
+.usecase-card .usecase-heading {
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin-bottom: 6px;
+}
+
+.usecase-card .usecase-accent {
+  font-size: 14px;
+  color: #0F766E;
+  font-weight: 500;
+  margin-bottom: 16px;
+}
+
+.usecase-card .usecase-body {
+  font-size: 13px;
+  color: #8A8A8A;
+  line-height: 1.7;
+  margin-bottom: 20px;
+}
+
+.usecase-card .check-list {
+  margin-top: auto;
+}
+
+.usecase-card hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  margin: 16px 0;
+}
+</style>
+</head>
+<body>
+<div class="page-wrapper">
+
+<!-- ============================================
+     SLIDE 1 - COVER
+     ============================================ -->
+<div class="slide slide-cover">
+  <div class="cover-card">
+    <div class="cover-title">千人会議</div>
+    <div class="cover-subtitle">深さと人数のトレードオフを打破する<br>住民会議ソフトウェア</div>
+    <div class="cover-org">合同会社 多元現実 &times; 構想日本</div>
+    <div class="cover-footer">plural-reality.com</div>
+    <div class="cover-dots">
+      <div class="nav-dot active"></div>
+      <div class="nav-dot"></div>
+      <div class="nav-dot"></div>
+      <div class="nav-dot"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================
+     SLIDE 2 - CHALLENGE: STRUCTURAL LIMITS
+     ============================================ -->
+<div class="slide slide-challenge">
+  <div class="badge">課題</div>
+  <div class="slide-title">従来の住民参加には、構造的な限界がある</div>
+  <div class="cards-area">
+    <div class="grid-3" style="width:100%;">
+      <div class="challenge-card">
+        <div class="icon-circle">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <div class="card-title">リアル対話は「20人が限界」</div>
+        <div class="card-body">ワークショップは「深い」が「狭い」。20人を超えると質が下がり、本音の議論が難しくなります。</div>
+      </div>
+      <div class="challenge-card">
+        <div class="icon-circle">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <div class="card-title">「声の大きい人」が場を支配する</div>
+        <div class="card-body">ノイジーマイノリティが場を左右。サイレントマジョリティの声が埋もれたまま結論が出ます。</div>
+      </div>
+      <div class="challenge-card">
+        <div class="icon-circle">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        </div>
+        <div class="card-title">報告書が「ただの集計」で終わる</div>
+        <div class="card-body">「賛成63%」では政策に活かせません。「どういう条件なら賛成か」の境界線が見えません。</div>
+      </div>
+    </div>
+  </div>
+  <div class="nav-dots nav-dots-dark" style="bottom:48px;right:48px;">
+    <div class="nav-dot active"></div>
+    <div class="nav-dot"></div>
+    <div class="nav-dot"></div>
+    <div class="nav-dot"></div>
+  </div>
+</div>
+
+<!-- ============================================
+     SLIDE 3 - CHALLENGE: TRADEOFF
+     ============================================ -->
+<div class="slide slide-tradeoff">
+  <div class="badge">課題</div>
+  <div class="slide-title">住民参加における構造的トレードオフ</div>
+  <div class="slide-subtitle">現行手法はいずれも「量」か「質」の二択を強いており、政策への住民の声の統合を困難にしている</div>
+  <div class="content-area">
+    <!-- Left: 2x2 Matrix -->
+    <div class="matrix-container">
+      <div class="matrix-grid">
+        <div class="matrix-axis-y">
+          <span>深</span>
+          <span style="writing-mode:vertical-rl;font-size:11px;color:#1E1E1E;font-weight:500;">対話の深さ</span>
+          <span>浅</span>
+        </div>
+        <div class="matrix-axis-x">
+          <span>少数 &larr;</span>
+          <span style="font-size:11px;color:#1E1E1E;font-weight:500;">参加者数</span>
+          <span>&rarr; 多数</span>
+        </div>
+        <div class="matrix-field">
+          <div class="matrix-item outlined matrix-item-ws">
+            ワークショップ
+            <div class="matrix-sub">N&le;50 / 高コスト</div>
+          </div>
+          <div class="matrix-item filled matrix-item-baisoku">
+            倍速会議
+            <div class="matrix-sub">深い &times; 大規模</div>
+          </div>
+          <div class="matrix-item outlined matrix-item-survey">
+            アンケート調査
+            <div class="matrix-sub">浅い / 固定質問</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Right: Table -->
+    <div class="tradeoff-table-area">
+      <div class="dark-card" style="padding:20px;">
+        <table class="ir-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>アンケート</th>
+              <th>WS</th>
+              <th style="color:#0F766E;font-weight:600;">倍速会議</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="muted">参加人数</td>
+              <td>~数千人</td>
+              <td>~50人</td>
+              <td class="highlight">~数千人</td>
+            </tr>
+            <tr>
+              <td class="muted">対話の深さ</td>
+              <td>浅い</td>
+              <td>深い</td>
+              <td class="highlight">深い</td>
+            </tr>
+            <tr>
+              <td class="muted">所要時間</td>
+              <td>数週間</td>
+              <td>半日~1日</td>
+              <td class="highlight">1~2時間</td>
+            </tr>
+            <tr>
+              <td class="muted">コスト/人</td>
+              <td>低</td>
+              <td>高</td>
+              <td class="highlight">低</td>
+            </tr>
+            <tr>
+              <td class="muted">ファシリ依存</td>
+              <td>なし</td>
+              <td>高</td>
+              <td class="highlight">なし</td>
+            </tr>
+            <tr>
+              <td class="muted">声の偏り</td>
+              <td>中</td>
+              <td>高</td>
+              <td class="highlight">なし</td>
+            </tr>
+            <tr>
+              <td class="muted">レポート生成</td>
+              <td>手動</td>
+              <td>手動</td>
+              <td class="highlight">自動</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="key-insight">
+        倍速会議はアンケートの「スケール」とWSの「深さ」を同時に実現する唯一のソリューション
+      </div>
+    </div>
+  </div>
+  <div class="nav-dots nav-dots-dark" style="bottom:48px;right:48px;">
+    <div class="nav-dot active"></div>
+    <div class="nav-dot"></div>
+    <div class="nav-dot"></div>
+    <div class="nav-dot"></div>
+  </div>
+</div>
+
+<!-- ============================================
+     SLIDE 4 - 5 STEPS
+     ============================================ -->
+<div class="slide slide-steps">
+  <div class="badge">仕組み</div>
+  <div class="slide-title">AIによる「深いインタビュー」を数千人同時に</div>
+  <div class="slide-subtitle">住民一人ひとりの文脈・感情・条件を引き出すAI対話を同時並行で実施し、構造化された合意形成レポートを即時生成</div>
+  <div class="steps-area">
+    <div class="steps-row">
+      <div class="step-card">
+        <div class="step-num">01</div>
+        <div class="step-title">目的設定</div>
+        <div class="step-desc">議論したいテーマと背景情報を入力</div>
+        <div class="step-arrow">&rarr;</div>
+      </div>
+      <div class="step-card">
+        <div class="step-num">02</div>
+        <div class="step-title">AI質問生成</div>
+        <div class="step-desc">AIがテーマに最適な質問セットを自動設計</div>
+        <div class="step-arrow">&rarr;</div>
+      </div>
+      <div class="step-card">
+        <div class="step-num">03</div>
+        <div class="step-title">住民回答</div>
+        <div class="step-desc">スマホで1~2時間、AIと対話しながら回答</div>
+        <div class="step-arrow">&rarr;</div>
+      </div>
+      <div class="step-card">
+        <div class="step-num">04</div>
+        <div class="step-title">自動構造化</div>
+        <div class="step-desc">回答データを自動で分類・構造化・統合</div>
+        <div class="step-arrow">&rarr;</div>
+      </div>
+      <div class="step-card">
+        <div class="step-num">05</div>
+        <div class="step-title">レポート生成</div>
+        <div class="step-desc">合意形成レポートを30秒で自動出力</div>
+      </div>
+    </div>
+    <div class="metrics-row">
+      <div class="metric-box">
+        <div class="metric-value">&times;100 スケール</div>
+        <div class="metric-label">アンケートの速度</div>
+        <div class="metric-desc">数千人が1~2時間で完了</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-value">質的データ</div>
+        <div class="metric-label">インタビューの深さ</div>
+        <div class="metric-desc">文脈・感情・条件まで引き出す</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-value">&times;2,000 高速化</div>
+        <div class="metric-label">即時レポート</div>
+        <div class="metric-desc">構造化レポートを30秒で生成</div>
+      </div>
+    </div>
+  </div>
+  <div class="nav-dots nav-dots-dark" style="bottom:48px;right:48px;">
+    <div class="nav-dot"></div>
+    <div class="nav-dot active"></div>
+    <div class="nav-dot"></div>
+    <div class="nav-dot"></div>
+  </div>
+</div>
+
+<!-- ============================================
+     SLIDE 5 - PRODUCT DEMO
+     ============================================ -->
+<div class="slide slide-demo">
+  <div class="demo-card">
+    <div class="badge" style="background:#2F2F2F;">プロダクト</div>
+    <div class="demo-placeholder">プロダクト画面</div>
+    <div class="demo-url">baisoku-kaigi.plural-reality.com/gov</div>
+    <div class="cover-dots" style="bottom:32px;right:48px;">
+      <div class="nav-dot"></div>
+      <div class="nav-dot active"></div>
+      <div class="nav-dot"></div>
+      <div class="nav-dot"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================
+     SLIDE 6 - FEATURE 01/03
+     ============================================ -->
+<div class="slide slide-feature">
+  <div class="badge">機能 01 / 03</div>
+  <div class="slide-title">テーマと背景情報を入力するだけで、AIが質問を自動設計。</div>
+  <div class="slide-subtitle">テンプレートも白紙からの作成も可能。数分でセッションを開始できます。</div>
+  <div class="feature-content">
+    <div class="feature-left">
+      <div class="feature-cards cols-3" style="grid-template-columns:1fr;">
+        <div class="feature-mini-card">
+          <div class="icon-circle accent-bg" style="width:32px;height:32px;margin-bottom:8px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+          </div>
+          <div class="mini-title">テンプレートまたは白紙から作成</div>
+          <div class="mini-desc">総合計画、都市マスタープラン、予算編成など、目的別テンプレートを用意。ゼロからの設計も可能です。</div>
+        </div>
+        <div class="feature-mini-card">
+          <div class="icon-circle accent-bg" style="width:32px;height:32px;margin-bottom:8px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </div>
+          <div class="mini-title">AI入力アシストによる質問生成</div>
+          <div class="mini-desc">テーマと背景情報を入力するだけで、AIが多角的な質問セットを自動で生成します。</div>
+        </div>
+        <div class="feature-mini-card">
+          <div class="icon-circle accent-bg" style="width:32px;height:32px;margin-bottom:8px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </div>
+          <div class="mini-title">ワンクリックで参加者招待</div>
+          <div class="mini-desc">QRコードやLINE共有で、住民に直接リンクを配布。アプリ不要、ブラウザだけで参加できます。</div>
+        </div>
+      </div>
+    </div>
+    <div class="feature-right">
+      <div class="placeholder" style="width:100%;height:100%;min-height:200px;">セッション作成画面</div>
+    </div>
+  </div>
+  <div class="nav-dots nav-dots-dark" style="bottom:48px;right:48px;">
+    <div class="nav-dot"></div>
+    <div class="nav-dot"></div>
+    <div class="nav-dot active"></div>
+    <div class="nav-dot"></div>
+  </div>
+</div>
+
+<!-- ============================================
+     SLIDE 7 - FEATURE 02/03
+     ============================================ -->
+<div class="slide slide-feature">
+  <div class="badge">機能 02 / 03</div>
+  <div class="slide-title">全員が同時に回答。合意・対立・迷いを自動抽出。</div>
+  <div class="slide-subtitle">スマホから5段階の確信度で回答。「わからない」も正式な選択肢。声の大きさに関係なく全員の立場を収集します。</div>
+  <div class="feature-content">
+    <div class="feature-left">
+      <div class="feature-cards" style="grid-template-columns:1fr;">
+        <div class="feature-mini-card">
+          <div class="icon-circle accent-bg" style="width:32px;height:32px;margin-bottom:8px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+          <div class="mini-title">5段階スケールで回答</div>
+          <div class="mini-desc">「強く賛成」から「強く反対」まで5段階で確信度を表現。「わからない」も含め、住民の本音を正確に収集します。</div>
+        </div>
+        <div class="feature-mini-card">
+          <div class="icon-circle accent-bg" style="width:32px;height:32px;margin-bottom:8px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </div>
+          <div class="mini-title">合意・対立・迷いの自動抽出</div>
+          <div class="mini-desc">回答パターンをAIが自動分析し、参加者間の合意点、対立軸、判断に迷うグレーゾーンを可視化します。</div>
+        </div>
+      </div>
+    </div>
+    <div class="feature-right">
+      <div class="placeholder" style="width:100%;height:100%;min-height:200px;">回答画面</div>
+    </div>
+  </div>
+  <div class="nav-dots nav-dots-dark" style="bottom:48px;right:48px;">
+    <div class="nav-dot"></div>
+    <div class="nav-dot"></div>
+    <div class="nav-dot active"></div>
+    <div class="nav-dot"></div>
+  </div>
+</div>
+
+<!-- ============================================
+     SLIDE 8 - FEATURE 03/03
+     ============================================ -->
+<div class="slide slide-feature">
+  <div class="badge">機能 03 / 03</div>
+  <div class="slide-title">分析結果は、そのまま審議資料になるレポートを自動生成。</div>
+  <div class="slide-subtitle">質問への回答を繰り返しながら、住民の認識のズレと合意点を可視化したレポートを自動で出力します。</div>
+  <div class="feature-content">
+    <div class="feature-left">
+      <div class="feature-cards" style="grid-template-columns:1fr;">
+        <div class="feature-mini-card">
+          <div class="icon-circle accent-bg" style="width:32px;height:32px;margin-bottom:8px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </div>
+          <div class="mini-title">AI分析レポート</div>
+          <div class="mini-desc">全回答を統合し、合意形成の状況・主要な論点・対立構造をまとめた構造化レポートを自動生成。議会への提出資料としてそのまま使えます。</div>
+        </div>
+        <div class="feature-mini-card">
+          <div class="icon-circle accent-bg" style="width:32px;height:32px;margin-bottom:8px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <div class="mini-title">じぶんレポート</div>
+          <div class="mini-desc">参加者一人ひとりに、自分の回答と全体の傾向を比較したパーソナライズドレポートを生成。「自分の声が届いた」という実感を提供します。</div>
+        </div>
+      </div>
+    </div>
+    <div class="feature-right">
+      <div class="report-placeholders">
+        <div class="placeholder">分析レポート</div>
+        <div class="placeholder">主要な論点</div>
+        <div class="placeholder">合意形成の状況</div>
+      </div>
+    </div>
+  </div>
+  <div class="nav-dots nav-dots-dark" style="bottom:48px;right:48px;">
+    <div class="nav-dot"></div>
+    <div class="nav-dot"></div>
+    <div class="nav-dot active"></div>
+    <div class="nav-dot"></div>
+  </div>
+</div>
+
+<!-- ============================================
+     SLIDE 9 - OTHER FEATURES
+     ============================================ -->
+<div class="slide slide-others">
+  <div class="badge">その他機能</div>
+  <div class="slide-title">その他の機能</div>
+  <div class="others-grid">
+    <div class="other-card">
+      <div class="icon-circle accent-bg">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+      <div class="other-title">リアルタイム進捗監視</div>
+      <div class="other-desc">管理画面から参加者の回答状況をリアルタイムで確認。回答率や完了状況を一覧で把握し、必要に応じてリマインドを送信できます。</div>
+    </div>
+    <div class="other-card">
+      <div class="icon-circle accent-bg">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </div>
+      <div class="other-title">共有とアクセス管理</div>
+      <div class="other-desc">部署内の共同編集、閲覧権限の付与、外部公開リンクの発行など、柔軟なアクセス管理を提供します。</div>
+    </div>
+    <div class="other-card">
+      <div class="icon-circle accent-bg">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <div class="other-title">合意形成を半分の時間で</div>
+      <div class="other-desc">従来のワークショップで丸一日かかる合意形成プロセスを、1~2時間に短縮。職員の準備工数も大幅に削減します。</div>
+    </div>
+    <div class="other-card">
+      <div class="icon-circle accent-bg">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
+      </div>
+      <div class="other-title">テンプレート＆カスタマイズ</div>
+      <div class="other-desc">総合計画、予算編成、施策評価など、目的別テンプレートを複数用意。質問の追加・編集・順序変更も自由にカスタマイズできます。</div>
+    </div>
+  </div>
+  <div class="nav-dots nav-dots-dark" style="bottom:48px;right:48px;">
+    <div class="nav-dot"></div>
+    <div class="nav-dot"></div>
+    <div class="nav-dot"></div>
+    <div class="nav-dot active"></div>
+  </div>
+</div>
+
+<!-- ============================================
+     SLIDE 10 - USE CASES
+     ============================================ -->
+<div class="slide slide-usecase">
+  <div class="badge">活用シーン</div>
+  <div class="slide-title">目的に合わせた2つの使い方</div>
+  <div class="usecase-grid">
+    <!-- Left Card: パブコメ型 -->
+    <div class="usecase-card">
+      <div class="usecase-heading">パブコメ型</div>
+      <div class="usecase-accent">2~4週間の対話期間</div>
+      <div class="usecase-body">住民がそれぞれの都合に合わせて回答できる非同期型。パブリックコメントの代替・補完として、より深い住民の声を収集します。QRコード付きチラシや広報誌で周知し、幅広い世代の参加を促します。</div>
+      <hr>
+      <div class="check-list">
+        <div class="check-item">
+          <div class="check-icon">&#10003;</div>
+          <span>総合計画・都市マスタープラン</span>
+        </div>
+        <div class="check-item">
+          <div class="check-icon">&#10003;</div>
+          <span>政策評価・施策見直し</span>
+        </div>
+        <div class="check-item">
+          <div class="check-icon">&#10003;</div>
+          <span>予算編成への市民参加</span>
+        </div>
+      </div>
+    </div>
+    <!-- Right Card: ワークショップ型 -->
+    <div class="usecase-card">
+      <div class="usecase-heading">ワークショップ型</div>
+      <div class="usecase-accent">その場でリアルタイム</div>
+      <div class="usecase-body">住民説明会やタウンミーティングの場で、参加者がスマホからリアルタイムに回答。その場で集計結果を投影し、議論を深めながら合意形成を進めます。従来の挙手や付箋に代わる、全員参加型の対話手法です。</div>
+      <hr>
+      <div class="check-list">
+        <div class="check-item">
+          <div class="check-icon">&#10003;</div>
+          <span>住民説明会・タウンミーティング</span>
+        </div>
+        <div class="check-item">
+          <div class="check-icon">&#10003;</div>
+          <span>まちづくりワークショップ</span>
+        </div>
+        <div class="check-item">
+          <div class="check-icon">&#10003;</div>
+          <span>市民参加イベント・フォーラム</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="nav-dots nav-dots-dark" style="bottom:48px;right:48px;">
+    <div class="nav-dot"></div>
+    <div class="nav-dot"></div>
+    <div class="nav-dot"></div>
+    <div class="nav-dot active"></div>
+  </div>
+</div>
+
+</div><!-- /page-wrapper -->
+</body>
+</html>

@@ -4,7 +4,7 @@ description: >
   形式A: IRスライド (16:9) デザイントークンとパターン集。
   ウォームグレーキャンバス、チャコールカード (16px角丸)、バッジ、チャート、テーブル。
   「スライド」「プレゼン」「事業報告」「決算」「ピッチ」で発動。
-  参考: ~/Desktop/plural-reality/plural-reality-ir-style-preview.html
+  参考: plural-reality-design-system/examples/plural-reality-ir-style-preview.html
 ---
 
 > **系統**: 用途特化フォーマット。ブランド基調・canonical・用途→skill 対応は傘 skill `plural-reality-design-system` §0 が単一の正本。本フォーマットのパレットは Palantir 原典準拠で傘（白・角丸0px）と異なる場合がある（用途で使い分ける）。
@@ -258,5 +258,5 @@ body { background: #E8E8E8; }
 8. **プロダクト概要**: ダークカード全面。grid 3col。各プロダクト = border card (12px radius)
 
 ## 参考ファイル
-- テンプレート: `~/Desktop/plural-reality/plural-reality-ir-style-preview.html`
+- テンプレート: `plural-reality-design-system/examples/plural-reality-ir-style-preview.html`
 - 適用例: Drive「デザインシステム/kokumyaku/」フォルダ(ローカル無し・原典置き場) https://drive.google.com/drive/folders/1ZqSxWJVCbVu1uQ0ZsFGcNSXFnt3Liq3H

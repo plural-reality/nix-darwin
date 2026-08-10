@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plural Reality Whitepaper Template</title>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #FFFFFF;
+  --text: #000000;
+  --accent: #2196F3;
+  --muted: #666666;
+  --border: #000000;
+  --border-light: #E0E0E0;
+  --font-sans: "Public Sans", "Noto Sans JP", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #F0F0F0;
+  font-family: var(--font-sans);
+  font-weight: 400;
+  line-height: 1.7;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================================
+   Document
+   ============================================================ */
+.document {
+  max-width: 816px;
+  margin: 40px auto;
+  background: var(--bg);
+  box-shadow: 0 0 40px rgba(0,0,0,0.08);
+}
+
+.page {
+  padding: 48px 60px 40px;
+  min-height: 1056px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.page + .page { border-top: 1px solid var(--border-light); }
+
+@media print {
+  body { background: white; }
+  .document { box-shadow: none; margin: 0; }
+  .page { page-break-after: always; min-height: auto; padding: 15mm 20mm 12mm; }
+  .page + .page { border-top: none; }
+}
+
+/* ============================================================
+   Footer (all pages)
+   ============================================================ */
+.page-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-top: 16px;
+  margin-top: auto;
+  font-size: 9px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.footer-logo {
+  width: 14px;
+  height: 14px;
+  background: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  color: var(--bg);
+  font-weight: 700;
+  flex-shrink: 0;
+  font-family: var(--font-sans);
+}
+.footer-text { flex: 1; }
+
+/* ============================================================
+   Cover Page
+   ============================================================ */
+.cover { height: auto; }
+.cover-header {
+  display: grid;
+  grid-template-columns: 200px 1px 1fr;
+  gap: 0 32px;
+  align-items: start;
+  margin-bottom: 40px;
+  padding-top: 12px;
+}
+.cover-logo-area {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.cover-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cover-logo-mark {
+  width: 20px;
+  height: 20px;
+  background: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--bg);
+  font-weight: 700;
+  font-family: var(--font-sans);
+}
+.cover-logo-text {
+  font-size: 16px;
+  font-weight: 600;
+}
+.cover-separator {
+  width: 1px;
+  background: var(--border);
+  align-self: stretch;
+}
+.cover-company {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.cover-title {
+  font-size: 44px;
+  font-weight: 300;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  padding-top: 4px;
+}
+.cover-hero {
+  flex: 1;
+  min-height: 420px;
+  background: linear-gradient(135deg, #E8E8E8 0%, #F5F5F5 50%, #E0E0E0 100%);
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ============================================================
+   Page Header (pages 2+)
+   ============================================================ */
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 40px;
+}
+.page-header .logo-mark {
+  width: 14px;
+  height: 14px;
+  background: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  color: var(--bg);
+  font-weight: 700;
+  font-family: var(--font-sans);
+  flex-shrink: 0;
+}
+.page-header .logo-text {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ============================================================
+   Two-Column Layout (core pattern)
+   ============================================================ */
+.two-col {
+  display: grid;
+  grid-template-columns: 30% 1fr;
+  gap: 40px;
+  margin-bottom: 48px;
+}
+.col-heading {
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--accent);
+  line-height: 1.4;
+}
+.col-body {
+  font-size: 14px;
+  line-height: 1.8;
+}
+.col-body p { margin-bottom: 16px; }
+.col-body p:last-child { margin-bottom: 0; }
+
+/* ============================================================
+   Arrow List
+   ============================================================ */
+.arrow-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0;
+}
+.arrow-list li {
+  position: relative;
+  padding-left: 28px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.arrow-list li::before {
+  content: "\2192";
+  position: absolute;
+  left: 0;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* ============================================================
+   Sub-items (roman numerals)
+   ============================================================ */
+.sub-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0 28px;
+}
+.sub-list li {
+  padding-left: 24px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  line-height: 1.7;
+  position: relative;
+}
+.sub-list li::before {
+  position: absolute;
+  left: 0;
+  color: var(--muted);
+}
+.sub-list li:nth-child(1)::before { content: "i."; }
+.sub-list li:nth-child(2)::before { content: "ii."; }
+.sub-list li:nth-child(3)::before { content: "iii."; }
+.sub-list li:nth-child(4)::before { content: "iv."; }
+.sub-list li:nth-child(5)::before { content: "v."; }
+.sub-list li:nth-child(6)::before { content: "vi."; }
+
+/* ============================================================
+   Underline Patterns
+   ============================================================ */
+.thesis {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+.arrow-list u,
+.col-body u {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 400;
+}
+.metric {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 400;
+}
+
+/* ============================================================
+   Links
+   ============================================================ */
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover { text-decoration: underline; }
+
+/* ============================================================
+   Module Header
+   ============================================================ */
+.module-header { margin-bottom: 32px; }
+.module-rule {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0 0 24px;
+}
+.module-label {
+  font-size: 28px;
+  font-weight: 300;
+  line-height: 1.3;
+  margin-bottom: 8px;
+}
+.module-subtitle {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.page-title {
+  font-size: 28px;
+  font-weight: 300;
+  line-height: 1.3;
+  margin-bottom: 40px;
+}
+
+/* ============================================================
+   Section Rules
+   ============================================================ */
+.section-rule {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 48px 0;
+}
+.section-rule-light {
+  border: none;
+  border-top: 1px solid var(--border-light);
+  margin: 32px 0;
+}
+
+/* ============================================================
+   Concept Grid (2x2)
+   ============================================================ */
+.concept-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px 48px;
+}
+.concept-cell-rule {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0 0 16px;
+}
+.concept-number {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.concept-name {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+.concept-desc {
+  font-size: 13px;
+  line-height: 1.7;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  margin-bottom: 16px;
+}
+.concept-cell .arrow-list { margin: 8px 0; }
+.concept-cell .arrow-list li { font-size: 13px; margin-bottom: 8px; }
+
+/* ============================================================
+   Case Study
+   ============================================================ */
+.case-heading {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--accent);
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+.case-result {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--accent);
+  line-height: 1.4;
+}
+
+/* ============================================================
+   Screenshot / Photo Placeholders
+   ============================================================ */
+.screenshot-placeholder {
+  background: #F5F5F5;
+  border: 1px solid #E0E0E0;
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 32px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.photo-placeholder {
+  background: linear-gradient(135deg, #E0E0E0 0%, #F5F5F5 100%);
+  min-height: 300px;
+  margin: 32px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ============================================================
+   Footnotes
+   ============================================================ */
+.footnotes {
+  margin-top: auto;
+  padding-top: 24px;
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.footnotes p { margin-bottom: 4px; }
+.footnotes a { color: var(--accent); text-decoration: none; }
+.footnotes a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div class="document">
+
+  <!-- ========================================================
+       PAGE 1: COVER
+       ======================================================== -->
+  <div class="page cover">
+    <div class="cover-header">
+      <div class="cover-logo-area">
+        <div class="cover-logo">
+          <div class="cover-logo-mark">P</div>
+          <span class="cover-logo-text">Plural Reality</span>
+        </div>
+        <div class="cover-company">
+          Plural Reality Inc.<br>
+          &rarr; plural-reality.com
+        </div>
+      </div>
+      <div class="cover-separator"></div>
+      <h1 class="cover-title">
+        AIが聴き、<br>
+        AIが整理する。<br>
+        倍速アンケート
+      </h1>
+    </div>
+
+    <div class="cover-hero">[ヒーロー写真: プロダクトUI or 導入現場]</div>
+
+    <div class="page-footer">
+      <div class="footer-logo">P</div>
+      <div class="footer-text">Copyright &copy; 2026 Plural Reality Inc. All rights reserved. The information in this document is proprietary and confidential.</div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       PAGE 2: INTRODUCTION
+       ======================================================== -->
+  <div class="page">
+    <div class="page-header">
+      <div class="logo-mark">P</div>
+      <span class="logo-text">Plural Reality</span>
+    </div>
+
+    <div class="two-col">
+      <div class="col-heading">住民の声を聴くことの<br>難しさ</div>
+      <div class="col-body">
+        <p>自治体における住民参画は、民主主義の根幹である。しかし、従来のアンケート調査は回収率の低さ、自由記述の分析コスト、そして「声なき声」の取りこぼしという構造的な課題を抱えてきた。</p>
+        <p>総務省の調査<sup>1</sup>によれば、紙ベースのアンケート回収率は平均<u class="metric">23%</u>にとどまり、自由記述の分析には職員1人あたり平均<u class="metric">40時間</u>を要している。</p>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="col-heading">なぜ従来の手法では<br>限界があるのか</div>
+      <div class="col-body">
+        <p>従来のアンケート手法が抱える根本的な問題は以下の通りである:</p>
+        <ul class="arrow-list">
+          <li>紙・Webフォームでは、回答者の「本音」が引き出せない。選択肢に誘導されるバイアスが常に存在する</li>
+          <li>自由記述欄は回答率が極めて低く、記入されても断片的な内容にとどまる</li>
+          <li>回収後の分析は手作業に依存し、数百件の自由記述を人力で分類・集計するプロセスが必要</li>
+          <li>結果の報告書作成にさらに数週間を要し、施策への反映が遅れる</li>
+          <li>高齢者やデジタルリテラシーの低い住民が参加しにくい設計になっている</li>
+        </ul>
+        <p>この構造的課題に対し、多元現実は「AIが聴き、AIが整理する」という新しいアプローチで解決を図る。本ホワイトペーパーでは、倍速アンケート（Sonar）の技術アーキテクチャと導入効果を詳述する。</p>
+      </div>
+    </div>
+
+    <div class="footnotes">
+      <p>1 総務省「地方自治体における住民参画の実態調査」(2024)</p>
+      <p>2 多元現実 内部調査データ (2025)</p>
+    </div>
+
+    <div class="page-footer">
+      <div class="footer-logo">P</div>
+      <div class="footer-text">Copyright &copy; 2026 Plural Reality Inc. All rights reserved.</div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       PAGE 3: MODULE 1
+       ======================================================== -->
+  <div class="page">
+    <div class="page-header">
+      <div class="logo-mark">P</div>
+      <span class="logo-text">Plural Reality</span>
+    </div>
+
+    <div class="page-title">倍速アンケートの技術基盤</div>
+
+    <div class="module-header">
+      <hr class="module-rule">
+      <div class="module-label">Module 1 &darr;</div>
+      <div class="module-subtitle">音声AIによるインタビュー自動化</div>
+    </div>
+
+    <hr class="module-rule">
+
+    <div class="col-body" style="max-width: 65%; margin-left: 35%;">
+      <p class="thesis">Module 1は、AIが住民に直接質問し、対話形式で深い回答を引き出す音声インタビュー基盤を提供する。</p>
+
+      <p>従来のアンケートでは、設問設計者が想定した範囲内でしか情報を収集できなかった。倍速アンケートのAIインタビュー機能は、回答内容に応じてリアルタイムに追加質問を生成し、住民の潜在的なニーズや不満を掘り起こす。</p>
+
+      <p>この技術は以下の要素で構成される:</p>
+      <ul class="arrow-list">
+        <li>大規模言語モデル（LLM）による適応的質問生成</li>
+        <li>音声認識（STT）による多言語対応のリアルタイム文字起こし</li>
+        <li>感情分析エンジンによる回答のトーン・温度検出</li>
+        <li>プリセットテンプレートによる調査目的別のインタビュー設計</li>
+      </ul>
+
+      <div class="screenshot-placeholder">[プロダクトUI: AIインタビュー画面のスクリーンショット]</div>
+    </div>
+
+    <div class="page-footer">
+      <div class="footer-logo">P</div>
+      <div class="footer-text">Copyright &copy; 2026 Plural Reality Inc. All rights reserved.</div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       PAGE 4: CONCEPT GRID
+       ======================================================== -->
+  <div class="page">
+    <div class="page-header">
+      <div class="logo-mark">P</div>
+      <span class="logo-text">Plural Reality</span>
+    </div>
+
+    <div class="col-body" style="margin-bottom: 32px;">
+      <p>倍速アンケートのデータ処理パイプラインは、4つのコア概念で構成される:</p>
+    </div>
+
+    <div class="concept-grid">
+      <div class="concept-cell">
+        <hr class="concept-cell-rule">
+        <div class="concept-number">Concept 1</div>
+        <div class="concept-name">&hookleftarrow; Collection</div>
+        <p class="concept-desc">多様なチャネルから住民の声を収集する</p>
+        <ul class="arrow-list">
+          <li>AI音声インタビュー</li>
+          <li>Webフォーム連携</li>
+          <li>対面タブレット入力</li>
+          <li>電話自動応答</li>
+        </ul>
+      </div>
+
+      <div class="concept-cell">
+        <hr class="concept-cell-rule">
+        <div class="concept-number">Concept 2</div>
+        <div class="concept-name">&hookleftarrow; Analysis</div>
+        <p class="concept-desc">AIによる自動分類・感情分析・クラスタリング</p>
+        <ul class="arrow-list">
+          <li>トピック自動抽出</li>
+          <li>感情スコアリング</li>
+          <li>類似意見クラスタ化</li>
+          <li>優先度自動判定</li>
+        </ul>
+      </div>
+
+      <div class="concept-cell">
+        <hr class="concept-cell-rule">
+        <div class="concept-number">Concept 3</div>
+        <div class="concept-name">&hookleftarrow; Visualization</div>
+        <p class="concept-desc">分析結果をダッシュボードとレポートで可視化する</p>
+        <ul class="arrow-list">
+          <li>リアルタイムダッシュボード</li>
+          <li>属性別クロス集計</li>
+          <li>時系列トレンド分析</li>
+          <li>自動レポート生成</li>
+        </ul>
+      </div>
+
+      <div class="concept-cell">
+        <hr class="concept-cell-rule">
+        <div class="concept-number">Concept 4</div>
+        <div class="concept-name">&hookleftarrow; Action</div>
+        <p class="concept-desc">分析結果を施策立案・意思決定に直結させる</p>
+        <ul class="arrow-list">
+          <li>施策提案の自動生成</li>
+          <li>議会答弁資料への転換</li>
+          <li>住民フィードバックループ</li>
+          <li>KPIモニタリング連携</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <div class="footer-logo">P</div>
+      <div class="footer-text">Copyright &copy; 2026 Plural Reality Inc. All rights reserved.</div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       PAGE 5: CASE STUDY 1
+       ======================================================== -->
+  <div class="page">
+    <div class="page-header">
+      <div class="logo-mark">P</div>
+      <span class="logo-text">Plural Reality</span>
+    </div>
+
+    <div class="two-col">
+      <div>
+        <div class="case-heading">Real-World Example</div>
+        <div class="case-result">&hookleftarrow; A市：住民アンケートの回収率を3倍に改善し、分析工数を90%削減</div>
+      </div>
+      <div class="col-body">
+        <p>人口8万人のA市では、毎年実施する住民満足度調査の回収率が年々低下し、直近では<u class="metric">18%</u>まで落ち込んでいた。自由記述欄の回答率はわずか<u class="metric">5%</u>。政策立案の根拠となるデータの質が著しく低下していた。</p>
+
+        <p>多元現実の倍速アンケートを導入後、以下の成果を実現した:</p>
+
+        <ul class="arrow-list">
+          <li><u>企画課</u>は、AIインタビューのプリセットテンプレートを活用し、設問設計にかかる時間を従来の1/3に短縮
+            <ol class="sub-list">
+              <li>住民の回答に応じた追加質問の自動生成により、定性データの深度が向上</li>
+              <li>多言語対応により、外国人住民からの回答率が従来比5倍に増加</li>
+            </ol>
+          </li>
+          <li><u>情報政策課</u>は、AI分析ダッシュボードにより、数千件の自由記述を即座にクラスタ化・可視化</li>
+          <li><u>広報課</u>は、自動生成されたレポートをそのまま広報誌の素材として活用</li>
+        </ul>
+
+        <p>全体として、アンケート回収率は<u class="metric">54%</u>に改善し、分析から報告書完成までの期間を<u class="metric">6週間から3日</u>に短縮した。</p>
+
+        <div class="photo-placeholder">[導入現場の写真: タブレットで回答する住民]</div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <div class="footer-logo">P</div>
+      <div class="footer-text">Copyright &copy; 2026 Plural Reality Inc. All rights reserved.</div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       PAGE 6: MODULE 2
+       ======================================================== -->
+  <div class="page">
+    <div class="page-header">
+      <div class="logo-mark">P</div>
+      <span class="logo-text">Plural Reality</span>
+    </div>
+
+    <div class="module-header">
+      <hr class="module-rule">
+      <div class="module-label">Module 2 &darr;</div>
+      <div class="module-subtitle">センスメーキング: AIによる合意形成支援</div>
+    </div>
+
+    <hr class="module-rule">
+
+    <div class="col-body" style="max-width: 65%; margin-left: 35%;">
+      <p class="thesis">Module 2は、収集された住民の声を構造化し、対立する意見の間に共通基盤を発見するセンスメーキングエンジンを提供する。</p>
+
+      <p>住民参画の最大の課題は、多様な意見を「聴く」ことではなく、それらを「整理し、合意形成につなげる」ことにある。倍速アンケートのセンスメーキング機能は、NLP技術を用いて意見の構造を可視化し、政策立案者が合理的な意思決定を行うための基盤を提供する。</p>
+
+      <p>具体的には、以下のプロセスを自動化する:</p>
+
+      <ul class="arrow-list">
+        <li>意見のクラスタリングと対立軸の自動検出</li>
+        <li>各クラスタの代表的な意見の抽出と要約</li>
+        <li>「サイレント・マジョリティ」の推定（未回答層の意見傾向予測）</li>
+        <li>施策オプションごとの住民受容度シミュレーション</li>
+      </ul>
+
+      <p>このプロセスにより、従来は数ヶ月を要していた住民意見の取りまとめが、数時間で完了する。さらに、AIが生成する構造化レポートは、議会答弁や記者会見の資料としてそのまま活用可能である。</p>
+    </div>
+
+    <div class="page-footer">
+      <div class="footer-logo">P</div>
+      <div class="footer-text">Copyright &copy; 2026 Plural Reality Inc. All rights reserved.</div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       PAGE 7: CLOSING
+       ======================================================== -->
+  <div class="page">
+    <div class="page-header">
+      <div class="logo-mark">P</div>
+      <span class="logo-text">Plural Reality</span>
+    </div>
+
+    <div class="two-col">
+      <div class="col-heading">住民の声を、<br>施策の力に変える</div>
+      <div class="col-body">
+        <p>倍速アンケートは、自治体の住民参画プロセスを根本から再設計する。AIが住民に寄り添い、対話し、その声を構造化されたインサイトに変換する。</p>
+
+        <p>導入から数日で、住民の声の収集・分析・報告のすべてが自動化される。職員は分析作業から解放され、本来の業務である「施策の立案と実行」に集中できるようになる。</p>
+
+        <p>倍速アンケートが解決する問いは明確である:</p>
+
+        <ul class="arrow-list">
+          <li>「どうすれば、すべての住民の声を漏れなく聴けるか?」</li>
+          <li>「どうすれば、数千件の意見を即座に構造化できるか?」</li>
+          <li>「どうすれば、住民の声を施策に直結させられるか?」</li>
+          <li>「どうすれば、住民参画のコストを劇的に下げられるか?」</li>
+        </ul>
+
+        <p>デモンストレーションのご依頼は <a href="https://plural-reality.com/contact">plural-reality.com/contact</a> まで。</p>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <div class="footer-logo">P</div>
+      <div class="footer-text">Copyright &copy; 2026 Plural Reality Inc. All rights reserved.</div>
+    </div>
+  </div>
+
+</div><!-- /.document -->
+
+</body>
+</html>

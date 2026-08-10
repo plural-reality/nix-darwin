@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plural Reality — Web / LP Design System</title>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --background: #ffffff;
+  --foreground: #111111;
+  --secondary: #f3f3f3;
+  --muted-foreground: #525252;
+  --brand: #00C868;
+  --brand-foreground: #ffffff;
+  --border: #e5e5e5;
+  --destructive: #ef4444;
+  --font-sans: "Neue Haas Grotesk Display Pro", "Neue Haas Grotesk", "Geist", "Helvetica Neue", "Hiragino Kaku Gothic ProN", "Zen Kaku Gothic New", Helvetica, Arial, sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", Menlo, monospace;
+  --radius: 4px; /* web UI register(2–6px)・訂正DNA */
+}
+
+[data-theme="dark"] {
+  --background: #000000;
+  --foreground: #ffffff;
+  --secondary: #1c2127;
+  --muted-foreground: #d4d9df;
+  --brand: #00E599;
+  --brand-foreground: #000000;
+  --border: #383e47;
+  --card-bg: #1c2127;
+  --muted-bg: #2f343c;
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  transition: background 300ms, color 300ms;
+}
+
+/* ─── Theme Toggle ─── */
+.theme-toggle {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  display: flex;
+  gap: 2px;
+  z-index: 100;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  padding: 4px;
+}
+.theme-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  transition: all 200ms;
+}
+.theme-btn.active {
+  background: var(--foreground);
+  color: var(--background);
+}
+
+/* ─── Container ─── */
+.container {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 48px;
+}
+
+/* ─── Sections ─── */
+section {
+  padding: 96px 0;
+  border-top: 1px solid var(--border);
+}
+section:first-child { border-top: none; }
+
+/* ─── Typography ─── */
+.display    { font-size: clamp(48px, 6vw, 80px); font-weight: 400; letter-spacing: -0.02em; line-height: 1.1; }
+.h1         { font-size: clamp(36px, 4.5vw, 54px); font-weight: 400; letter-spacing: -0.02em; line-height: 1.1; }
+.h2         { font-size: clamp(28px, 3.5vw, 42px); font-weight: 400; letter-spacing: -0.02em; line-height: 1.2; }
+.h3         { font-size: clamp(20px, 2.5vw, 27px); font-weight: 400; letter-spacing: -0.02em; line-height: 1.3; }
+.body-text  { font-size: 18px; font-weight: 300; letter-spacing: 0.01em; line-height: 1.6; color: var(--muted-foreground); }
+.caption    { font-size: 14px; line-height: 1.5; color: var(--muted-foreground); }
+.tech-label { font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: 0.125em; text-transform: uppercase; color: var(--muted-foreground); }
+.kpi-value  { font-size: clamp(56px, 6vw, 80px); font-weight: 700; letter-spacing: -0.02em; line-height: 1.0; }
+.kpi-label  { font-family: var(--font-mono); font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.125em; color: var(--muted-foreground); margin-top: 8px; }
+
+/* ─── Buttons ─── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  height: 48px;
+  padding: 0 24px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 300ms;
+  letter-spacing: 0.01em;
+}
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--foreground);
+  color: var(--foreground);
+}
+.btn-ghost:hover {
+  background: var(--foreground);
+  color: var(--background);
+}
+.btn-primary {
+  background: var(--foreground);
+  border: 1px solid var(--foreground);
+  color: var(--background);
+}
+.btn-primary:hover { opacity: 0.8; }
+
+/* ─── Cards ─── */
+.card {
+  border-top: 1px solid var(--border);
+  padding: 32px 0;
+  transition: border-color 200ms;
+}
+.card:hover { border-color: var(--foreground); }
+.card-filled { background: var(--secondary); padding: 32px; border-radius: var(--radius); }
+
+/* ─── Grids ─── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px; }
+.grid-7-5 { display: grid; grid-template-columns: 7fr 5fr; gap: 48px; align-items: start; }
+
+/* ─── Quote ─── */
+.quote-block { background: var(--secondary); padding: 64px; }
+.quote-text { font-size: 28px; font-weight: 300; font-style: italic; line-height: 1.5; letter-spacing: -0.01em; }
+.quote-attribution { font-size: 14px; color: var(--muted-foreground); margin-top: 24px; }
+
+/* ─── Dark section ─── */
+.section-dark {
+  background: var(--foreground);
+  color: var(--background);
+}
+.section-dark .tech-label { color: rgba(255,255,255,0.4); }
+.section-dark .body-text { color: rgba(255,255,255,0.6); }
+.section-dark .kpi-label { color: rgba(255,255,255,0.4); }
+.section-dark .card { border-top-color: rgba(255,255,255,0.1); }
+.section-dark .card:hover { border-top-color: rgba(255,255,255,0.6); }
+
+/* ─── Brand link ─── */
+a.brand { color: var(--brand); text-decoration: none; }
+a.brand:hover { text-decoration: underline; }
+
+/* ─── Animate ─── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-in { animation: fadeInUp 600ms ease-out both; }
+.delay-1 { animation-delay: 100ms; }
+.delay-2 { animation-delay: 200ms; }
+.delay-3 { animation-delay: 300ms; }
+.delay-4 { animation-delay: 400ms; }
+
+/* ─── Nav ─── */
+nav {
+  border-bottom: 1px solid var(--border);
+  padding: 0 48px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  background: var(--background);
+  z-index: 50;
+}
+.nav-logo { font-size: 15px; font-weight: 600; letter-spacing: 0.01em; }
+.nav-links { display: flex; gap: 32px; align-items: center; }
+.nav-link { font-size: 14px; font-weight: 400; color: var(--muted-foreground); text-decoration: none; transition: color 200ms; }
+.nav-link:hover { color: var(--foreground); }
+
+/* ─── Footer ─── */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 48px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .grid-2, .grid-3, .grid-4, .grid-7-5 { grid-template-columns: 1fr; }
+  .container { padding: 0 24px; }
+  section { padding: 64px 0; }
+  .theme-toggle { top: 16px; right: 16px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Theme Toggle -->
+<div class="theme-toggle">
+  <button class="theme-btn active" onclick="setTheme('light')">Light</button>
+  <button class="theme-btn" onclick="setTheme('dark')">Dark</button>
+</div>
+
+<!-- Nav -->
+<nav>
+  <div class="nav-logo">Plural Reality</div>
+  <div class="nav-links">
+    <a href="#" class="nav-link">倍速会議</a>
+    <a href="#" class="nav-link">Sonar</a>
+    <a href="#" class="nav-link">Flux</a>
+    <a href="#" class="nav-link">事例</a>
+    <a href="#" class="btn btn-primary" style="height:36px; font-size:13px;">デモを予約</a>
+  </div>
+</nav>
+
+<!-- ─── 1. Hero ─── -->
+<section style="padding: 128px 0 96px;">
+  <div class="container">
+    <div class="tech-label animate-in" style="margin-bottom:24px;">公共 × テクノロジー</div>
+    <h1 class="display animate-in delay-1" style="max-width:800px; margin-bottom:32px;">
+      民主主義を、<br>もっと速く。
+    </h1>
+    <p class="body-text animate-in delay-2" style="max-width:560px; margin-bottom:48px;">
+      多元現実は、自治体・公共機関の意思決定を AI でアップデートするプロダクト群を開発・提供します。
+    </p>
+    <div class="animate-in delay-3" style="display:flex; gap:16px; flex-wrap:wrap;">
+      <a href="#" class="btn btn-primary">デモを予約する</a>
+      <a href="#" class="btn btn-ghost">導入事例を見る</a>
+    </div>
+  </div>
+</section>
+
+<!-- ─── 2. KPI ─── -->
+<section>
+  <div class="container">
+    <h2 class="h2" style="margin-bottom:64px;">数字で見る実績</h2>
+    <div class="grid-4">
+      <div>
+        <div class="kpi-value">68</div>
+        <div class="kpi-label">導入自治体数</div>
+      </div>
+      <div>
+        <div class="kpi-value">1,200<span style="font-size:0.5em;">万</span></div>
+        <div class="kpi-label">累計アンケート回収数</div>
+      </div>
+      <div>
+        <div class="kpi-value">-89%</div>
+        <div class="kpi-label">議事録作成時間削減</div>
+      </div>
+      <div>
+        <div class="kpi-value">72</div>
+        <div class="kpi-label">NPS スコア</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── 3. Products ─── -->
+<section>
+  <div class="container">
+    <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:48px;">
+      <h2 class="h2">3つのコアプロダクト</h2>
+      <a href="#" class="caption brand">すべて見る →</a>
+    </div>
+    <div class="grid-3">
+      <div class="card">
+        <div class="tech-label" style="margin-bottom:16px;">Product 01</div>
+        <h3 class="h3" style="margin-bottom:16px;">倍速会議</h3>
+        <p class="body-text" style="font-size:16px; margin-bottom:24px;">
+          AI が会議を構造化・要約・アクション抽出。自治体の政策決定サイクルを加速する会議支援 SaaS。
+        </p>
+        <a href="#" class="caption brand">詳細 →</a>
+      </div>
+      <div class="card">
+        <div class="tech-label" style="margin-bottom:16px;">Product 02</div>
+        <h3 class="h3" style="margin-bottom:16px;">Sonar</h3>
+        <p class="body-text" style="font-size:16px; margin-bottom:24px;">
+          大規模アンケートの設計・配信・分析を一元化。住民意識の可視化から政策立案まで対応。
+        </p>
+        <a href="#" class="caption brand">詳細 →</a>
+      </div>
+      <div class="card">
+        <div class="tech-label" style="margin-bottom:16px;">Product 03</div>
+        <h3 class="h3" style="margin-bottom:16px;">Flux</h3>
+        <p class="body-text" style="font-size:16px; margin-bottom:24px;">
+          AI が市民・職員にインタビューを実施し、定性情報を構造化データに変換するインタビューエンジン。
+        </p>
+        <a href="#" class="caption brand">詳細 →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── 4. Quote ─── -->
+<section style="padding:0;">
+  <div class="container">
+    <div class="quote-block">
+      <p class="quote-text">
+        「会議の質が変わった。決定事項が明確になり、次のアクションがすぐに動き出せるようになった。」
+      </p>
+      <p class="quote-attribution">東大阪市 政策推進室長</p>
+    </div>
+  </div>
+</section>
+
+<!-- ─── 5. Dark section ─── -->
+<section class="section-dark">
+  <div class="container">
+    <div class="grid-7-5">
+      <div>
+        <div class="tech-label" style="margin-bottom:24px;">なぜ多元現実か</div>
+        <h2 class="h1" style="margin-bottom:32px;">公共セクターに特化した<br>AI プロダクト</h2>
+        <p class="body-text" style="margin-bottom:40px;">
+          一般の SaaS ツールは、行政特有の意思決定プロセスや法的制約に対応していません。私たちは自治体の現場で培った知見を、プロダクトの深層に組み込んでいます。
+        </p>
+        <a href="#" class="btn" style="background:transparent; border-color:rgba(255,255,255,0.4); color:#fff;">私たちについて</a>
+      </div>
+      <div>
+        <div class="card" style="border-color:rgba(255,255,255,0.1);">
+          <div class="tech-label" style="margin-bottom:12px;">セキュリティ</div>
+          <p class="caption" style="color:rgba(255,255,255,0.6); line-height:1.7;">ISO 27001 認証取得。国内リージョン完結。ISMAP 登録申請中。</p>
+        </div>
+        <div class="card" style="border-color:rgba(255,255,255,0.1);">
+          <div class="tech-label" style="margin-bottom:12px;">導入実績</div>
+          <p class="caption" style="color:rgba(255,255,255,0.6); line-height:1.7;">政令市・中核市・小規模市町村まで幅広い規模の自治体で稼働中。</p>
+        </div>
+        <div class="card" style="border-color:rgba(255,255,255,0.1);">
+          <div class="tech-label" style="margin-bottom:12px;">サポート</div>
+          <p class="caption" style="color:rgba(255,255,255,0.6); line-height:1.7;">専任 CS 担当者による定着支援。平日 9-18 時の電話・メール対応。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── 6. 7:5 layout ─── -->
+<section>
+  <div class="container">
+    <div class="grid-7-5">
+      <div>
+        <div class="tech-label" style="margin-bottom:24px;">導入事例</div>
+        <h2 class="h2" style="margin-bottom:24px;">東大阪市が<br>全庁展開を決定</h2>
+        <p class="body-text" style="margin-bottom:32px;">
+          2026年1月より倍速会議を全庁展開。月次の政策会議における合意形成時間を平均 68 分から 22 分へ短縮。年間 2,400 時間の業務削減を達成。
+        </p>
+        <a href="#" class="btn btn-ghost">事例詳細を読む</a>
+      </div>
+      <div class="card-filled">
+        <div class="tech-label" style="margin-bottom:24px;">成果指標</div>
+        <div style="display:flex; flex-direction:column; gap:24px;">
+          <div>
+            <div class="kpi-value" style="font-size:48px;">-68%</div>
+            <div class="kpi-label">合意形成時間</div>
+          </div>
+          <div style="height:1px; background:var(--border);"></div>
+          <div>
+            <div class="kpi-value" style="font-size:48px;">2,400h</div>
+            <div class="kpi-label">年間削減時間</div>
+          </div>
+          <div style="height:1px; background:var(--border);"></div>
+          <div>
+            <div class="kpi-value" style="font-size:48px;">92%</div>
+            <div class="kpi-label">職員満足度</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── 7. CTA ─── -->
+<section style="text-align:center;">
+  <div class="container">
+    <div class="tech-label" style="margin-bottom:24px;">はじめる</div>
+    <h2 class="h1" style="margin-bottom:24px; max-width:600px; margin-left:auto; margin-right:auto;">
+      まず、デモで<br>体験してください。
+    </h2>
+    <p class="body-text" style="margin-bottom:48px; max-width:480px; margin-left:auto; margin-right:auto;">
+      30 分のオンラインデモで、現在の課題に合わせた活用方法をご提案します。
+    </p>
+    <div style="display:flex; gap:16px; justify-content:center; flex-wrap:wrap;">
+      <a href="#" class="btn btn-primary">デモを予約する（無料）</a>
+      <a href="#" class="btn btn-ghost">資料ダウンロード</a>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="caption">© 2026 Plural Reality Inc.</div>
+  <div class="tech-label">v2.1.0</div>
+</footer>
+
+<script>
+const setTheme = (theme) => {
+  document.documentElement.setAttribute('data-theme', theme);
+  document.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.textContent.toLowerCase() === theme);
+  });
+};
+</script>
+</body>
+</html>

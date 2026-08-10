@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>多元現実 協業概要</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=Noto+Sans+JP:wght@300;400;600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #FFFFFF;
+    --text: #000000;
+    --muted: #666666;
+    --font-sans: "Neue Haas Grotesk Display Pro", "Neue Haas Grotesk", "Geist", "Helvetica Neue", "Hiragino Kaku Gothic ProN", "Zen Kaku Gothic New", Helvetica, Arial, sans-serif;
+    --font-mono: "Geist Mono", "SF Mono", Menlo, monospace;
+  }
+
+  *, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    background: #F0F0F0;
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-weight: 300;
+    font-size: 15px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .document {
+    max-width: 816px;
+    margin: 40px auto;
+    background: var(--bg);
+    box-shadow: 0 1px 8px rgba(0,0,0,0.08);
+  }
+
+  /* ─── Page Structure ─── */
+
+  .page {
+    padding: 80px 80px 60px 80px;
+    min-height: 1056px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .page-break {
+    border: none;
+    border-top: 1px solid #E0E0E0;
+    margin: 0;
+  }
+
+  /* ─── Footer ─── */
+
+  .page-footer {
+    margin-top: auto;
+    padding-top: 24px;
+    border-top: 1px solid var(--text);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+  }
+
+  .page-footer .page-number {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text);
+  }
+
+  /* ═══════════════════════════════════════
+     COVER PAGE
+     ═══════════════════════════════════════ */
+
+  .cover {
+    padding: 80px 80px 60px 80px;
+    min-height: 1056px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  .cover-top {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .cover-logo {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 120px;
+  }
+
+  .cover-logo-right {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    margin-bottom: 120px;
+  }
+
+  .cover-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    padding-top: 40px;
+  }
+
+  .cover-title {
+    font-size: 42px;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    margin-bottom: 16px;
+  }
+
+  .cover-subtitle {
+    font-size: 20px;
+    font-weight: 300;
+    color: var(--muted);
+    margin-bottom: 48px;
+  }
+
+  .cover-rule {
+    border: none;
+    border-top: 2px solid var(--text);
+    margin-bottom: 16px;
+  }
+
+  .cover-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 48px;
+  }
+
+  .cover-photo {
+    width: 100%;
+    height: 320px;
+    background: linear-gradient(135deg, #E8E8E8 0%, #D0D0D0 50%, #C0C0C0 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: auto;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .cover-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  /* ═══════════════════════════════════════
+     QUOTE PAGE
+     ═══════════════════════════════════════ */
+
+  .quote-page {
+    padding: 80px 80px 60px 80px;
+    min-height: 1056px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+  }
+
+  .quote-block {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 40px 0;
+  }
+
+  .quote-text {
+    font-size: 26px;
+    font-weight: 300;
+    line-height: 1.6;
+    letter-spacing: -0.005em;
+    margin-bottom: 48px;
+    max-width: 600px;
+  }
+
+  .quote-text .curly-open,
+  .quote-text .curly-close {
+    font-size: 36px;
+    line-height: 0;
+    vertical-align: -0.1em;
+  }
+
+  .quote-attribution {
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.8;
+  }
+
+  .quote-attribution .name {
+    font-weight: 600;
+    font-size: 15px;
+  }
+
+  .quote-attribution .role {
+    color: var(--muted);
+  }
+
+  /* ═══════════════════════════════════════
+     INDEX PAGE
+     ═══════════════════════════════════════ */
+
+  .index-page {
+    padding: 80px 80px 60px 80px;
+    min-height: 1056px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  .index-label {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 80px;
+  }
+
+  .index-arrow {
+    font-size: 18px;
+    margin-left: 4px;
+  }
+
+  .index-list {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    padding-top: 20px;
+  }
+
+  .index-item {
+    border-top: 1px solid var(--text);
+    padding: 24px 0;
+    display: flex;
+    align-items: baseline;
+    gap: 24px;
+  }
+
+  .index-item:last-child {
+    border-bottom: 1px solid var(--text);
+  }
+
+  .index-number {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    flex: 0 0 80px;
+    font-family: var(--font-mono);
+  }
+
+  .index-content {
+    flex: 1;
+  }
+
+  .index-title {
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.3;
+    margin-bottom: 4px;
+  }
+
+  .index-subtitle {
+    font-size: 15px;
+    font-weight: 300;
+    color: var(--muted);
+  }
+
+  /* ═══════════════════════════════════════
+     CONTENT PAGES
+     ═══════════════════════════════════════ */
+
+  .content-page {
+    padding: 0 0 60px 0;
+    min-height: 1056px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  .section-header {
+    padding: 32px 80px;
+    border-bottom: 1px solid #E0E0E0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 40px;
+  }
+
+  .section-header-logo {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    flex: 0 0 auto;
+    padding-top: 4px;
+  }
+
+  .section-header-right {
+    text-align: right;
+  }
+
+  .section-header-number {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    font-family: var(--font-mono);
+    margin-bottom: 2px;
+  }
+
+  .section-header-title {
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  .content-body {
+    padding: 56px 80px 0 80px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+  }
+
+  .col-left .statement {
+    font-size: 22px;
+    font-weight: 400;
+    line-height: 1.55;
+    letter-spacing: -0.005em;
+  }
+
+  .col-left .statement .arrow {
+    font-size: 26px;
+    display: inline;
+  }
+
+  .col-right p {
+    font-size: 14px;
+    font-weight: 300;
+    line-height: 1.75;
+    margin-bottom: 20px;
+    color: #1A1A1A;
+  }
+
+  .col-right p:last-child {
+    margin-bottom: 0;
+  }
+
+  .col-right .highlight {
+    font-weight: 600;
+  }
+
+  .content-full {
+    padding: 56px 80px 0 80px;
+    flex: 1;
+  }
+
+  .content-full p {
+    font-size: 15px;
+    font-weight: 300;
+    line-height: 1.75;
+    margin-bottom: 20px;
+    max-width: 600px;
+  }
+
+  .content-full h3 {
+    font-size: 17px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    margin-top: 32px;
+  }
+
+  .content-full h3:first-child {
+    margin-top: 0;
+  }
+
+  /* ═══════════════════════════════════════
+     TIMELINE TABLE
+     ═══════════════════════════════════════ */
+
+  .timeline-section {
+    margin-top: 56px;
+    padding: 0 80px;
+  }
+
+  .timeline-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+    color: var(--muted);
+  }
+
+  .timeline-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .timeline-table thead th {
+    text-align: left;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 12px 16px 12px 0;
+    border-bottom: 2px solid var(--text);
+    white-space: nowrap;
+  }
+
+  .timeline-table thead th:first-child { width: 100px; }
+  .timeline-table thead th:nth-child(2) { width: 70px; }
+  .timeline-table thead th:nth-child(3) { width: 100px; }
+
+  .timeline-table tbody td {
+    padding: 16px 16px 16px 0;
+    border-bottom: 1px solid #E0E0E0;
+    vertical-align: top;
+    font-weight: 300;
+    line-height: 1.5;
+  }
+
+  .timeline-table tbody td:first-child {
+    font-weight: 600;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
+  .timeline-table tbody td:nth-child(2) {
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+
+  .timeline-table tbody td:nth-child(3) {
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+
+  .timeline-table tbody tr:last-child td {
+    border-bottom: 2px solid var(--text);
+  }
+
+  /* ═══════════════════════════════════════
+     PHOTOS
+     ═══════════════════════════════════════ */
+
+  .photo-full {
+    width: 100%;
+    height: 280px;
+    background: #EDEDED;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 40px 0;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .photo-full img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .photo-half {
+    width: 100%;
+    height: 220px;
+    background: #F0F0F0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 32px 0 0 0;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .photo-half img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .photo-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 32px 0 0 0;
+  }
+
+  .photo-grid-item {
+    height: 180px;
+    background: #F0F0F0;
+    overflow: hidden;
+  }
+
+  .photo-grid-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .photo-caption {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 8px;
+    letter-spacing: 0.02em;
+  }
+
+  /* ═══════════════════════════════════════
+     KPI CARDS
+     ═══════════════════════════════════════ */
+
+  .kpi-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 24px;
+    margin: 40px 0;
+  }
+
+  .kpi-card {
+    border-top: 2px solid var(--text);
+    padding-top: 16px;
+  }
+
+  .kpi-value {
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1.1;
+    margin-bottom: 4px;
+    font-family: var(--font-mono);
+  }
+
+  .kpi-label {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+  }
+
+  /* ═══════════════════════════════════════
+     PARTNER PROFILES
+     ═══════════════════════════════════════ */
+
+  .profile-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    margin-top: 40px;
+  }
+
+  .profile-card {
+    border-top: 1px solid var(--text);
+    padding-top: 24px;
+  }
+
+  .profile-card .org-name {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .profile-card .org-type {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    margin-bottom: 16px;
+  }
+
+  .profile-card .org-desc {
+    font-size: 14px;
+    font-weight: 300;
+    line-height: 1.75;
+  }
+
+  .profile-card .org-stat {
+    font-size: 13px;
+    font-weight: 400;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #E0E0E0;
+  }
+
+  .profile-card .org-stat strong {
+    font-weight: 700;
+    font-family: var(--font-mono);
+  }
+
+  /* ═══════════════════════════════════════
+     TESTIMONIAL
+     ═══════════════════════════════════════ */
+
+  .testimonial {
+    border-left: 3px solid var(--text);
+    padding: 20px 0 20px 24px;
+    margin: 32px 0;
+  }
+
+  .testimonial-text {
+    font-size: 15px;
+    font-weight: 400;
+    line-height: 1.7;
+    font-style: italic;
+    margin-bottom: 12px;
+  }
+
+  .testimonial-author {
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .testimonial-role {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* ═══════════════════════════════════════
+     CLOSING PAGE
+     ═══════════════════════════════════════ */
+
+  .closing {
+    padding: 80px;
+    min-height: 1056px;
+    background: var(--text);
+    color: var(--bg);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+  }
+
+  .closing-logo {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+  }
+
+  .closing-tagline {
+    font-size: 28px;
+    font-weight: 300;
+    line-height: 1.5;
+    margin-bottom: 48px;
+    max-width: 480px;
+  }
+
+  .closing-contact {
+    font-size: 13px;
+    font-weight: 400;
+    color: #999999;
+    line-height: 2;
+  }
+
+  /* ═══════════════════════════════════════
+     PRINT
+     ═══════════════════════════════════════ */
+
+  @media print {
+    body { background: white; }
+    .document { box-shadow: none; margin: 0; }
+    .page, .cover, .quote-page, .index-page, .content-page { page-break-after: always; min-height: auto; }
+    .closing { page-break-after: auto; }
+  }
+.highlight { font-family:"Helvetica Neue",Helvetica,Arial,sans-serif; font-feature-settings:"tnum" 1,"lnum" 1; }
+</style>
+</head>
+<body>
+
+<div class="document">
+
+  <!-- ═══════════════════════════════════════
+       PAGE 1 — COVER
+       ═══════════════════════════════════════ -->
+
+  <div class="cover">
+    <div class="cover-top">
+      <div></div>
+      <div style="text-align:right; line-height:1.4; margin-bottom:120px;">
+        <div class="cover-logo" style="margin-bottom:0;">多元現実</div>
+        <div class="cover-logo-right" style="margin-bottom:0;">plural-reality.com</div>
+      </div>
+    </div>
+
+    <div class="cover-body">
+      <h1 class="cover-title">多元現実 × 構想日本<br>協業概要</h1>
+      <p class="cover-subtitle">市民参加の再定義：テクノロジーと現場知の融合</p>
+
+      <hr class="cover-rule">
+
+      <div class="cover-meta">
+        <span>2024–2026</span>
+        <span>Copyright &copy; 2026 合同会社 多元現実</span>
+      </div>
+
+      <div class="cover-photo">
+        <img src="/Users/tkgshn/Developer/website/client/public/images/IMG_5176.jpeg" alt="太田市 自分ごと化会議の様子">
+      </div>
+    </div>
+  </div>
+
+  <hr class="page-break">
+
+  <!-- ═══════════════════════════════════════
+       PAGE 2 — QUOTE
+       ═══════════════════════════════════════ -->
+
+  <div class="quote-page">
+    <div class="quote-block">
+      <p class="quote-text">
+        <span class="curly-open">&ldquo;</span>AIによる民主主義には、二つの未来の分岐点があります。一つは、AIが勝手に正解を提示し、人間が思考停止するディストピア。もう一つは、AIが問いかけ、人間の思考を揺さぶる未来です。私たちが目指すのは後者です。<span class="curly-close">&rdquo;</span>
+      </p>
+      <div class="quote-attribution">
+        <div class="name">加藤秀樹</div>
+        <div class="role">代表</div>
+        <div class="role">構想日本</div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>多元現実 / plural-reality.com</span>
+      <span class="page-number">02</span>
+    </div>
+  </div>
+
+  <hr class="page-break">
+
+  <!-- ═══════════════════════════════════════
+       PAGE 3 — INDEX
+       ═══════════════════════════════════════ -->
+
+  <div class="index-page">
+    <div class="index-label">目次 <span class="index-arrow">&searr;</span></div>
+
+    <div class="index-list">
+      <div class="index-item">
+        <span class="index-number">01 &ndash;</span>
+        <div class="index-content">
+          <div class="index-title">両組織の紹介</div>
+          <div class="index-subtitle">構想日本の30年と、多元現実のビジョン</div>
+        </div>
+      </div>
+
+      <div class="index-item">
+        <span class="index-number">02 &ndash;</span>
+        <div class="index-content">
+          <div class="index-title">協業の背景</div>
+          <div class="index-subtitle">なぜこの2つの組織が手を組んだのか</div>
+        </div>
+      </div>
+
+      <div class="index-item">
+        <span class="index-number">03 &ndash;</span>
+        <div class="index-content">
+          <div class="index-title">太田市ケーススタディ</div>
+          <div class="index-subtitle">自分ごと化会議 × AIファシリテーション</div>
+        </div>
+      </div>
+
+      <div class="index-item">
+        <span class="index-number">04 &ndash;</span>
+        <div class="index-content">
+          <div class="index-title">プロダクト群</div>
+          <div class="index-subtitle">倍速会議・倍速アンケート・Flux</div>
+        </div>
+      </div>
+
+      <div class="index-item">
+        <span class="index-number">05 &ndash;</span>
+        <div class="index-content">
+          <div class="index-title">実証結果</div>
+          <div class="index-subtitle">定量的成果と参加者の声</div>
+        </div>
+      </div>
+
+      <div class="index-item">
+        <span class="index-number">06 &ndash;</span>
+        <div class="index-content">
+          <div class="index-title">今後の展望</div>
+          <div class="index-subtitle">行政の意思決定スイートへ</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>多元現実 / plural-reality.com</span>
+      <span class="page-number">03</span>
+    </div>
+  </div>
+
+  <hr class="page-break">
+
+  <!-- ═══════════════════════════════════════
+       PAGE 4 — CHAPTER 01: 両組織の紹介
+       ═══════════════════════════════════════ -->
+
+  <div class="content-page">
+    <div class="section-header">
+      <div class="section-header-logo">多元現実</div>
+      <div class="section-header-right">
+        <div class="section-header-number">01 &ndash; 両組織の紹介</div>
+        <div class="section-header-title">構想日本の30年と、多元現実のビジョン</div>
+      </div>
+    </div>
+
+    <div class="content-body">
+      <div class="two-col">
+        <div class="col-left">
+          <p class="statement">30年の現場知と、次の100年のための統治技術。相補的な強みを持つ2つの組織が、市民参加の新しいスタンダードを構築する。<span class="arrow">&rarr;</span></p>
+        </div>
+        <div class="col-right">
+          <p>本協業は、「現場を知り尽くしたシンクタンク」と「統治技術を再発明するテクノロジー企業」という、日本の市民参加において最も相補的な2つの組織によるパートナーシップです。</p>
+          <p>構想日本は1997年の設立以来、「事業仕分け」を国の6省庁・102以上の自治体で172回実施。「自分ごと化会議」は全国<span class="highlight">156自治体で356回</span>開催し、累計参加者は<span class="highlight">1万1千人</span>を超えます。</p>
+          <p>多元現実は「民主主義とは、集団的知性を発揮する枠組みである」という信念のもと、AIと制度設計を組み合わせたソリューションを構築。従来の「広く浅い」アンケートと「深く狭い」インタビューの二項対立を超える技術基盤を開発しています。</p>
+        </div>
+      </div>
+
+      <div class="profile-grid">
+        <div class="profile-card">
+          <div class="org-name">構想日本</div>
+          <div class="org-type">一般社団法人 — 設立 1997年</div>
+          <div class="org-desc">「実現する政策シンクタンク」として、政治・行政を市民が「自分ごと」として捉えられるよう、必要な政策を提言し実現する。代表・加藤秀樹（元大蔵省）。</div>
+          <div class="org-stat">
+            <strong>156</strong> 自治体 &middot; <strong>356</strong> 回開催 &middot; <strong>11,000+</strong> 累計参加者
+          </div>
+        </div>
+        <div class="profile-card">
+          <div class="org-name">合同会社 多元現実</div>
+          <div class="org-type">設立 2024年</div>
+          <div class="org-desc">「次の100年のための統治技術」をミッションに、AIを活用した合意形成・意思決定支援プラットフォームを開発。代表・高木俊輔。</div>
+          <div class="org-stat">
+            <strong>3</strong> プロダクト &middot; <strong>30秒</strong> でレポート生成 &middot; <strong>90%</strong> 工数削減
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-footer" style="padding: 0 80px;">
+      <span>多元現実 / plural-reality.com</span>
+      <span class="page-number">04</span>
+    </div>
+  </div>
+
+  <hr class="page-break">
+
+  <!-- ═══════════════════════════════════════
+       PAGE 5 — CHAPTER 02: 協業の背景
+       ═══════════════════════════════════════ -->
+
+  <div class="content-page">
+    <div class="section-header">
+      <div class="section-header-logo">多元現実</div>
+      <div class="section-header-right">
+        <div class="section-header-number">02 &ndash; 協業の背景</div>
+        <div class="section-header-title">なぜこの2つの組織が手を組んだのか</div>
+      </div>
+    </div>
+
+    <div class="content-body">
+      <div class="two-col">
+        <div class="col-left">
+          <p class="statement">対面型の市民参加には物理的な限界がある。しかし、デジタルだけでは現場の「身体知」を捉えられない。両方が必要だった。<span class="arrow">&rarr;</span></p>
+        </div>
+        <div class="col-right">
+          <p>構想日本の「自分ごと化会議」は、住民基本台帳からの<span class="highlight">無作為抽出</span>という手法で、自発的に参加しない「サイレント・マジョリティ」の声を拾い上げてきました。しかし、対面ワークショップの物理的制約——会場、時間、ファシリテーターの属人性——がスケーラビリティの壁となっていました。</p>
+          <p>一方、多元現実のAIプラットフォームは、<span class="highlight">広くかつ深く</span>市民の声を収集・構造化する能力を持ちますが、30年にわたる自治体との信頼関係や、現場での「言葉にならない空気」を読む力は持ち合わせていませんでした。</p>
+          <p>加藤代表は語ります。「学者が言う『ロジック』と、現場の『身体知』は違う。AIは言葉やデータになったロジックを扱うのは得意です。でも、その手前にある『言葉にならない現場の匂い』を捉えるには、やはり人間が現場に行かなければならない。」</p>
+          <p>この認識が、両組織の協業を必然にしました。<span class="highlight">人間の身体知 × AIの構造化能力</span>——どちらか一方では到達できない解像度を、組み合わせることで実現する。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-footer" style="padding: 0 80px;">
+      <span>多元現実 / plural-reality.com</span>
+      <span class="page-number">05</span>
+    </div>
+  </div>
+
+  <hr class="page-break">
+
+  <!-- ═══════════════════════════════════════
+       PAGE 6 — CHAPTER 03: 太田市ケーススタディ
+       ═══════════════════════════════════════ -->
+
+  <div class="content-page">
+    <div class="section-header">
+      <div class="section-header-logo">多元現実</div>
+      <div class="section-header-right">
+        <div class="section-header-number">03 &ndash; 太田市ケーススタディ</div>
+        <div class="section-header-title">自分ごと化会議 × AIファシリテーション</div>
+      </div>
+    </div>
+
+    <div class="content-body">
+      <div class="two-col">
+        <div class="col-left">
+          <p class="statement">群馬県太田市。9年間続く無作為抽出型住民会議に、AIファシリテーション支援を導入。沈黙していた参加者が、声を上げ始めた。<span class="arrow">&rarr;</span></p>
+        </div>
+        <div class="col-right">
+          <p>太田市は2016年から毎年「自分ごと化会議」を開催してきた先進自治体です。令和7年度のテーマは<span class="highlight">「親と子の笑顔輝くまち（子育て支援）」</span>。住民基本台帳から無作為抽出された市民が、小グループに分かれてワークショップ形式で議論します。</p>
+          <p>しかし、無作為抽出の宿命として、参加者同士に面識がなく、「何を話せばいいかわからない」という沈黙が課題でした。声の大きな人の意見が場を支配し、多様な視点が埋もれてしまう構造的な問題があったのです。</p>
+          <p>多元現実の倍速会議を導入したことで、<span class="highlight">合意点と対立点がリアルタイムで可視化</span>され、参加者は「自分の意見がどこに位置するか」を把握した上で発言できるようになりました。結果として、それまで沈黙していた参加者が積極的に声を上げるようになったのです。</p>
+        </div>
+      </div>
+
+      <div class="photo-grid">
+        <div class="photo-grid-item">
+          <img src="/Users/tkgshn/Developer/website/client/public/images/ota-city-meeting-photo@2x.png" alt="太田市 住民会議の現場">
+        </div>
+        <div class="photo-grid-item">
+          <img src="/Users/tkgshn/Developer/plural-reality/LP/public/screens/gov/ota-consensus.png" alt="合意形成画面">
+        </div>
+      </div>
+      <div class="photo-caption">左: 太田市 自分ごと化会議の様子　右: 倍速会議による合意形成の可視化画面</div>
+    </div>
+
+    <div class="page-footer" style="padding: 0 80px;">
+      <span>多元現実 / plural-reality.com</span>
+      <span class="page-number">06</span>
+    </div>
+  </div>
+
+  <hr class="page-break">
+
+  <!-- ═══════════════════════════════════════
+       PAGE 7 — QUOTE (ファシリテーター)
+       ═══════════════════════════════════════ -->
+
+  <div class="quote-page">
+    <div class="quote-block">
+      <p class="quote-text">
+        <span class="curly-open">&ldquo;</span>多元現実のAIファシリテーション支援により、私は参加者全員の想いを受け止めながら、民主的にそれでいてロジカルに会議をすすめる力を手に入れました。<span class="curly-close">&rdquo;</span>
+      </p>
+      <div class="quote-attribution">
+        <div class="name">前田 真</div>
+        <div class="role">外部ファシリテーター</div>
+        <div class="role">北海道清水町役場</div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>多元現実 / plural-reality.com</span>
+      <span class="page-number">07</span>
+    </div>
+  </div>
+
+  <hr class="page-break">
+
+  <!-- ═══════════════════════════════════════
+       PAGE 8 — CHAPTER 04: プロダクト群
+       ═══════════════════════════════════════ -->
+
+  <div class="content-page">
+    <div class="section-header">
+      <div class="section-header-logo">多元現実</div>
+      <div class="section-header-right">
+        <div class="section-header-number">04 &ndash; プロダクト群</div>
+        <div class="section-header-title">倍速会議・倍速アンケート・Flux</div>
+      </div>
+    </div>
+
+    <div class="content-full">
+      <p>多元現実は、市民参加のプロセス全体をカバーする3つのプロダクトを開発しています。構想日本の「自分ごと化会議」の各フェーズに対応し、対面での対話とデジタルでの分析を統合します。</p>
+
+      <h3>倍速会議（Cartographer）</h3>
+      <p>リアルタイムの合意形成可視化ツール。会議の前に参加者全員の温度感を可視化し、論点が明確な状態で議論をスタートします。AIによる質問自動生成、合意度・対立度・不明確度の自動抽出、クラスタ・スタンス分析を提供。太田市では、レポートドラフト生成を<span class="highlight">1週間から30秒に短縮</span>しました。</p>
+
+      <h3>倍速アンケート（Sonar）</h3>
+      <p>AI主導の適応型調査プラットフォーム。調査目的を入力するだけで、AIが質問設計・配信・深掘りインタビュー・レポート生成までを自動実行します。従来の「広く浅い」アンケートと「深く狭い」インタビューの二項対立を解消し、<span class="highlight">広くかつ深い</span>市民の声の収集を実現します。</p>
+
+      <h3>Flux（未来提案チャット）</h3>
+      <p>市民の個人的な体験（ナラティブ）を政策言語に翻訳するセンスメイキング・アシスタント。「政策への意見はないけれど、困りごとはある」という市民の声を拾い上げ、関連する政策領域との接続や、同様の課題を持つ他の住民の存在を可視化します。</p>
+    </div>
+
+    <div class="photo-half" style="margin: 0 80px; width: calc(100% - 160px);">
+      <img src="/Users/tkgshn/Developer/plural-reality/LP/public/screens/gov/ota-sensemaking-overview.png" alt="センスメーキング概観">
+    </div>
+    <div style="padding: 0 80px;">
+      <div class="photo-caption">太田市での倍速会議 — センスメーキング・ダッシュボード</div>
+    </div>
+
+    <div style="flex:1;"></div>
+
+    <div class="page-footer" style="padding: 0 80px;">
+      <span>多元現実 / plural-reality.com</span>
+      <span class="page-number">08</span>
+    </div>
+  </div>
+
+  <hr class="page-break">
+
+  <!-- ═══════════════════════════════════════
+       PAGE 9 — CHAPTER 05: 実証結果
+       ═══════════════════════════════════════ -->
+
+  <div class="content-page">
+    <div class="section-header">
+      <div class="section-header-logo">多元現実</div>
+      <div class="section-header-right">
+        <div class="section-header-number">05 &ndash; 実証結果</div>
+        <div class="section-header-title">定量的成果と参加者の声</div>
+      </div>
+    </div>
+
+    <div class="content-body">
+      <div class="two-col">
+        <div class="col-left">
+          <p class="statement">4ヶ月のPoC期間で、工数・品質・参加者体験のすべてにおいて有意な改善を確認した。<span class="arrow">&rarr;</span></p>
+        </div>
+        <div class="col-right">
+          <p>2025年10月〜2026年1月の太田市PoCでは、構想日本が9年間培ってきた「自分ごと化会議」のプロセスに多元現実のAIスタックを統合。以下の定量的成果を確認しました。</p>
+          <p>レポートドラフトの生成時間は<span class="highlight">1週間から約30秒</span>へ短縮。手書きシートのOCR、議事録作成、文字起こしなどの工数は<span class="highlight">約90%削減</span>されました。PDCAサイクルの回転速度は、年次ベースから<span class="highlight">セッション単位</span>へと加速しています。</p>
+          <p>参加者体験においても、「声の大きな人が場を支配する」構造が緩和され、沈黙していた参加者が発言するようになったことがアンケートで確認されています。市民の意見は、一方的な不満の表明から、<span class="highlight">条件付きの具体的提案</span>へと質的に変化しました。</p>
+        </div>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-value">30s</div>
+          <div class="kpi-label">レポート生成時間（従来: 1週間）</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-value">90%</div>
+          <div class="kpi-label">事務工数の削減率</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-value">1/365</div>
+          <div class="kpi-label">PDCAサイクル（年次→毎回）</div>
+        </div>
+      </div>
+
+      <div class="testimonial">
+        <div class="testimonial-text">「手段が自己目的化してはいけない。新しい技術でより本質的な合意形成ができるなら、古い枠組みは壊して進めばいい。」</div>
+        <div class="testimonial-author">加藤秀樹</div>
+        <div class="testimonial-role">構想日本 代表</div>
+      </div>
+    </div>
+
+    <div class="page-footer" style="padding: 0 80px;">
+      <span>多元現実 / plural-reality.com</span>
+      <span class="page-number">09</span>
+    </div>
+  </div>
+
+  <hr class="page-break">
+
+  <!-- ═══════════════════════════════════════
+       PAGE 10 — CHAPTER 06: 今後の展望 + TIMELINE
+       ═══════════════════════════════════════ -->
+
+  <div class="content-page">
+    <div class="section-header">
+      <div class="section-header-logo">多元現実</div>
+      <div class="section-header-right">
+        <div class="section-header-number">06 &ndash; 今後の展望</div>
+        <div class="section-header-title">行政の意思決定スイートへ</div>
+      </div>
+    </div>
+
+    <div class="content-body">
+      <div class="two-col">
+        <div class="col-left">
+          <p class="statement">点のPoCから、面の事業基盤へ。住民の声の収集から政策文書の生成まで、行政の意思決定プロセスを一気通貫で支援する。<span class="arrow">&rarr;</span></p>
+        </div>
+        <div class="col-right">
+          <p>太田市PoCの成功を受け、2026年4月からの本格事業化に向けて、3つの事業領域を展開します。</p>
+          <p><span class="highlight">箱モノ自分ごと化会議</span>：全国で老朽化する公共施設の建替え・統廃合に際し、住民合意形成を支援。合意形成の遅延は数千万円規模のプロジェクト遅延を引き起こすため、ROIが明確です。</p>
+          <p><span class="highlight">総合計画支援</span>：約1,700自治体が4年ごとに策定する総合計画において、住民対話から政策分析、計画文書の自動生成までをエンドツーエンドで支援します。</p>
+          <p><span class="highlight">予算編成・事業評価</span>：構想日本の「事業仕分け」の知見とAIデータ分析を組み合わせ、当年度の事業評価を翌年度の予算配分に直結させるPDCA自動化を実現します。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="timeline-section">
+      <div class="timeline-label">協業の歩み</div>
+      <table class="timeline-table">
+        <thead>
+          <tr>
+            <th>期</th>
+            <th>年</th>
+            <th>規模</th>
+            <th>成果</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>PoC</td>
+            <td>2025</td>
+            <td>1 自治体</td>
+            <td>太田市で倍速会議を4ヶ月間実証。工数90%削減を確認</td>
+          </tr>
+          <tr>
+            <td>事業化</td>
+            <td>2026</td>
+            <td>4+ 自治体</td>
+            <td>箱モノ自分ごと化会議・総合計画支援の2本柱で本格展開</td>
+          </tr>
+          <tr>
+            <td>拡大</td>
+            <td>2027</td>
+            <td>20+ 自治体</td>
+            <td>3プロダクト体制。予算編成・事業評価領域を追加</td>
+          </tr>
+          <tr>
+            <td>標準化</td>
+            <td>2028</td>
+            <td>50+ 自治体</td>
+            <td>自治体間の知識共有基盤を構築。プラットフォーム化へ移行</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="flex:1;"></div>
+
+    <div class="page-footer" style="padding: 0 80px;">
+      <span>多元現実 / plural-reality.com</span>
+      <span class="page-number">10</span>
+    </div>
+  </div>
+
+  <hr class="page-break">
+
+  <!-- ═══════════════════════════════════════
+       PAGE 11 — CLOSING
+       ═══════════════════════════════════════ -->
+
+  <div class="closing">
+    <div class="closing-logo">多元現実 × 構想日本</div>
+    <div class="closing-tagline">次の100年のための<br>統治技術を、共に。</div>
+    <div class="closing-contact">
+      合同会社 多元現実<br>
+      plural-reality.com<br>
+      <br>
+      一般社団法人 構想日本<br>
+      kosonippon.org
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

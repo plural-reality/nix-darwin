@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>多元現実 倍速会議サービス定義書</title>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #FFFFFF;
+  --text: #000000;
+  --muted: #555555;
+  --font-sans: "Neue Haas Grotesk Display Pro", "Neue Haas Grotesk", "Geist", "Helvetica Neue", "Hiragino Kaku Gothic ProN", "Zen Kaku Gothic New", Helvetica, Arial, sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", Menlo, monospace;
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { font-size: 14px; }
+
+body {
+  background: #F0F0F0;
+  color: var(--text);
+  font-family: var(--font-sans);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Document ─── */
+.document {
+  max-width: 816px;
+  margin: 40px auto;
+  background: var(--bg);
+  box-shadow: 0 0 40px rgba(0,0,0,0.08);
+}
+
+.page {
+  max-width: 816px;
+  margin: 0 auto;
+  padding: 48px 64px;
+  position: relative;
+  min-height: 1056px;
+}
+
+.page + .page { border-top: 1px solid #E0E0E0; }
+
+.page-separator { max-width: 816px; margin: 0 auto; height: 1px; background: #E0E0E0; }
+
+/* ─── Cover ─── */
+.cover {
+  display: flex;
+  flex-direction: column;
+  min-height: 1056px;
+  padding: 0 64px;
+}
+
+.cover-rule-top { width: 100%; height: 2px; background: var(--text); margin-top: 48px; }
+
+.cover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 24px 0 48px 0;
+}
+
+.cover-logo {
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.cover-logo-sub { font-weight: 400; font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+.confidential {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cover-title {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.2;
+  margin-bottom: 12px;
+}
+.cover-subtitle {
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  margin-bottom: 40px;
+}
+
+.cover-product-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 40px;
+}
+.cover-product-logo-icon {
+  width: 48px;
+  height: 48px;
+  border: 2px solid var(--text);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 20px;
+}
+.cover-product-logo-text { font-size: 16px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+
+.cover-prepared { font-size: 13px; color: var(--muted); line-height: 1.8; margin-bottom: 40px; }
+.cover-prepared strong { color: var(--text); font-weight: 600; }
+
+.cover-art {
+  flex: 1;
+  min-height: 280px;
+  background: var(--text);
+  position: relative;
+  overflow: hidden;
+}
+.cover-art-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+.cover-art-label {
+  position: absolute;
+  bottom: 32px;
+  left: 32px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.3);
+}
+.cover-art-lines {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.cover-art-lines span {
+  display: block;
+  height: 1px;
+  background: rgba(255,255,255,0.06);
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
+/* ─── Page Header ─── */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--text);
+  margin-bottom: 40px;
+}
+.page-header-left { font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.page-header-logo-icon {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--text);
+  border-radius: 4px;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 800;
+}
+.page-header-right { font-size: 11px; color: var(--muted); font-family: var(--font-mono); }
+
+/* ─── Page Footer ─── */
+.page-footer {
+  position: absolute;
+  bottom: 32px;
+  left: 64px;
+  right: 64px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  color: var(--muted);
+  padding-top: 12px;
+  border-top: 1px solid #E0E0E0;
+}
+.page-footer-page { font-weight: 600; color: var(--text); font-family: var(--font-mono); }
+
+/* ─── TOC ─── */
+.toc-title { font-size: 24px; font-weight: 700; margin-bottom: 32px; }
+.toc-item { display: flex; align-items: baseline; padding: 6px 0; font-size: 13px; }
+.toc-number { font-weight: 600; font-family: var(--font-mono); min-width: 48px; }
+.toc-dots { flex: 1; border-bottom: 1px dotted #ccc; margin: 0 8px; min-width: 40px; position: relative; top: -3px; }
+.toc-page { font-weight: 600; min-width: 24px; text-align: right; font-family: var(--font-mono); }
+
+/* ─── Headings ─── */
+.section-h1 { font-size: 20px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; margin: 48px 0 24px 0; border-bottom: 1px solid #E0E0E0; padding-bottom: 12px; }
+.section-h2 { font-size: 16px; font-weight: 600; margin: 32px 0 16px 0; }
+.section-h3 { font-size: 14px; font-weight: 600; margin: 24px 0 12px 0; }
+
+/* ─── Body ─── */
+.body-text { font-size: 13px; line-height: 1.75; text-align: justify; margin-bottom: 16px; color: #1A1A1A; }
+.bullet-list { list-style: disc; padding-left: 24px; margin: 12px 0 20px 0; }
+.bullet-list li { font-size: 13px; line-height: 1.75; text-align: justify; margin-bottom: 6px; }
+.sub-list { list-style: circle; padding-left: 24px; margin: 6px 0 12px 0; }
+.sub-list li { font-size: 12px; line-height: 1.7; margin-bottom: 4px; }
+
+/* ─── Closing ─── */
+.closing-page {
+  background: #000000;
+  min-height: 1056px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  position: relative;
+  overflow: hidden;
+}
+.closing-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+.closing-logo-icon {
+  width: 64px;
+  height: 64px;
+  border: 2px solid rgba(255,255,255,0.6);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 800;
+  color: #fff;
+  position: relative;
+}
+.closing-name { font-size: 18px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; position: relative; }
+.closing-tagline { font-size: 14px; color: #888; position: relative; }
+.closing-url { font-family: var(--font-mono); font-size: 12px; color: rgba(255,255,255,0.4); position: relative; }
+.closing-copyright { font-size: 10px; color: rgba(255,255,255,0.3); position: relative; }
+.bk-favicon{display:inline-block;vertical-align:middle;background:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiIgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIj4KICA8cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI2IiBmaWxsPSIjMWExYTJlIi8+CiAgPHRleHQKICAgIHg9IjE2IgogICAgeT0iMTgiCiAgICBmb250LWZhbWlseT0iJ0hpcmFnaW5vIFNhbnMnLCAnWXUgR290aGljJywgJ05vdG8gU2FucyBKUCcsIHNhbnMtc2VyaWYiCiAgICBmb250LXNpemU9IjE0IgogICAgZm9udC13ZWlnaHQ9IjMwMCIKICAgIGZpbGw9IndoaXRlIgogICAgdGV4dC1hbmNob3I9Im1pZGRsZSIKICAgIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiCiAgPuWAjemAnzwvdGV4dD4KPC9zdmc+Cg==") center/contain no-repeat;border-radius:5px;}
+.toc-name{font-size:13px;color:var(--text);white-space:nowrap;}
+</style>
+</head>
+<body>
+<div class="document">
+
+  <!-- ────────────────────────── P1: 表紙 ────────────────────────── -->
+  <div class="cover">
+    <div class="cover-rule-top"></div>
+    <div class="cover-header">
+      <div class="confidential">社外秘</div>
+      <div style="display:flex; align-items:center; gap:9px;">
+        <div style="text-align:left;">
+          <div class="cover-logo">多元現実</div>
+          <div class="cover-logo-sub">plural-reality.com</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cover-title">倍速会議<br>サービス定義書</div>
+    <div class="cover-subtitle">版 2.1</div>
+
+    <div class="cover-product-logo">
+      <div class="cover-product-logo-icon" style="border:none;padding:0"><span class="bk-favicon" style="width:48px;height:48px;display:block"></span></div>
+      <div class="cover-product-logo-text">倍速会議</div>
+    </div>
+
+    <div class="cover-prepared">
+      <strong>提出先:</strong> ○○県 デジタル推進課<br>
+      <strong>提出日:</strong> 2026年6月19日<br>
+      <strong>文書番号:</strong> PR-SD-2026-001<br>
+      <strong>機密区分:</strong> 取扱注意（受領者限定）
+    </div>
+
+    <div class="cover-art">
+      <div class="cover-art-grid"></div>
+      <div class="cover-art-lines">
+        <span style="top:15%;"></span>
+        <span style="top:32%;"></span>
+        <span style="top:51%;"></span>
+        <span style="top:67%;"></span>
+        <span style="top:83%;"></span>
+      </div>
+      <div class="cover-art-label">多元現実 倍速会議</div>
+    </div>
+  </div>
+
+  <!-- ────────────────────────── P2: 目次 ────────────────────────── -->
+  <div class="page">
+    <div class="page-header">
+      <div class="page-header-right">倍速会議 サービス定義書</div>
+      <div class="page-header-left" style="justify-content:flex-end;">
+        <span>多元現実</span>
+      </div>
+    </div>
+
+    <div class="toc-title">目次</div>
+
+    <div class="toc-item"><span class="toc-number">1</span><span class="toc-name">サービス概要</span><span class="toc-dots"></span><span class="toc-page">3</span></div>
+
+    <div class="toc-item"><span class="toc-number">2</span><span class="toc-name">機能仕様</span><span class="toc-dots"></span><span class="toc-page">4</span></div>
+
+    <div class="toc-item"><span class="toc-number">3</span><span class="toc-name">セキュリティ・コンプライアンス</span><span class="toc-dots"></span><span class="toc-page">5</span></div>
+
+    <div class="toc-item"><span class="toc-number">4</span><span class="toc-name">導入・サポート体制</span><span class="toc-dots"></span><span class="toc-page">6</span></div>
+
+    <div class="toc-item"><span class="toc-number">5</span><span class="toc-name">料金体系</span><span class="toc-dots"></span><span class="toc-page">7</span></div>
+
+    <div class="page-footer">
+      <span>© 2026 合同会社 多元現実 All rights reserved.</span>
+      <span class="page-footer-page">02</span>
+    </div>
+  </div>
+
+  <!-- ────────────────────────── P3: サービス概要 ────────────────────────── -->
+  <div class="page">
+    <div class="page-header">
+      <div class="page-header-right">倍速会議 サービス定義書</div>
+      <div class="page-header-left" style="justify-content:flex-end;">
+        <span>多元現実</span>
+      </div>
+    </div>
+
+    <div class="section-h1">サービス概要</div>
+
+    <div class="section-h2">1.1 サービスの目的</div>
+    <p class="body-text">
+      倍速会議は、地方自治体・公共機関の会議プロセスを AI によって構造化・効率化する SaaS プラットフォームです。会議の録音・文字起こし・要約・アクション抽出・議事録生成を自動化し、担当者の会議関連業務を最大 70% 削減します。
+    </p>
+
+    <div class="section-h2">1.2 対象ユーザー</div>
+    <ul class="bullet-list">
+      <li>地方自治体の政策立案担当部門（企画課・政策調整課等）</li>
+      <li>議会事務局・委員会事務局</li>
+      <li>首長・副首長直轄の特命チーム</li>
+      <li>公共機関・外郭団体</li>
+    </ul>
+
+    <div class="section-h2">1.3 主要指標（実績）</div>
+    <ul class="bullet-list">
+      <li>導入自治体数: <strong>68自治体</strong>（2026年6月時点）</li>
+      <li>会議処理件数: <strong>月間 4,200件</strong></li>
+      <li>平均議事録作成時間: <strong>3分以内</strong>（従来比 -89%）</li>
+      <li>NPS スコア: <strong>72</strong>（業界平均 38 を大幅上回る）</li>
+    </ul>
+
+    <div class="section-h2">1.4 提供形態</div>
+    <p class="body-text">
+      クラウド型 SaaS（マルチテナント構成）。オンプレミス・プライベートクラウドへの展開にも対応可能（別途見積）。API による既存システムとの連携を標準サポート。
+    </p>
+
+    <div class="page-footer">
+      <span>© 2026 合同会社 多元現実 All rights reserved.</span>
+      <span class="page-footer-page">03</span>
+    </div>
+  </div>
+
+  <!-- ────────────────────────── P4: 機能仕様 ────────────────────────── -->
+  <div class="page">
+    <div class="page-header">
+      <div class="page-header-right">倍速会議 サービス定義書</div>
+      <div class="page-header-left" style="justify-content:flex-end;">
+        <span>多元現実</span>
+      </div>
+    </div>
+
+    <div class="section-h1">機能仕様</div>
+
+    <div class="section-h2">2.1 コア機能</div>
+    <ul class="bullet-list">
+      <li><strong>リアルタイム文字起こし</strong> — 対面・オンライン会議の音声を 99.2% 精度で日本語テキスト化</li>
+      <li><strong>AI 要約・構造化</strong> — 発言を「報告」「議論」「決定」「宿題」に自動分類</li>
+      <li><strong>議事録自動生成</strong> — 組織フォーマットに準拠した Word / PDF を即時出力</li>
+      <li><strong>アクション管理</strong> — 担当者・期限を自動抽出し、タスク管理ツールへ連携</li>
+    </ul>
+
+    <div class="section-h2">2.2 対応環境</div>
+    <ul class="bullet-list">
+      <li>Web ブラウザ: Chrome 110+, Edge 110+, Safari 16+</li>
+      <li>会議ツール連携: Zoom, Teams, Google Meet（拡張機能）</li>
+      <li>モバイル: iOS 16+ / Android 12+（専用アプリ）</li>
+      <li>オフライン会議: 専用録音デバイスまたはスマートフォンアプリ</li>
+    </ul>
+
+    <div class="section-h2">2.3 連携 API</div>
+    <ul class="bullet-list">
+      <li>REST API v2（JSON over HTTPS）</li>
+      <li>Webhook によるリアルタイム通知</li>
+      <li>SAML 2.0 / OIDC による SSO 対応</li>
+      <li>庁内文書管理システムとのコネクタ（個別対応）</li>
+    </ul>
+
+    <div class="section-h2">2.4 非機能要件</div>
+    <ul class="bullet-list">
+      <li>稼働率: 99.9% SLA（計画メンテナンス時間を除く）</li>
+      <li>応答時間: API 95パーセンタイル 200ms 以内</li>
+      <li>データ保存: 国内リージョン（東日本 / 西日本）のみ</li>
+      <li>バックアップ: 日次フルバックアップ、30日間保持</li>
+    </ul>
+
+    <div class="page-footer">
+      <span>© 2026 合同会社 多元現実 All rights reserved.</span>
+      <span class="page-footer-page">04</span>
+    </div>
+  </div>
+
+  <!-- ────────────────────────── P5: セキュリティ ────────────────────────── -->
+  <div class="page">
+    <div class="page-header">
+      <div class="page-header-right">倍速会議 サービス定義書</div>
+      <div class="page-header-left" style="justify-content:flex-end;">
+        <span>多元現実</span>
+      </div>
+    </div>
+
+    <div class="section-h1">セキュリティ・コンプライアンス</div>
+
+    <div class="section-h2">3.1 認証・認可</div>
+    <ul class="bullet-list">
+      <li>多要素認証（MFA）必須</li>
+      <li>ロールベースアクセス制御（RBAC）: 管理者 / 編集者 / 閲覧者 / ゲスト</li>
+      <li>セッションタイムアウト: 無操作 30 分で自動ログアウト</li>
+      <li>IP アドレス制限（オプション）</li>
+    </ul>
+
+    <div class="section-h2">3.2 データ保護</div>
+    <ul class="bullet-list">
+      <li>通信暗号化: TLS 1.3</li>
+      <li>保存暗号化: AES-256</li>
+      <li>音声・議事録データの学習利用: <strong>不可</strong>（契約で明示）</li>
+      <li>データ削除: 退会後 30 日以内に完全消去</li>
+    </ul>
+
+    <div class="section-h2">3.3 認証・準拠</div>
+    <ul class="bullet-list">
+      <li>ISO/IEC 27001 認証取得</li>
+      <li>政府情報システムのためのセキュリティ評価制度（ISMAP）登録申請中</li>
+      <li>個人情報保護法・行政機関個人情報保護法 準拠</li>
+      <li>地方公共団体情報システム機構（J-LIS）ガイドライン対応</li>
+    </ul>
+
+    <div class="section-h2">4.0 導入・サポート体制</div>
+    <div class="section-h3">4.1 標準導入フロー</div>
+    <ul class="bullet-list">
+      <li>Step 1 — 要件ヒアリング・環境確認（1〜2週間）</li>
+      <li>Step 2 — アカウント設定・SSO 連携（1週間）</li>
+      <li>Step 3 — 管理者トレーニング（半日）</li>
+      <li>Step 4 — パイロット運用（1ヶ月）</li>
+      <li>Step 5 — 全庁展開・定着支援（継続）</li>
+    </ul>
+
+    <div class="section-h3">4.2 サポート体制</div>
+    <ul class="bullet-list">
+      <li>平日 9:00〜18:00 メール・電話サポート（標準）</li>
+      <li>24/7 障害対応（エンタープライズプラン）</li>
+      <li>専任カスタマーサクセス担当者配置（エンタープライズ）</li>
+    </ul>
+
+    <div class="page-footer">
+      <span>© 2026 合同会社 多元現実 All rights reserved.</span>
+      <span class="page-footer-page">05</span>
+    </div>
+  </div>
+
+  <!-- ────────────────────────── P6: クロージング ────────────────────────── -->
+  <div class="closing-page">
+    <div class="closing-grid"></div>
+    <div class="closing-name">倍速会議</div>
+    <div class="closing-tagline">会議を、意思決定の武器に。</div>
+    <div class="closing-url">app.baisoku-kaigi.com</div>
+    <div class="closing-copyright">© 2026 合同会社 多元現実 All rights reserved.</div>
+  </div>
+
+</div>
+</body>
+</html>

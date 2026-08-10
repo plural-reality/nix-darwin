@@ -762,4 +762,4 @@ a:hover {
 
 ## 参考ファイル
 - 参照元PDF: `~/Library/CloudStorage/GoogleDrive-takagi@plural-reality.com/Shared drives/plural-reality/plural-reality/デザインシステム/presentations/Whitepapers/Supply_Chain_Construction_Whitepaper_2022.pdf`
-- テンプレート: `~/Desktop/plural-reality/plural-reality-whitepaper-style.html`
+- テンプレート: `plural-reality-design-system/examples/plural-reality-whitepaper-style.html`

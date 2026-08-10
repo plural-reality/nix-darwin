@@ -23,7 +23,7 @@ description: >
 ### canonical（source of truth）
 - **正本 = この Claude skill 群**（nix-darwin 管理: `plural-reality-design-system`（傘）+ `design-format-*`）。デザイントークンの唯一の定義元。
 - **Drive「デザインシステム」フォルダ = 原典 / エクスポート置き場**（人間可読の 01–07 スタイルHTML・INDEX.md・kokumyaku 適用例・Palantir 原典PDF）。canonical ではない派生・参照物。
-- `~/Desktop/plural-reality/*.html` = ローカルプレビュー（各 skill が参照）。トークンは各 SKILL.md に inline 済みのため、プレビュー欠損でも再現性は保たれる。
+- `examples/*.html` = Nix 管理のローカルプレビュー（各 skill が参照）。トークンは各 SKILL.md に inline 済みのため、プレビュー欠損でも再現性は保たれる。
 
 ### 2系統（用途で使い分ける — 統合しない）
 | 系統 | 何 | パレット / 形 | 用途 |

@@ -10,7 +10,7 @@
       "PRIMARY — https://www.palantir.com and /jp LIVE 'Warp Speed' capture (dark charcoal video heroes, 'Scroll to Explore', neo-grotesque display, sparing emerald accent, near-sharp 2–6px UI corners; CTAs 'Request a Demo →' / 'デモの申込はこちら')",
       "PRIMARY — https://raw.githubusercontent.com/palantir/blueprint/develop/packages/colors/src/colors.ts (authoritative surface ramp: BLACK #111418, DARK_GRAY1-5 #1C2127/#252A31/#2F343C/#383E47/#404854, GRAY1-5 #5F6B7C→#C5CBD3, LIGHT_GRAY1-5 #D3D8DE→#F6F7F9)",
       "DOWNSTREAM / degraded — ~/Developer/plural-reality/palantir/ (写経 replica): system font (-apple-system), invented #00FF00 terminal-green, generic Tailwind grays. Diff evidence only.",
-      "DOWNSTREAM / degraded — ~/Desktop/plural-reality/plural-reality-design-preview.html + plural-reality-design-system/SKILL.md (多元 adaptation: Teal #0F766E/#2DD4BF + Public Sans — 多元's own brand choices, NOT Palantir DNA)"
+      "DOWNSTREAM / degraded — plural-reality-design-system/examples/plural-reality-design-preview.html + plural-reality-design-system/SKILL.md (多元 adaptation: Teal #0F766E/#2DD4BF + Public Sans — 多元's own brand choices, NOT Palantir DNA)"
     ],
     "created_at": "2026-07-04"
   },

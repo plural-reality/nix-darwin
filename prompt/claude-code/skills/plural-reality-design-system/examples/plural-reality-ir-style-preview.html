@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>多元現実 事業概要</title>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --canvas: #C5C5C5;
+  --card: #1E1E1E;
+  --card-alt: #2A2A2A;
+  --card-stripe: #2F2F2F;
+  --text-on-canvas: #1E1E1E;
+  --text-on-card: #FFFFFF;
+  --text-muted-canvas: #5A5A5A;
+  --text-muted-card: #8A8A8A;
+  --radius-card: 16px;
+  --radius-badge: 6px;
+  --font-sans: "Neue Haas Grotesk Display Pro", "Neue Haas Grotesk", "Geist", "Helvetica Neue", "Hiragino Kaku Gothic ProN", "Zen Kaku Gothic New", Helvetica, Arial, sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", Menlo, monospace;
+  --slide-pad: 48px;
+  --slide-gap: 24px;
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #E8E8E8;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Wrapper ─── */
+.slide-wrapper { max-width: 1200px; margin: 32px auto; padding: 0 24px; }
+
+.slide-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #888;
+  margin-bottom: 8px;
+  margin-top: 40px;
+}
+.slide-label:first-child { margin-top: 0; }
+
+/* ─── Slide ─── */
+.slide {
+  aspect-ratio: 16/9;
+  background: var(--canvas);
+  border-radius: 8px;
+  padding: var(--slide-pad);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+  margin-bottom: 24px;
+}
+
+/* ─── Typography ─── */
+.slide-title       { font-size: 48px; font-weight: 300; letter-spacing: -0.02em; color: var(--text-on-canvas); line-height: 1.15; }
+.slide-title-lg    { font-size: 160px; font-weight: 300; letter-spacing: -0.04em; color: var(--text-on-card); line-height: 0.9; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-feature-settings: "tnum" 1, "lnum" 1; }
+.slide-subtitle    { font-size: 24px; font-weight: 300; letter-spacing: -0.01em; }
+.slide-body        { font-size: 16px; font-weight: 400; line-height: 1.6; }
+.slide-caption     { font-size: 12px; color: var(--text-muted-card); }
+.slide-footer-txt  { position: absolute; bottom: 16px; left: var(--slide-pad); right: var(--slide-pad); font-size: 10px; color: var(--text-muted-canvas); text-align: right; }
+.section-label     { font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* ─── Badge ─── */
+.badge-row { display: flex; gap: 4px; margin-bottom: 24px; }
+.badge-item { font-family: var(--font-mono); font-size: 11px; font-weight: 500; padding: 4px 10px; background: var(--card); color: var(--text-on-card); border-radius: 6px; }
+.badge-light .badge-item { background: rgba(0,0,0,0.08); color: var(--text-on-canvas); }
+
+/* ─── Cards ─── */
+.dark-card      { background: var(--card); border-radius: 16px; padding: 40px; color: var(--text-on-card); flex: 1; }
+.dark-card-half { background: var(--card); border-radius: 16px; padding: 32px; color: var(--text-on-card); }
+
+/* ─── Nav Dots ─── */
+.nav-dots { position: absolute; bottom: 32px; right: var(--slide-pad); display: flex; gap: 8px; }
+.dot { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--text-on-card); background: transparent; }
+.dot.active { background: var(--text-on-card); }
+
+/* ─── Table ─── */
+.ir-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ir-table th { font-family: var(--font-mono); font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; text-align: right; padding: 8px 16px; color: var(--text-muted-card); border-bottom: 1px solid rgba(255,255,255,0.1); }
+.ir-table th:first-child { text-align: left; }
+.ir-table td { padding: 10px 16px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-on-card); }
+.ir-table td:first-child { text-align: left; color: var(--text-muted-card); }
+.ir-table tr.stripe { background: var(--card-stripe); }
+.ir-table tr.total td { border-top: 2px solid rgba(255,255,255,0.2); font-weight: 600; }
+
+/* ─── Highlight List ─── */
+.highlight-list { list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.highlight-item { background: var(--card); color: var(--text-on-card); padding: 12px 20px; font-size: 14px; display: flex; align-items: baseline; gap: 12px; }
+.highlight-item:first-child { border-radius: 6px 6px 0 0; }
+.highlight-item:last-child { border-radius: 0 0 6px 6px; }
+.highlight-arrow { font-size: 12px; color: var(--text-muted-card); flex-shrink: 0; }
+
+/* ─── Bar Chart ─── */
+.bar-chart { display: flex; align-items: flex-end; gap: 32px; height: 160px; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 0; }
+.bar-col { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.bar-value { font-size: 14px; font-weight: 400; color: var(--text-on-card); font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-feature-settings: "tnum" 1, "lnum" 1; }
+.bar { width: 48px; background: #FFFFFF; border-radius: 2px 2px 0 0; }
+.bar-outline { width: 48px; border: 1.5px solid rgba(255,255,255,0.4); border-radius: 2px 2px 0 0; background: transparent; }
+.bar-label { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted-card); margin-top: 8px; }
+
+/* ─── Separator ─── */
+.separator { width: 100%; height: 1px; background: rgba(255,255,255,0.15); margin: 16px 0; }
+.separator-canvas { width: 100%; height: 1px; background: rgba(0,0,0,0.1); margin: 16px 0; }
+
+/* ─── Layouts ─── */
+.split            { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; flex: 1; }
+.split-text-chart { display: grid; grid-template-columns: 2fr 3fr; gap: 24px; flex: 1; }
+.guidance-grid    { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; flex: 1; }
+.grid-3           { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; flex: 1; }
+
+/* ─── Product Card ─── */
+.product-card {
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 12px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.product-card-name { font-size: 13px; font-weight: 600; color: var(--text-on-card); }
+.product-card-desc { font-size: 12px; color: var(--text-muted-card); line-height: 1.5; }
+
+/* ─── KPI number ─── */
+.kpi-big   { font-size: 64px; font-weight: 400; letter-spacing: -0.02em; color: var(--text-on-card); line-height: 1.0; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-feature-settings: "tnum" 1, "lnum" 1; }
+.kpi-unit  { font-size: 20px; font-weight: 300; color: var(--text-muted-card); margin-left: 5px; }
+.kpi-label { font-family: var(--font-mono); font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted-card); margin-top: 4px; }
+
+/* ─── Favicons (実サイト正本) ─── */
+</style>
+</head>
+<body>
+<div class="slide-wrapper">
+
+  <!-- ────────────────────────── SLIDE 1: 表紙 ────────────────────────── -->
+  <div class="slide-label">Slide 1 — 表紙</div>
+  <div class="slide" style="background: var(--card);">
+    <div style="display:flex; flex-direction:column; justify-content:space-between; flex:1;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <div class="slide-title-lg">2026</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; justify-content:flex-end;">
+          <div style="line-height:1.25; text-align:left;">
+            <div style="font-weight:600; color:var(--text-on-card);">多元現実</div>
+            <div style="font-size:11px; color:var(--text-muted-card);">plural-reality.com</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="slide-subtitle" style="color:var(--text-on-card); margin-bottom:8px;">事業概要・決算説明</div>
+        <div style="font-size:14px; color:var(--text-muted-card);">Q1 2026 投資家向け情報</div>
+      </div>
+    </div>
+    <div class="nav-dots">
+      <div class="dot active"></div>
+      <div class="dot"></div>
+      <div class="dot"></div>
+      <div class="dot"></div>
+    </div>
+  </div>
+
+  <!-- ────────────────────────── SLIDE 2: ハイライト ────────────────────────── -->
+  <div class="slide-label">Slide 2 — ハイライト</div>
+  <div class="slide">
+    <div class="badge-row">
+      <span class="badge-item">Q1</span>
+      <span class="badge-item">事業概要</span>
+    </div>
+    <div class="slide-title" style="margin-bottom: 24px;">2026年第1四半期<br>主要トピックス</div>
+    <ul class="highlight-list" style="flex:1;">
+      <li class="highlight-item"><span class="highlight-arrow">→</span>倍速会議 導入自治体数が前四半期比 42% 増加</li>
+      <li class="highlight-item"><span class="highlight-arrow">→</span>Sonar アンケート 累計回収数 1,200万件を突破</li>
+      <li class="highlight-item"><span class="highlight-arrow">→</span>Flux AIインタビュー機能を全プランへ展開</li>
+      <li class="highlight-item"><span class="highlight-arrow">→</span>新規パートナー契約 3件（政令市 2、省庁 1）</li>
+      <li class="highlight-item"><span class="highlight-arrow">→</span>ARR ¥480M 達成、前年同期比 +68%</li>
+    </ul>
+    <div class="slide-footer-txt">合同会社 多元現実 2026 Q1</div>
+  </div>
+
+  <!-- ────────────────────────── SLIDE 3: KPI チャート ────────────────────────── -->
+  <div class="slide-label">Slide 3 — KPI チャート</div>
+  <div class="slide">
+    <div class="badge-row">
+      <span class="badge-item">Q1</span>
+      <span class="badge-item">ARR 推移</span>
+    </div>
+    <div class="split-text-chart">
+      <div style="display:flex; flex-direction:column; justify-content:center;">
+        <div class="slide-title" style="font-size:36px; margin-bottom:16px;">年間経常収益<br>ARR</div>
+        <div class="kpi-big">¥480<span class="kpi-unit">M</span></div>
+        <div class="kpi-label" style="margin-top:8px;">前年同期比 +68%</div>
+        <div class="separator-canvas" style="margin:24px 0;"></div>
+        <div style="font-size:13px; color:var(--text-muted-canvas); line-height:1.6;">
+          倍速会議・Sonar・Flux の3プロダクト合算。<br>エンタープライズ比率が全体の 61% に拡大。
+        </div>
+      </div>
+      <div class="dark-card">
+        <div class="section-label" style="color:var(--text-muted-card); margin-bottom:24px;">ARR 四半期推移（百万円）</div>
+        <div style="display:flex; align-items:flex-end; gap:16px; height:160px; border-bottom:1px solid rgba(255,255,255,0.15); margin-bottom:16px;">
+          <div class="bar-col">
+            <div class="bar-value">143</div>
+            <div class="bar-outline" style="height:48px;"></div>
+            <div class="bar-label">Q1'25</div>
+          </div>
+          <div class="bar-col">
+            <div class="bar-value">198</div>
+            <div class="bar-outline" style="height:66px;"></div>
+            <div class="bar-label">Q2'25</div>
+          </div>
+          <div class="bar-col">
+            <div class="bar-value">310</div>
+            <div class="bar-outline" style="height:103px;"></div>
+            <div class="bar-label">Q3'25</div>
+          </div>
+          <div class="bar-col">
+            <div class="bar-value">385</div>
+            <div class="bar-outline" style="height:128px;"></div>
+            <div class="bar-label">Q4'25</div>
+          </div>
+          <div class="bar-col">
+            <div class="bar-value" style="color:#fff;">480</div>
+            <div class="bar" style="height:160px;"></div>
+            <div class="bar-label">Q1'26</div>
+          </div>
+        </div>
+        <div class="slide-caption">* ARR = 年間経常収益（Annual Recurring Revenue）</div>
+      </div>
+    </div>
+    <div class="slide-footer-txt">合同会社 多元現実 2026 Q1</div>
+  </div>
+
+  <!-- ────────────────────────── SLIDE 4: 導入事例 ────────────────────────── -->
+  <div class="slide-label">Slide 4 — 導入事例（ヒーロー分割）</div>
+  <div class="slide" style="padding:0; overflow:hidden;">
+    <div style="display:grid; grid-template-columns:1fr 1fr; flex:1; height:100%;">
+      <div style="background:var(--card); padding:48px; display:flex; flex-direction:column; justify-content:space-between;">
+        <div>
+          <div class="badge-row" style="margin-bottom:16px;">
+            <span class="badge-item">導入事例</span>
+          </div>
+          <div class="slide-title" style="font-size:32px; color:var(--text-on-card); margin-bottom:16px;">
+            東大阪市が<br>倍速会議を導入<br>意思決定速度が<br>3倍に
+          </div>
+        </div>
+        <div>
+          <div class="section-label" style="color:var(--text-muted-card); margin-bottom:8px;">東大阪市 × 多元現実</div>
+          <div style="font-size:13px; color:var(--text-muted-card); line-height:1.6;">
+            2026年1月より全庁展開。月次の政策会議における合意形成時間を平均 68 分から 22 分へ短縮。
+          </div>
+        </div>
+      </div>
+      <div style="background:linear-gradient(135deg,#2A2A2A,#1A1A1A); display:flex; align-items:center; justify-content:center; border-radius:0 8px 8px 0;">
+        <div style="text-align:center; color:var(--text-muted-card);">
+          <div style="font-size:48px; margin-bottom:8px;">🏙</div>
+          <div class="section-label" style="color:var(--text-muted-card);">Photo placeholder</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ────────────────────────── SLIDE 5: テーブル ────────────────────────── -->
+  <div class="slide-label">Slide 5 — テーブル</div>
+  <div class="slide">
+    <div class="badge-row badge-light">
+      <span class="badge-item">付録</span>
+      <span class="badge-item">プロダクト別売上</span>
+    </div>
+    <div class="dark-card" style="margin-top:16px;">
+      <table class="ir-table">
+        <thead>
+          <tr>
+            <th style="text-align:left;">プロダクト</th>
+            <th>Q1'25</th>
+            <th>Q2'25</th>
+            <th>Q3'25</th>
+            <th>Q4'25</th>
+            <th>Q1'26</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>倍速会議</td>
+            <td>84</td>
+            <td>116</td>
+            <td>182</td>
+            <td>224</td>
+            <td>278</td>
+          </tr>
+          <tr class="stripe">
+            <td>Sonar</td>
+            <td>43</td>
+            <td>62</td>
+            <td>98</td>
+            <td>122</td>
+            <td>152</td>
+          </tr>
+          <tr>
+            <td>Flux</td>
+            <td>16</td>
+            <td>20</td>
+            <td>30</td>
+            <td>39</td>
+            <td>50</td>
+          </tr>
+          <tr class="total">
+            <td>合計 ARR</td>
+            <td>143</td>
+            <td>198</td>
+            <td>310</td>
+            <td>385</td>
+            <td>480</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="slide-footer-txt">単位：百万円 / 合同会社 多元現実 2026 Q1</div>
+  </div>
+
+  <!-- ────────────────────────── SLIDE 6: ガイダンス ────────────────────────── -->
+  <div class="slide-label">Slide 6 — ガイダンス</div>
+  <div class="slide">
+    <div class="badge-row">
+      <span class="badge-item">Q1</span>
+      <span class="badge-item">見通し</span>
+    </div>
+    <div class="slide-title" style="margin-bottom:24px;">2026年度 ガイダンス</div>
+    <div class="guidance-grid">
+      <div class="dark-card-half">
+        <div class="kpi-label" style="margin-bottom:12px;">通期 ARR 目標</div>
+        <div class="kpi-big">¥2.4<span class="kpi-unit">B</span></div>
+        <div class="separator" style="margin:16px 0;"></div>
+        <div class="slide-caption">前年度比 +74%。エンタープライズ新規契約 30件を見込む。</div>
+      </div>
+      <div class="dark-card-half">
+        <div class="kpi-label" style="margin-bottom:12px;">新規自治体導入目標</div>
+        <div class="kpi-big">120<span class="kpi-unit">件</span></div>
+        <div class="separator" style="margin:16px 0;"></div>
+        <div class="slide-caption">現在 68件。Q2〜Q4 で 52件の追加契約を目指す。</div>
+      </div>
+    </div>
+    <div class="slide-footer-txt">合同会社 多元現実 2026 Q1</div>
+  </div>
+
+  <!-- ────────────────────────── SLIDE 7: セクション区切り ────────────────────────── -->
+  <div class="slide-label">Slide 7 — セクション区切り</div>
+  <div class="slide" style="background:var(--card);">
+    <div style="display:flex; flex-direction:column; justify-content:space-between; flex:1;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div class="section-label" style="color:var(--text-muted-card);">セクション 02</div>
+        <div style="text-align:right; line-height:1.25;">
+          <div style="font-size:14px; color:var(--text-on-card);">多元現実</div>
+          <div style="font-size:11px; color:var(--text-muted-card);">plural-reality.com</div>
+        </div>
+      </div>
+      <div class="slide-title-lg" style="font-size:120px;">製品概要</div>
+    </div>
+    <div class="nav-dots">
+      <div class="dot"></div>
+      <div class="dot active"></div>
+      <div class="dot"></div>
+      <div class="dot"></div>
+    </div>
+  </div>
+
+  <!-- ────────────────────────── SLIDE 8: プロダクト概要 ────────────────────────── -->
+  <div class="slide-label">Slide 8 — プロダクト概要</div>
+  <div class="slide">
+    <div class="slide-title" style="margin-bottom:24px;">3つのコアプロダクト</div>
+    <div class="dark-card">
+      <div class="grid-3">
+        <div class="product-card">
+          <div class="section-label" style="color:var(--text-muted-card); margin-bottom:8px;">製品 01</div>
+          <div class="product-card-name" style="font-size:18px; font-weight:300;">倍速会議</div>
+          <div class="separator" style="margin:12px 0;"></div>
+          <div class="product-card-desc">AIが会議を構造化・要約・アクション抽出。自治体の政策決定サイクルを加速する会議支援 SaaS。</div>
+          <div style="margin-top:auto; padding-top:16px;">
+            <div class="kpi-label">ARR ¥278M / 68自治体</div>
+          </div>
+        </div>
+        <div class="product-card">
+          <div class="section-label" style="color:var(--text-muted-card); margin-bottom:8px;">製品 02</div>
+          <div class="product-card-name" style="font-size:18px; font-weight:300;">Sonar</div>
+          <div class="separator" style="margin:12px 0;"></div>
+          <div class="product-card-desc">大規模アンケートの設計・配信・分析を一元化。住民意識の可視化から政策立案まで対応。</div>
+          <div style="margin-top:auto; padding-top:16px;">
+            <div class="kpi-label">ARR ¥152M / 累計1,200万回答</div>
+          </div>
+        </div>
+        <div class="product-card">
+          <div class="section-label" style="color:var(--text-muted-card); margin-bottom:8px;">製品 03</div>
+          <div class="product-card-name" style="font-size:18px; font-weight:300;">Flux</div>
+          <div class="separator" style="margin:12px 0;"></div>
+          <div class="product-card-desc">AIが市民・職員にインタビューを実施し、定性情報を構造化データに変換するインタビューエンジン。</div>
+          <div style="margin-top:auto; padding-top:16px;">
+            <div class="kpi-label">ARR ¥50M / 2026年展開中</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer-txt">合同会社 多元現実 2026 Q1</div>
+  </div>
+
+</div>
+</body>
+</html>
