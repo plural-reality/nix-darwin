@@ -9,7 +9,7 @@ macOS (nix-darwin + Home Manager) の共有インフラ flake。
 lib.mkSystem                              — darwinSystem ビルダー (base + claude-code + shared-scripts + kimi-cli 全部入り)
 packages.<system>.setup-downstream        — 対話式セットアップ (age鍵生成, sops暗号化, flake雛形)
 packages.<system>.test-setup-downstream   — setup-downstream の自動テスト
-packages.<system>.apply                   — apply スクリプト (flake update + darwin-rebuild switch)
+packages.<system>.apply                   — clean・lock 済み入力だけを switch する fail-closed apply スクリプト
 packages.<system>.screenpipe              — screenpipe ビルド
 packages.<system>.{tar-map,url2content,lines2tar} — Haskell CLIツール (haskell-flake 由来)
 formatter.<system>                        — nixfmt
@@ -116,12 +116,12 @@ upstream が更新された際、ダウンストリームの `flake.nix` や `ap
 # マイグレーションのみ実行
 nix run github:plural-reality/nix-darwin#migrate
 
-# apply はマイグレーション + flake update + darwin-rebuild switch を一括実行
+# migration は feature worktree で明示実行し、commit 後に clean な deployment root から apply
 ./apply
 ```
 
-`./apply` は内部で `migrate` を呼んでいるため、通常は `./apply` だけで十分。
-マイグレーションは冪等（適用済みのものはスキップされる）。
+`./apply` はロック済みの入力だけを build → switch し、lock 更新や migration は行わない。
+マイグレーションは feature worktree で明示実行し、レビュー・commit 後に fast-forward する。
 
 現在のマイグレーション:
 
@@ -134,7 +134,7 @@ nix run github:plural-reality/nix-darwin#migrate
 
 ### チームの最新状態に追いつく
 
-どこにいても、これだけ打てばよい:
+clean な `/private/etc/nix-darwin` で、これだけ打てばよい:
 
 ```bash
 /private/etc/nix-darwin/apply
@@ -142,13 +142,14 @@ nix run github:plural-reality/nix-darwin#migrate
 
 これ一発で以下が順に実行される:
 
-1. `nix flake update nix-darwin-upstream` — upstream の最新リビジョンだけを取得
-2. `migrate` — 破壊的変更があれば flake.nix / apply shim を自動変換（冪等）
-3. `sudo darwin-rebuild switch --flake .` — システム再構築
+1. deployment root と全 Nix input が clean であることを検証
+2. lock 済みの system derivation を build
+3. `sudo darwin-rebuild switch --flake .` を実行
+4. `/run/current-system` が build 済み derivation と一致することを検証
 
 shim 内部で `cd "$(dirname "$0")"` するため、カレントディレクトリに依存しない。
 
-> 段階的に確認したい場合: `cd /private/etc/nix-darwin && nix flake update nix-darwin-upstream` → diff を見てから `darwin-rebuild switch --flake .`
+> 更新は apply と分離する。feature worktree で `nix flake update <input>` → host build → diff review → commit し、live checkout を fast-forward してから `./apply` を実行する。
 
 ### コントリビュート
 
