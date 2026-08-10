@@ -1,9 +1,10 @@
-"""Garmin thin client — token-only, stream-out JSON.
+"""Garmin thin client — token-only, JSON stream boundary.
 
 Zero credential knowledge: garminconnect reads an ephemeral tokenstore path
-from GARMINTOKENS (injected by `with-garmin-token`). Each subcommand is a pure
-read that emits JSON on stdout. `.fit` is downloaded + parsed server-side here
-(garmin-fit-sdk); callers never touch raw binary.
+from GARMINTOKENS (injected by `with-garmin-token`). Read commands emit JSON on
+stdout. Typed workout writes accept JSON on stdin, keeping payload transport
+independent from argv and the local filesystem. `.fit` is downloaded + parsed
+server-side here (garmin-fit-sdk); callers never touch raw binary.
 
 Dispatch is a table lookup (no statement-style branching); an unknown command
 or a failed call surfaces as a JSON error + nonzero exit, so a broken pipe
@@ -96,6 +97,19 @@ def _resp(r) -> dict:
     return {"status": code, "ok": 200 <= (code or 0) < 300, "body": parsed}
 
 
+def _stdin_object() -> dict:
+    """Decode one JSON object from stdin or fail before any remote mutation."""
+    raw = sys.stdin.read()
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as error:
+        sys.exit(json.dumps({"ok": False, "error": f"invalid stdin JSON: {error.msg}"}))
+    isinstance(value, dict) or sys.exit(json.dumps({
+        "ok": False, "error": "stdin JSON must be an object"
+    }))
+    return value
+
+
 def _retire(g, gear_pk, *_rest) -> dict:
     """Retire a gear: fetch its full DTO, flip status to retired + set dateEnd, PUT back.
 
@@ -139,6 +153,15 @@ COMMANDS = {
     "weight": lambda g, *a: g.get_weigh_ins(a[0] if a else _ndays_ago(30), a[1] if len(a) > 1 else _today()),
     "devices": lambda g, *a: g.get_devices(),
     "profile": lambda g, *a: {"name": g.get_full_name(), "units": g.get_unit_system()},
+    "workouts": lambda g, *a: g.get_workouts(int(a[0]) if a else 0, int(a[1]) if len(a) > 1 else 100),
+    "workout": lambda g, *a: g.get_workout_by_id(a[0]),
+    "scheduled": lambda g, *a: g.get_scheduled_workouts(a[0], a[1]),
+    "scheduled-one": lambda g, *a: g.get_scheduled_workout_by_id(a[0]),
+    "workout-create": lambda g, *a: g.upload_workout(_stdin_object()),
+    "workout-update": lambda g, *a: g.update_workout(a[0], _stdin_object()),
+    "workout-schedule": lambda g, *a: g.schedule_workout(a[0], a[1]),
+    "workout-unschedule": lambda g, *a: g.unschedule_workout(a[0]),
+    "workout-push": lambda g, *a: g.push_workout_to_device(a[0], a[1]),
     "rename": lambda g, *a: (g.set_activity_name(a[0], a[1]), {"renamed": a[0], "title": a[1]})[1],
     "settype": lambda g, *a: _resp(g.set_activity_type(a[0], int(a[1]), a[2], int(a[3]))),
     "gear": lambda g, *a: g.connectapi(f"/gear-service/gear/filterGear?userProfilePk={a[0]}"),

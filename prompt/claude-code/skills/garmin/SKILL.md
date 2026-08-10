@@ -2,7 +2,7 @@
 name: garmin
 description: >-
   Garmin Connect のアクティビティ・睡眠・ストレス・body battery・HRV・training readiness
-  を取得し、.fit 生データをダウンロード＆解析する。トリガー: 「Garmin」「ガーミン」
+  と構造化ワークアウトを取得・日付指定し、.fit 生データをダウンロード＆解析する。トリガー: 「Garmin」「ガーミン」
   「今日のラン/ライド」「直近のアクティビティ」「睡眠」「ストレス」「body battery」
   「HRV」「training readiness」「.fitを見て」「アクティビティのデータ」「走行ログ」
   など、自分の Garmin の健康・運動データに関する相談。
@@ -44,8 +44,17 @@ scripts/garmin respiration [date]  # 呼吸
 scripts/garmin weight [s] [e]      # 体重 (範囲, default 30日)
 scripts/garmin devices             # デバイス一覧
 scripts/garmin profile             # 氏名/単位系
+scripts/garmin workouts [s] [n]    # ワークアウトlibrary (offset, limit)
+scripts/garmin workout <id>        # 構造化ワークアウト詳細
+scripts/garmin scheduled <y> <m>   # 月別scheduled workout
+scripts/garmin scheduled-one <id>  # scheduled workout詳細
 scripts/garmin raw <connectapi-path>  # 任意の Connect API パス GET (escape hatch)
 # --- 書き込み (write; read と同じ canonical トークンで実行) ---
+cat workout.json | scripts/garmin workout-create       # JSON objectをstdinから新規登録
+cat workout.json | scripts/garmin workout-update <id>  # 完全なJSON objectで更新
+scripts/garmin workout-schedule <id> <YYYY-MM-DD>      # library workoutを日付指定
+scripts/garmin workout-unschedule <scheduleId>         # scheduleだけ解除
+scripts/garmin workout-push <id> <deviceId>            # 明示deviceへ直接送信
 scripts/garmin rename <id> <title>                      # アクティビティ改名
 scripts/garmin settype <id> <typeId> <typeKey> <parentTypeId>  # 種別変更 (例: <id> 6 trail_running 1)
 scripts/garmin gear <userProfilePk>                     # gear一覧 (filterGear)。pk は socialProfile の profileId
@@ -59,6 +68,9 @@ scripts/garmin help                # 一覧
 ```
 
 書き込みの注意:
+- workout payloadはargvへ埋め込まずstdinで渡す。`workout-update`は部分patchではなく完全置換として扱う。
+- `workout-schedule`後は`scheduled <year> <month>`でConnect上をreadbackする。これはクラウド反映の証拠であり、watch到達はdevice sync後に別確認する。
+- `workout-push`は暗黙のlast deviceを選ばず、`devices`で確認した`deviceId`を必ず指定する。
 - `settype` の typeId/parentTypeId は `raw /activity-service/activity/activityTypes` で確認（running=1/17, trail_running=6/1）。
 - gear の作成は lib に無いため `post /gear-service/gear`。retire/更新の PUT は **gearPk ではなく uuid をパスに使う**（サーバが body.uuid と一致検証する）。`retire` はこれを内部で吸収済み。
 - 紐付け系は冪等。アクティビティの「使用ギア」は `raw "/gear-service/gear/filterGear?activityId=<id>"` で確認。
@@ -81,7 +93,7 @@ scripts/garmin help                # 一覧
 
 ## 設計・運用メモ
 
-- 薄いCLIは **garminconnect 0.3.8**、GarminDBは **3.8.0** を固定。後者が
+- 薄いCLIは **garminconnect 0.3.9**、GarminDBは **3.8.0** を固定。後者が
   `garminconnect 0.3.3` を内包するが、共有するDI tokenstore schemaは同じ。
 - `scripts/with-garmin-token` が唯一の復号/writeback境界。SOPSを0600一時tokenstoreへ
   復号し、refreshでrotated tokenが変わった時だけSOPSへ戻し、平文を削除する。
