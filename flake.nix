@@ -346,6 +346,7 @@
               }
               ''
                 script="${self'.packages.apply}/bin/apply"
+                grep -F -- 'GIT_OPTIONAL_LOCKS=0 git' "$script" >/dev/null
                 grep -F -- 'status --porcelain=v1 --untracked-files=all' "$script" >/dev/null
                 grep -F -- '--no-write-lock-file' "$script" >/dev/null
                 grep -F -- '--option allow-dirty false' "$script" >/dev/null
@@ -390,7 +391,7 @@
             ];
             text = ''
               flake_dir="''${NIX_DARWIN_FLAKE:-$PWD}"
-              test -z "$(git -C "$flake_dir" status --porcelain=v1 --untracked-files=all)" || {
+              test -z "$(GIT_OPTIONAL_LOCKS=0 git -C "$flake_dir" status --porcelain=v1 --untracked-files=all)" || {
                 printf '%s\n' "refusing deployment: downstream worktree is dirty: $flake_dir" >&2
                 exit 1
               }
