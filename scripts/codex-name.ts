@@ -34,6 +34,7 @@ type Response = Readonly<{
   error?: { readonly message?: string };
   params?: JsonValue;
 }>;
+type TitleStatus = "⬜" | "⌛️" | "☑️" | "⏹️";
 
 const usage = `Usage:
   codex-name "New session name"
@@ -117,6 +118,38 @@ const autoName = (preview: string): string =>
     .replace(/[ \t\r\n]+/g, " ")
     .trim()
     .slice(0, 72) || "Codex session";
+
+const statusOf = (title: string | null | undefined): TitleStatus | undefined =>
+  /^⬜️?\s*/u.test(title ?? "")
+    ? "⬜"
+    : /^⌛️?\s*/u.test(title ?? "")
+      ? "⌛️"
+      : /^☑️?\s*/u.test(title ?? "")
+        ? "☑️"
+        : /^⏹️?\s*/u.test(title ?? "")
+          ? "⏹️"
+          : undefined;
+
+const topicOf = (title: string): string =>
+  title
+    .replace(/^(?:⬜️?|⌛️?|☑️?|⏹️?|⏳|🚨)\s*(?:cc:\s*)?/u, "")
+    .trim();
+
+const titled = (current: string | null, next: string): string =>
+  `${statusOf(next) ?? statusOf(current) ?? "⌛️"} ${topicOf(next) || "Codex session"}`.slice(
+    0,
+    72,
+  );
+
+const titleStatusSelfCheck = (): boolean =>
+  (
+    [
+      [null, "調査", "⌛️ 調査"],
+      ["☑️ 完了済み", "調査", "☑️ 調査"],
+      ["⏳ 旧記法", "調査", "⌛️ 調査"],
+      [null, "☑️ 結論", "☑️ 結論"],
+    ] as const
+  ).every(([current, next, expected]) => titled(current, next) === expected);
 
 const contentText = (value: unknown): string =>
   typeof value === "string"
@@ -205,7 +238,7 @@ const generatedName = (
   callback: (name: string) => boolean,
 ): boolean =>
   args.noLlm
-    ? callback(fallback)
+    ? callback(titled(thread.name, fallback))
     : ((dir) =>
         ((outputPath) =>
           ((finish) =>
@@ -246,7 +279,7 @@ const generatedName = (
                 { cwd: thread.cwd || process.cwd(), stdio: ["ignore", "ignore", "ignore"] },
               ),
             ))(
-            once((name: string) => (cleanup(dir), callback(name))),
+            once((name: string) => (cleanup(dir), callback(titled(thread.name, name)))),
           ))(join(dir, "title.txt")))(
         mkdtempSync(join(tmpdir(), "codex-name-")),
       );
@@ -333,7 +366,7 @@ const run = (args: Args): boolean => {
       ? generatedName(args, thread, autoName(titleContext(thread) || thread.preview), (name) =>
           send(setNameRequest(thread.id, name)),
         )
-      : send(setNameRequest(thread.id, args.name ?? "Codex session"));
+    : send(setNameRequest(thread.id, titled(thread.name, args.name ?? "Codex session")));
   const timer = setTimeout(() => fail("timed out waiting for codex app-server"), 45_000);
   const lines = createInterface({ input: child.stdout });
 
@@ -378,9 +411,11 @@ const run = (args: Args): boolean => {
   return send(initializeRequest);
 };
 
-((args) =>
-  args.ok
-    ? run(args.value)
-    : (console.error(args.error), process.exit(args.error === usage ? 0 : 2)))(
-  parseArgs(process.argv.slice(2)),
-);
+process.argv.includes("--self-check")
+  ? (titleStatusSelfCheck() ? console.log("codex-name: ok") : fail("self-check failed"))
+  : ((args) =>
+      args.ok
+        ? run(args.value)
+        : (console.error(args.error), process.exit(args.error === usage ? 0 : 2)))(
+      parseArgs(process.argv.slice(2)),
+    );
