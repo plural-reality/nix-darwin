@@ -36,6 +36,14 @@ EXTRACTED = os.path.join(CACHE_DIR, "extracted-sessions.jsonl")
 SEEN = os.path.join(CACHE_DIR, "seen-sessions.json")
 HUB = "claude codeセッション"
 LABEL = "Claude Code セッション(claude-log-to-scb 自動取り込み)。ユーザー入力=全文 / Claudeの作業=要点のみ"
+CODEX_ROOTS = (
+    os.path.expanduser("~/.codex/sessions/**/*.jsonl"),
+    os.path.expanduser("~/.codex/archived_sessions/**/*.jsonl"),
+)
+CODEX_ARCHIVE = os.path.join(os.path.expanduser("~/.claude/data/claude-export"), "codex-sessions")
+CODEX_CONV_DIR = os.path.join(CACHE_DIR, "conv-codex-sessions")
+CODEX_EXTRACTED = os.path.join(CACHE_DIR, "extracted-codex-sessions.jsonl")
+CODEX_SEEN = os.path.join(CACHE_DIR, "seen-codex-sessions.json")
 
 # cwd substring -> canonical [project] link (from the local project map).
 PROJECT_BY_PATH = [
@@ -138,6 +146,67 @@ def parse_session(path):
     }
 
 
+def parse_codex_session(path):
+    """Normalize one Codex rollout without ingesting system/tool context."""
+    metadata = {}
+    first_ts = last_ts = None
+    messages = []
+    with open(path, errors="ignore") as source:
+        events = []
+        for line in source:
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+    for event in events:
+        timestamp = event.get("timestamp")
+        if timestamp:
+            first_ts = first_ts or timestamp
+            last_ts = timestamp
+        payload = event.get("payload") or {}
+        if event.get("type") == "session_meta":
+            metadata = payload
+        elif event.get("type") == "event_msg" and payload.get("type") == "user_message":
+            text = (payload.get("message") or "").strip()
+            if text:
+                messages.append({"sender": "human", "text": text})
+        elif (
+            event.get("type") == "event_msg"
+            and payload.get("type") == "agent_message"
+            and payload.get("phase") in (None, "final_answer")
+        ):
+            text = (payload.get("message") or "").strip()
+            if text:
+                messages.append({"sender": "assistant", "text": text})
+    humans = [message for message in messages if message["sender"] == "human"]
+    cwd = metadata.get("cwd")
+    if not humans or not cwd or "/var/folders/" in cwd or "/tmp/" in cwd or "/T/tmp." in cwd:
+        return None
+    session_id = metadata.get("id") or os.path.splitext(os.path.basename(path))[0]
+    seed = humans[0]["text"].split("\n")[0].strip()
+    short = (seed[:48] + "…") if len(seed) > 48 else seed
+    project = project_for_cwd(cwd)
+    return {
+        "uuid": f"codex-{session_id}",
+        "name": clean_title(short, f"codex {str(session_id)[:8]}"),
+        "created_at": first_ts,
+        "updated_at": last_ts,
+        "chat_messages": messages,
+        "_entities": [project] if project else [],
+        "_hub": "Codexセッション",
+        "_source_label": "Codex セッション自動取り込み。ユーザー入力=全文 / Codex応答=要点のみ",
+        "_origin": f"{path} (cwd={cwd})",
+    }
+
+
+def source_paths(source):
+    return (
+        (ARCHIVE, CONV_DIR, EXTRACTED, SEEN)
+        if source == "claude"
+        else (CODEX_ARCHIVE, CODEX_CONV_DIR, CODEX_EXTRACTED, CODEX_SEEN)
+    )
+
+
 def transcript(msgs, cap=4000):
     out, used = [], 0
     for m in msgs:
@@ -150,33 +219,39 @@ def transcript(msgs, cap=4000):
     return "\n".join(out)
 
 
-def build():
-    files = glob.glob(os.path.join(PROJECTS_ROOT, "*", "*.jsonl"))
-    os.makedirs(ARCHIVE, exist_ok=True)
-    os.makedirs(CONV_DIR, exist_ok=True)
+def build(source):
+    archive, conv_dir, _, _ = source_paths(source)
+    files = (
+        glob.glob(os.path.join(PROJECTS_ROOT, "*", "*.jsonl"))
+        if source == "claude"
+        else [path for pattern in CODEX_ROOTS for path in glob.glob(pattern, recursive=True)]
+    )
+    parser = parse_session if source == "claude" else parse_codex_session
+    os.makedirs(archive, exist_ok=True)
+    os.makedirs(conv_dir, exist_ok=True)
     convs = []
     for f in files:
-        c = parse_session(f)
+        c = parser(f)
         if c:
             convs.append(c)
-    with open(os.path.join(ARCHIVE, "conversations.json"), "w") as fh:
+    with open(os.path.join(archive, "conversations.json"), "w") as fh:
         json.dump(convs, fh, ensure_ascii=False)
     index = []
     for c in convs:
         compact = {"uuid": c["uuid"], "name": c["name"], "summary": "",
                    "created_at": c["created_at"], "transcript": transcript(c["chat_messages"])}
-        with open(os.path.join(CONV_DIR, f"{c['uuid']}.json"), "w") as fh:
+        with open(os.path.join(conv_dir, f"{c['uuid']}.json"), "w") as fh:
             json.dump(compact, fh, ensure_ascii=False)
         index.append(c["uuid"])
-    with open(os.path.join(CONV_DIR, "_index.json"), "w") as fh:
+    with open(os.path.join(conv_dir, "_index.json"), "w") as fh:
         json.dump(index, fh)
-    print(f"built {len(convs)} real sessions -> {ARCHIVE}/conversations.json + {CONV_DIR}/ (compact)")
+    print(f"built {len(convs)} real {source} sessions -> {archive}/conversations.json + {conv_dir}/ (compact)")
 
 
-def load_extracted():
+def load_extracted(path):
     out = {}
-    if os.path.exists(EXTRACTED):
-        for line in open(EXTRACTED):
+    if os.path.exists(path):
+        for line in open(path):
             line = line.strip()
             if line:
                 try:
@@ -189,12 +264,13 @@ def load_extracted():
 
 
 def render_cmd(args):
-    convs = json.load(open(os.path.join(ARCHIVE, "conversations.json")))
+    archive, _, extracted_path, seen_path = source_paths(args.source)
+    convs = json.load(open(os.path.join(archive, "conversations.json")))
     convs.sort(key=lambda c: c.get("updated_at") or "", reverse=True)
-    ext = load_extracted()
+    ext = load_extracted(extracted_path)
     import datetime
     today = jst(datetime.datetime.now(datetime.timezone.utc).isoformat())
-    seen = {} if args.force else load_seen_sessions()
+    seen = {} if args.force else load_seen_sessions(seen_path)
     used = {}
     written = skipped = errors = 0
     for conv in convs:
@@ -203,7 +279,7 @@ def render_cmd(args):
         if not args.force and seen.get(uuid) == updated:
             skipped += 1
             continue
-        title, body, ents = render(conv, ext.get(uuid), ARCHIVE, today)
+        title, body, ents = render(conv, ext.get(uuid), archive, today)
         if title in used:
             used[title] += 1
             title = f"{title} ({used[title]})"
@@ -218,42 +294,44 @@ def render_cmd(args):
         if not args.dry_run:
             seen[uuid] = updated
             if written % 25 == 0:
-                save_seen_sessions(seen)
+                save_seen_sessions(seen, seen_path)
             time.sleep(0.4)
         print(f"{'DRY' if args.dry_run else 'OK '} [{len(ents):>2}e] {title[:46]}  {url or ''}")
         if args.limit and written >= args.limit:
             break
     if not args.dry_run:
-        save_seen_sessions(seen)
+        save_seen_sessions(seen, seen_path)
     print(f"\n--- written={written} skipped={skipped} errors={errors} (extracted={len(ext)}) ---")
 
 
-def load_seen_sessions():
+def load_seen_sessions(path):
     try:
-        return json.load(open(SEEN))
+        return json.load(open(path))
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 
-def save_seen_sessions(seen):
-    tmp = SEEN + ".tmp"
+def save_seen_sessions(seen, path):
+    tmp = path + ".tmp"
     with open(tmp, "w") as f:
         json.dump(seen, f, ensure_ascii=False)
-    os.replace(tmp, SEEN)
+    os.replace(tmp, path)
 
 
 def main(argv):
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("build")
+    b = sub.add_parser("build")
+    b.add_argument("--source", choices=("claude", "codex"), default="claude")
     r = sub.add_parser("render")
+    r.add_argument("--source", choices=("claude", "codex"), default="claude")
     r.add_argument("--project", default="takalog")
     r.add_argument("--dry-run", action="store_true")
     r.add_argument("--force", action="store_true")
     r.add_argument("--limit", type=int, default=0)
     args = ap.parse_args(argv)
     if args.cmd == "build":
-        build()
+        build(args.source)
     elif args.cmd == "render":
         render_cmd(args)
 
