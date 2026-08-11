@@ -13,6 +13,15 @@ LOCK_FILE="${GARMIN_TOKEN_LOCK:-${TMPDIR:-/tmp}/garmin-token-${UID}.lock}"
 
 [[ $# -gt 0 ]] || { echo "with-garmin-token: command required" >&2; exit 64; }
 
+[[ -f "$SECRET" ]] || {
+  echo "with-garmin-token: GARMIN_SECRET does not exist: $SECRET" >&2
+  exit 66
+}
+[[ -w "$SECRET" && -w "$(dirname "$SECRET")" ]] || {
+  echo "with-garmin-token: GARMIN_SECRET and its parent must be writable for token rotation: $SECRET" >&2
+  exit 73
+}
+
 if [[ "${GARMIN_TOKEN_LOCKED:-0}" != 1 ]]; then
   set +e
   lockf -k -t 0 "$LOCK_FILE" env GARMIN_TOKEN_LOCKED=1 "$0" "$@"

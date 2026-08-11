@@ -5,6 +5,7 @@ set -euo pipefail
 BOUNDARY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/with-garmin-token"
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/garmin-token-test.XXXXXX")"
 STATE="$ROOT/state.json"
+SECRET="$ROOT/secret.yaml"
 SET_COUNT="$ROOT/set-count"
 FAKE_SOPS="$ROOT/sops"
 CHILD="$ROOT/child"
@@ -41,12 +42,30 @@ sleep "${CHILD_SLEEP:-0}"
 exit "${CHILD_EXIT:-0}"
 SH
 chmod 0755 "$FAKE_SOPS" "$CHILD"
+: > "$SECRET"
 
 run_boundary() {
   TEST_TOKEN_STATE="$STATE" TEST_SET_COUNT="$SET_COUNT" SOPS_BIN="$FAKE_SOPS" \
-    GARMIN_SECRET="$ROOT/unused.yaml" GARMIN_TOKEN_LOCK="$LOCK" \
+    GARMIN_SECRET="$SECRET" GARMIN_TOKEN_LOCK="$LOCK" \
     "$BOUNDARY" "$CHILD"
 }
+
+printf '%s' "$OLD" > "$STATE"; : > "$SET_COUNT"
+set +e
+CHILD_OBSERVATION="$ROOT/missing-secret" GARMIN_SECRET="$ROOT/missing.yaml" \
+  TEST_TOKEN_STATE="$STATE" TEST_SET_COUNT="$SET_COUNT" SOPS_BIN="$FAKE_SOPS" \
+  GARMIN_TOKEN_LOCK="$LOCK" "$BOUNDARY" "$CHILD"
+status=$?
+set -e
+[[ $status -eq 66 && ! -e "$ROOT/missing-secret" && ! -s "$SET_COUNT" ]]
+
+chmod 0444 "$SECRET"
+set +e
+CHILD_OBSERVATION="$ROOT/read-only-secret" run_boundary
+status=$?
+set -e
+chmod 0600 "$SECRET"
+[[ $status -eq 73 && ! -e "$ROOT/read-only-secret" && ! -s "$SET_COUNT" ]]
 
 printf '%s' "$OLD" > "$STATE"; : > "$SET_COUNT"
 CHILD_OBSERVATION="$ROOT/no-change" run_boundary
