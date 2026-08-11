@@ -111,6 +111,20 @@ python3 "$S/sessions.py" render --project takalog [--dry-run|--limit N|--force]
 
 冪等: `seen-sessions.json`(uuid→updated_at)。セッションは追記され続けるので updated_at が進めば再 render される。
 
+### Codex セッション取り込み
+
+各ホストの `~/.codex/sessions/**/*.jsonl` と `~/.codex/archived_sessions/**/*.jsonl`
+はそのホストを原本のまま保持し、TakaLog へ一方向に投影する。system/developer/tool payload は
+取り込まず、`event_msg` のユーザー入力と最終回答だけを Claude Code と同じ
+normalize → extract → render パイプラインへ渡す。`codex-<session id>` と
+`seen-codex-sessions.json` が重複取り込みを防ぐ。
+
+```bash
+S=~/.claude/skills/claude-log-to-scb/scripts
+"$S/codex-sessions-sync.sh"
+"$S/codex-sessions-sync.sh" --dry-run --limit 20
+```
+
 ### ChatGPT 会話取り込み(claude.ai と同じ takalog へ・第3のソース)
 
 ChatGPT の会話も Claude と同じ `mapping`(UUIDノードグラフ)+`current_node` 構造なので、
@@ -174,7 +188,8 @@ ToS 留意: 自分の履歴でも「プログラムによる抽出」は規約�
 |---|---|
 | `scripts/sync.sh` | claude.ai 自動同期ランナー: poll→split→extract→ingest→aggregate(変更0なら早期exit) |
 | `scripts/sessions-sync.sh` | Claude Code セッション同期ランナー: build→extract→render → takalog |
-| `scripts/sessions.py` | `~/.claude/projects/**/*.jsonl` を会話形式に正規化(build) + takalog 描画(render) |
+| `scripts/codex-sessions-sync.sh` | Codex セッション同期ランナー: build→extract→render → takalog |
+| `scripts/sessions.py` | Claude Code/Codex JSONL を共通会話形式に正規化(build) + takalog 描画(render) |
 | `scripts/chatgpt_flatten.py` | **ChatGPT mapping/current_node → claude.ai-export shape(純粋アダプタ・唯一の新概念)** |
 | `scripts/chrome_fetch.py` | PATH B: 実Chrome same-origin GET(`/api/auth/session`→Bearer→backend-api) |
 | `scripts/chatgpt.py` | ChatGPT driver: build(export/chrome 取得→flatten→native archive) + render → takalog |
