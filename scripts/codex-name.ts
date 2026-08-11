@@ -34,7 +34,7 @@ type Response = Readonly<{
   error?: { readonly message?: string };
   params?: JsonValue;
 }>;
-type TitleStatus = "⬜" | "⌛️" | "☑️" | "⏹️";
+type TitleStatus = "⬜" | "⌛️" | "☑️" | "⏹️" | "🚨";
 
 const usage = `Usage:
   codex-name "New session name"
@@ -128,7 +128,9 @@ const statusOf = (title: string | null | undefined): TitleStatus | undefined =>
         ? "☑️"
         : /^⏹️?\s*/u.test(title ?? "")
           ? "⏹️"
-          : undefined;
+          : /^🚨\s*/u.test(title ?? "")
+            ? "🚨"
+            : undefined;
 
 const topicOf = (title: string): string =>
   title
@@ -146,6 +148,7 @@ const titleStatusSelfCheck = (): boolean =>
     [
       [null, "調査", "⌛️ 調査"],
       ["☑️ 完了済み", "調査", "☑️ 調査"],
+      ["🚨 本人の判断待ち", "調査", "🚨 調査"],
       ["⏳ 旧記法", "調査", "⌛️ 調査"],
       [null, "☑️ 結論", "☑️ 結論"],
     ] as const
