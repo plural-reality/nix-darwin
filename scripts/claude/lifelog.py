@@ -2,9 +2,8 @@
 """lifelog.py — マルチソース日次ライフログ収集器（全ソース・ローカル/対話認証なし）。
 
 Sources:
-  calendar  : osascript/AppleScript → Calendar.app（Mac公式カレンダー＝全アカウント集約。
-              Apple Event 送信元が /usr/bin/osascript なのでオートメーション権限が
-              claude 自動更新に左右されない。生DB(Calendar.sqlitedb)直読はFDA失効で不可）
+  calendar  : evkit snapshot → 署名済みEventKitBridge（有限範囲＋明示calendar selector。
+              Calendar.app/Apple Eventsを経由せず、安定したbundle identityへTCCを閉じ込める）
   limitless : pendant.py へ委譲（指定日の全ページをJSON streamとして読む）
   mori      : Mori MCPからSession一覧→全文Transcriptだけを同期。Journalは取得しない。
   plaud     : Plaud公式CLI経由で全文Transcriptを同期。要約ではなく一次記録を使う。
@@ -76,85 +75,98 @@ def _today() -> str:
     return datetime.now(JST).strftime("%Y-%m-%d")
 
 
-# ---------- calendar : AppleScript → Calendar.app ----------
-_CAL_AS = r'''
-set sd to (current date)
-set time of sd to 0
-set day of sd to 1
-set year of sd to __Y__
-set month of sd to __M__
-set day of sd to __D__
-set ed to sd + (1 * days)
-set wanted to {__WANTED__}
-set out to ""
-set okCount to 0
-set errorCount to 0
-tell application "Calendar"
-  repeat with cn in wanted
-    try
-      set cal to first calendar whose name is cn
-      set okCount to okCount + 1
-      repeat with e in (every event of cal whose start date ≥ sd and start date < ed)
-        set sdt to start date of e
-        set hh to text -2 thru -1 of ("0" & ((hours of sdt) as string))
-        set mm to text -2 thru -1 of ("0" & ((minutes of sdt) as string))
-        set out to out & ((allday event of e) as string) & tab & hh & ":" & mm & tab & cn & tab & (summary of e) & linefeed
-      end repeat
-    on error
-      set errorCount to errorCount + 1
-    end try
-  end repeat
-end tell
-return "__META__" & tab & okCount & tab & errorCount & linefeed & out
-'''
-
-_CALENDAR_RETRYABLE_ERRORS = (
-    "Connection Invalid",
-    "Error received in message reply",
-)
+# ---------- calendar : signed EventKitBridge → JSON stream ----------
+EVKIT_BIN = os.environ.get("LIFELOG_EVKIT_BIN", "evkit")
 
 
-def _run_calendar_script(script: str) -> subprocess.CompletedProcess[str]:
-    command = ["osascript", "-e", script]
-    first = subprocess.run(command, capture_output=True, text=True, timeout=120)
-    retryable = first.returncode != 0 and any(
-        marker in first.stderr for marker in _CALENDAR_RETRYABLE_ERRORS)
-    return (subprocess.run(command, capture_output=True, text=True, timeout=120)
-            if retryable else first)
+def _calendar_range(d: str) -> tuple[datetime, datetime]:
+    start = datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=JST)
+    return start, start + timedelta(days=1)
+
+
+def _calendar_snapshot_spec(d: str) -> dict[str, Any]:
+    start, end = _calendar_range(d)
+    return {
+        "rangeStart": start.isoformat(),
+        "rangeEnd": end.isoformat(),
+        "calendars": {"names": CHECKED_CALENDARS, "ids": []},
+        "reminderLists": {"names": [], "ids": []},
+        "includeCompleted": False,
+    }
+
+
+def _parse_instant(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _calendar_projection(row: dict[str, Any]) -> dict[str, Any]:
+    start = _parse_instant(str(row["start"])).astimezone(JST)
+    calendar = row.get("calendar") if isinstance(row.get("calendar"), dict) else {}
+    return {
+        "time": "00:00" if bool(row.get("allDay")) else start.strftime("%H:%M"),
+        "allday": bool(row.get("allDay")),
+        "calendar": str(calendar.get("name", "")).strip(),
+        "summary": str(row.get("title", "")).strip(),
+    }
+
+
+def _deduplicate_calendar_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    unique = {
+        (row["time"], row["allday"], row["calendar"], row["summary"]): row
+        for row in rows
+    }
+    return sorted(unique.values(), key=lambda row: (
+        row["time"], row["calendar"], row["summary"], row["allday"]))
 
 
 def fetch_calendar(d: str) -> SourceResult:
-    y, m, day = (int(x) for x in d.split("-"))
-    wanted = ", ".join('"%s"' % c for c in CHECKED_CALENDARS)
-    script = (_CAL_AS.replace("__Y__", str(y)).replace("__M__", str(m))
-              .replace("__D__", str(day)).replace("__WANTED__", wanted))
-    # NOTE: AppleScript の `every event ... whose start date ...` は繰り返し予定(例: ルーティーンの
-    # トレーニング)の展開で遅く不安定(30〜120s、たまにタイムアウト)。日次バックグラウンド用途なので
-    # best-effort（タイムアウトで [] を返す）。高速化には EventKit が要るが Calendars TCC 権限が必要で、
-    # 現状は osascript の Automation 権限のみ通る(EventKit は未認証=空)ため AppleScript を採用。
     try:
-        r = _run_calendar_script(script)
+        r = subprocess.run(
+            [EVKIT_BIN, "snapshot"],
+            input=json.dumps(_calendar_snapshot_spec(d), ensure_ascii=False),
+            capture_output=True, text=True, timeout=15)
     except Exception as e:
-        print(f"[warn] calendar (osascript) timed out/failed (best-effort, skipped): {type(e).__name__}", file=sys.stderr)
+        print(f"[warn] calendar (evkit) failed: {type(e).__name__}", file=sys.stderr)
         return _failed(TRANSIENT_STATE, type(e).__name__)
     if r.returncode != 0:
-        print(f"[warn] calendar (osascript) error: {r.stderr.strip()[:200]}", file=sys.stderr)
-        return _failed(TRANSIENT_STATE, "Calendar.appから取得できませんでした")
-    out = []
-    rows = r.stdout.splitlines()
-    meta = rows[0].split("\t") if rows else []
-    if len(meta) != 3 or meta[0] != "__META__":
-        return _failed(TRANSIENT_STATE, "Calendar応答に検証情報がありません")
-    ok_count, error_count = int(meta[1]), int(meta[2])
-    for line in rows[1:]:
-        parts = line.split("\t")
-        if len(parts) < 4:
-            continue
-        out.append({"time": parts[1], "allday": parts[0].strip().lower() == "true",
-                    "calendar": parts[2].strip(), "summary": "\t".join(parts[3:]).strip()})
-    out.sort(key=lambda e: e["time"])
-    return (_failed(TRANSIENT_STATE, f"確認成功{ok_count}件 / 失敗{error_count}件", out)
-            if ok_count == 0 or error_count else _present(out, f"{len(out)}件"))
+        print(f"[warn] calendar (evkit) error: {r.stderr.strip()[:200]}", file=sys.stderr)
+        return _failed(TRANSIENT_STATE, "EventKitBridgeへ接続できませんでした")
+    try:
+        payload = json.loads(r.stdout)
+        events = payload["events"]
+        containers = payload["containers"]["calendars"]
+        event_error = payload.get("errors", {}).get("events")
+        if not isinstance(events, list) or not isinstance(containers, list):
+            raise TypeError("events/containers")
+    except Exception:
+        return _failed(TRANSIENT_STATE, "EventKit応答を解釈できませんでした")
+    if event_error:
+        code = str(event_error.get("code", "")) if isinstance(event_error, dict) else ""
+        state = AUTH_STATE if code.startswith("authorization_") else TRANSIENT_STATE
+        detail = (str(event_error.get("message", "")) if isinstance(event_error, dict)
+                  else "EventKitの予定読取に失敗しました")
+        return _failed(state, detail[:200])
+    resolved = {
+        str(item.get("name", "")) for item in containers if isinstance(item, dict)
+    }
+    missing = [name for name in CHECKED_CALENDARS if name not in resolved]
+    if missing:
+        return _failed(
+            TRANSIENT_STATE,
+            "EventKitの対象カレンダーが見つかりません: " + " / ".join(missing))
+    start, end = _calendar_range(d)
+    try:
+        within_day = [
+            row for row in events
+            if isinstance(row, dict)
+            and start <= _parse_instant(str(row["start"])).astimezone(JST) < end
+        ]
+        out = _deduplicate_calendar_rows([
+            _calendar_projection(row) for row in within_day
+        ])
+    except Exception:
+        return _failed(TRANSIENT_STATE, "EventKitの予定データを解釈できませんでした")
+    return _present(out, f"{len(out)}件")
 
 
 # ---------- limitless : delegate to pendant.py ----------

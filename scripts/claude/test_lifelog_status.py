@@ -39,27 +39,75 @@ def test_collection() -> None:
         ll.SOURCES = original
 
 
-def test_calendar_retries_connection_invalid_once() -> None:
+def _calendar_containers() -> list[dict[str, object]]:
+    return [{"name": name, "id": f"id-{index}", "source": {"name": "test"}}
+            for index, name in enumerate(ll.CHECKED_CALENDARS)]
+
+
+def test_calendar_uses_eventkit_snapshot() -> None:
     original_run = ll.subprocess.run
-    attempts: list[list[str]] = []
-    responses = iter([
-        CompletedProcess(
-            ["osascript"], 1, "",
-            "Connection Invalid error for service com.apple.hiservices-xpcservice"),
-        CompletedProcess(
-            ["osascript"], 0,
-            "__META__\t7\t0\nfalse\t08:00\tTaka の予定\t集荷\n", ""),
-    ])
+    calls: list[tuple[list[str], dict[str, object]]] = []
+    payload = {
+        "ok": True,
+        "events": [
+            {"start": "2026-08-01T14:00:00Z", "allDay": False,
+             "title": "前日から継続", "calendar": {"name": "Taka の予定"}},
+            {"start": "2026-08-02T00:00:00Z", "allDay": False,
+             "title": "集荷", "calendar": {"name": "Taka の予定"}},
+            {"start": "2026-08-01T15:00:00Z", "allDay": True,
+             "title": "終日", "calendar": {"name": "日本の祝日"}},
+            {"start": "2026-08-01T15:00:00Z", "allDay": True,
+             "title": "終日", "calendar": {"name": "日本の祝日"}},
+        ],
+        "containers": {"calendars": _calendar_containers()},
+        "errors": {"events": None, "reminders": None},
+    }
     try:
-        ll.subprocess.run = lambda args, **_kwargs: (
-            attempts.append(args) or next(responses))
+        ll.subprocess.run = lambda args, **kwargs: (
+            calls.append((args, json.loads(kwargs["input"])))
+            or CompletedProcess(args, 0, json.dumps(payload), ""))
         result = ll.fetch_calendar("2026-08-02")
         assert result.state == ll.OK_STATE
-        assert result.data == [{
-            "time": "08:00", "allday": False,
-            "calendar": "Taka の予定", "summary": "集荷",
-        }]
-        assert len(attempts) == 2
+        assert result.data == [
+            {"time": "00:00", "allday": True,
+             "calendar": "日本の祝日", "summary": "終日"},
+            {"time": "09:00", "allday": False,
+             "calendar": "Taka の予定", "summary": "集荷"},
+        ]
+        assert calls == [([ll.EVKIT_BIN, "snapshot"], {
+            "rangeStart": "2026-08-02T00:00:00+09:00",
+            "rangeEnd": "2026-08-03T00:00:00+09:00",
+            "calendars": {"names": ll.CHECKED_CALENDARS, "ids": []},
+            "reminderLists": {"names": [], "ids": []},
+            "includeCompleted": False,
+        })]
+    finally:
+        ll.subprocess.run = original_run
+
+
+def test_calendar_typed_eventkit_failures() -> None:
+    original_run = ll.subprocess.run
+    try:
+        denied = {
+            "events": [], "containers": {"calendars": []},
+            "errors": {"events": {
+                "code": "authorization_denied", "message": "events require full access"}},
+        }
+        ll.subprocess.run = lambda args, **_kwargs: CompletedProcess(
+            args, 0, json.dumps(denied), "")
+        result = ll.fetch_calendar("2026-08-02")
+        assert result.state == ll.AUTH_STATE
+
+        missing = {
+            "events": [],
+            "containers": {"calendars": _calendar_containers()[:-1]},
+            "errors": {"events": None},
+        }
+        ll.subprocess.run = lambda args, **_kwargs: CompletedProcess(
+            args, 0, json.dumps(missing), "")
+        result = ll.fetch_calendar("2026-08-02")
+        assert result.state == ll.TRANSIENT_STATE
+        assert "日本の祝日" in result.detail
     finally:
         ll.subprocess.run = original_run
 
@@ -122,7 +170,8 @@ def test_transcript_archive_source() -> None:
 
 
 test_collection()
-test_calendar_retries_connection_invalid_once()
+test_calendar_uses_eventkit_snapshot()
+test_calendar_typed_eventkit_failures()
 test_calendar_bindings_match_calendar_app_names()
 test_archived_codex()
 test_transcript_archive_source()

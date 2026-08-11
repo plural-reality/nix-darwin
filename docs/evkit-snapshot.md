@@ -8,6 +8,12 @@ boundary. The operation uses public EventKit APIs directly, adds no daemon,
 cache, dependency, or fallback to `osascript`, `remindctl`, `icalBuddy`, or
 `ekctl`.
 
+`scripts/claude/lifelog.py` also uses this operation for its Apple Calendar
+source. It passes the configured calendar names explicitly over stdin, requires
+every configured name to resolve to at least one EventKit container, and treats
+authorization, transport, malformed response, and missing-container outcomes as
+typed source failures. The adapter never launches or scripts Calendar.app.
+
 `status` only reads the current authorization state. `seed` is the only
 operation allowed to request authorization. Every other operation returns a
 machine-readable error immediately for a source without full access.
@@ -42,9 +48,14 @@ The client accepts one JSON object on stdin:
   date remain included; dated reminders after it are excluded.
 - Personal-calendar policy is outermost-caller configuration, not bridge code.
   For this MacBook Air the caller passes: `Taka の予定`,
-  `takagi@plural-reality.com`, `Shunsuke Takagi (General)`, `Business`,
+  `takagi@plural-reality.com`, `Shunsuke Takagi (General)`, `Business `
+  (末尾空白を含む),
   `ルーティーン`, `Intervals.icu`, `日本の祝日`. Shared calendars are not
   passed.
+- Exact duplicate names can resolve to multiple containers (currently
+  `日本の祝日`). The lifelog adapter de-duplicates identical event projections
+  after the bridge has restricted the read to the explicit name selector; it
+  never broadens the selector to every visible calendar.
 
 ## Output
 
