@@ -5,6 +5,7 @@ import {
   auditThreads,
   decodeThreads,
   normalizeObjective,
+  parseArgs,
   renderMarkdown,
 } from "./codex-task-audit.ts";
 
@@ -40,6 +41,15 @@ test("reports only close duplicate candidates and excludes scheduled repetitions
     }),
     thread("d", "⌛️ 日報を作る", { mode: "scheduled", createdAt: now - 3 * hour }),
     thread("e", "⌛️ 日報を作る", { mode: "scheduled", createdAt: now - 2 * hour }),
+    thread("scheduled-stale", "⌛️ 日報を作る", {
+      mode: "scheduled",
+      recencyAt: now - 49 * hour,
+    }),
+    thread("special-a", "⌛️ 特殊キー", { cwd: "__proto__", createdAt: now - 2 * hour }),
+    thread("special-b", "⌛️ 特殊キー", { cwd: "__proto__", createdAt: now - hour }),
+    thread("recent", "⌛️ 古い同名が混ざる", { createdAt: now }),
+    thread("near", "⌛️ 古い同名が混ざる", { createdAt: now - 23 * hour }),
+    thread("older", "⌛️ 古い同名が混ざる", { createdAt: now - 25 * hour }),
     thread("old", "状態のない古いタスク", { recencyAt: now - 40 * 24 * hour }),
   ]);
   const report = decoded.ok
@@ -53,10 +63,15 @@ test("reports only close duplicate candidates and excludes scheduled repetitions
     : assert.fail(decoded.error);
   const kinds = report.findings.map(({ kind }) => kind);
 
-  assert.equal(kinds.filter((kind) => kind === "duplicate_exact").length, 1);
+  assert.equal(kinds.filter((kind) => kind === "duplicate_exact").length, 3);
   assert.equal(kinds.filter((kind) => kind === "duplicate_objective").length, 1);
   assert.equal(report.findings.some(({ title }) => title.includes("日報")), false);
   assert.equal(report.findings.some(({ ids }) => ids.includes("old")), false);
+  assert.equal(report.findings.some(({ ids }) => ids.includes("special-a")), true);
+  assert.equal(
+    report.findings.some(({ ids }) => ids.includes("recent") && ids.includes("near")),
+    true,
+  );
 });
 
 test("separates human-wait, stale-working, archive and missing-status candidates", () => {
@@ -66,6 +81,7 @@ test("separates human-wait, stale-working, archive and missing-status candidates
     thread("done", "☑️ 調査を完了", { recencyAt: now - hour }),
     thread("stopped", "⏹️ 調査を停止", { recencyAt: now - hour }),
     thread("untitled", "調査する", { recencyAt: now - hour }),
+    thread("short-title", "form", { recencyAt: now - hour }),
     thread("external", "⌛️ 調整（区議の返信待ち）", { recencyAt: now - 49 * hour }),
   ]);
   const report = decoded.ok
@@ -84,6 +100,7 @@ test("separates human-wait, stale-working, archive and missing-status candidates
   assert.equal(byId.done, "archive_candidate");
   assert.equal(byId.stopped, "archive_candidate");
   assert.equal(byId.untitled, "missing_status");
+  assert.equal(byId["short-title"], "missing_status");
   assert.equal(Object.hasOwn(byId, "external"), false);
 });
 
@@ -115,3 +132,13 @@ test("rejects malformed input and renders a bounded Japanese review", () => {
   assert.match(markdown, /候補: 2件（表示 1件 \/ 上限 1件）/);
   assert.equal((markdown.match(/^### /gm) ?? []).length, 1);
 });
+
+test("rejects a fractional output limit", () =>
+  assert.deepEqual(
+    [parseArgs(["--limit", "0.5"]), parseArgs(["--unknown"])],
+    [
+      { ok: false, error: "--limit must be a positive integer" },
+      { ok: false, error: "unknown argument: --unknown" },
+    ],
+  ),
+);
