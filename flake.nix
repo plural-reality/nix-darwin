@@ -388,6 +388,27 @@
                 touch "$out"
               '';
 
+          # Pure protocol/selection check for the signed Photos bridge. Signing,
+          # PhotoKit authorization, and asset export stay activation-time effects.
+          checks.photo-library-bridge =
+            pkgs.runCommand "photo-library-bridge-check"
+              {
+                nativeBuildInputs = [
+                  pkgs.clang
+                  pkgs.swift
+                ];
+              }
+              ''
+                export MACOSX_DEPLOYMENT_TARGET=14.0
+                swiftc -D PHOTO_LIBRARY_TESTING -swift-version 5 -parse-as-library -Onone \
+                  ${./scripts/claude/photo-library/photo-libraryd.swift} \
+                  ${./scripts/claude/photo-library/photo-libraryd.test.swift} \
+                  -framework AppKit -framework Photos -framework Vision -framework CryptoKit \
+                  -o photo-libraryd-tests
+                ./photo-libraryd-tests
+                touch "$out"
+              '';
+
           checks.freee-mcp-offline =
             pkgs.runCommand "freee-mcp-offline-check"
               {

@@ -26,6 +26,20 @@ enum PhotoLibraryBridgeTests {
         assert(validRunID("2026-08-03_abcd"))
         assert(!validRunID("../escape"))
         assert(!validRunID(""))
+        switch exactlyOne(["hair"].filter { $0 == "hair" }) {
+        case let .one(value): assert(value == "hair")
+        case .none, .many: assertionFailure("one exact album must be selected")
+        }
+        switch exactlyOne(["hair", "hair"].filter { $0 == "hair" }) {
+        case let .many(values): assert(values.count == 2)
+        case .none, .one: assertionFailure("duplicate album names must remain ambiguous")
+        }
+        switch exactlyOne([String]()) {
+        case .none: break
+        case .one, .many: assertionFailure("missing album must remain missing")
+        }
+        assert(safeVideoExtension("tutorial.MOV") == "mov")
+        assert(safeVideoExtension("tutorial.exe") == "mov")
         print("photo-libraryd tests: passed")
     }
 }

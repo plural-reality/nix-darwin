@@ -12,10 +12,12 @@ usage:
   photo-library status
   photo-library authorize
   photo-library snapshot
+  photo-library album ALBUM_NAME
   JSON | photo-library request
 
-stdout is JSONL. The bridge can read/classify/export images but cannot edit or
-delete Photos assets. classify/export are available through the typed request.
+stdout is JSONL. The bridge can read metadata and export bounded image/video
+assets, but cannot edit or delete Photos assets. classify/export remain available
+through the typed request.
 HELP
 }
 
@@ -36,6 +38,10 @@ case "$OP" in
     exit 0
     ;;
   snapshot) request='{"op":"snapshot"}' ;;
+  album)
+    [[ -n "${2:-}" && -z "${3:-}" ]] || { usage >&2; exit 64; }
+    request="$(jq -cn --arg albumName "$2" '{op:"albumSnapshot",spec:{albumName:$albumName}}')"
+    ;;
   request) request="$(jq -ce 'select(type == "object")' | head -n 1)" ;;
   -h | --help | help) usage; exit 0 ;;
   *) usage >&2; exit 64 ;;

@@ -392,6 +392,7 @@ in
   # activation直後から古い `/etc/profiles/per-user` を経由せず利用可能にする。
   home.file.".local/bin/scrapbox-write".source = "${scrapbox-write}/bin/scrapbox-write";
   home.file.".local/bin/scrapbox-rename".source = "${scrapbox-rename}/bin/scrapbox-rename";
+  home.file.".local/bin/photo-library".source = "${photoLibrary}/bin/photo-library";
 
   # prompt-review collector (nix-shell shebang, self-contained)
   home.file.".local/bin/prompt-review-collect" = {
