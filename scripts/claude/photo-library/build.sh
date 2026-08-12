@@ -12,11 +12,13 @@ trap 'rm -rf "$TEMPORARY"' EXIT INT TERM
 mkdir -p "$BASE/generations" "$BASE/exports"
 chmod 0700 "$BASE" "$BASE/exports"
 
-/usr/bin/security find-identity -v -p codesigning \
-  | /usr/bin/grep -F "\"$IDENTITY\"" >/dev/null || {
-  printf 'photo-library: valid signing identity not found: %s\n' "$IDENTITY" >&2
-  exit 77
-}
+if [[ "$IDENTITY" != "-" ]]; then
+  /usr/bin/security find-identity -v -p codesigning \
+    | /usr/bin/grep -F "\"$IDENTITY\"" >/dev/null || {
+    printf 'photo-library: valid signing identity not found: %s\n' "$IDENTITY" >&2
+    exit 77
+  }
+fi
 
 generation="$({
   openssl dgst -sha256 -r "$SOURCE_DIR/build.sh" | cut -d' ' -f1
@@ -24,8 +26,15 @@ generation="$({
   command -v swiftc
   swiftc --version
   printf '%s\n' "$IDENTITY" "$BUNDLE_ID"
-  /usr/bin/security find-certificate -c "$IDENTITY" -p \
-    | openssl x509 -noout -fingerprint -sha256
+  if [[ "$IDENTITY" == "-" ]]; then
+    # ponytail: ad-hoc signing binds TCC to this immutable generation's cdhash.
+    # Replace it with a persistent keychain identity when cross-generation TCC
+    # continuity is required.
+    printf '%s\n' 'ad-hoc-one-generation'
+  else
+    /usr/bin/security find-certificate -c "$IDENTITY" -p \
+      | openssl x509 -noout -fingerprint -sha256
+  fi
 } | openssl dgst -sha256 -r | cut -d' ' -f1)"
 readonly GENERATION_DIR="$BASE/generations/$generation"
 readonly APP="$GENERATION_DIR/PhotoLibraryBridge.app"
@@ -49,7 +58,7 @@ cat >"$STAGED_APP/Contents/Info.plist" <<EOF
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>LSUIElement</key><true/>
-  <key>NSPhotoLibraryUsageDescription</key><string>新しく追加された名刺写真を検出し、人物ページ作成のために読み取ります。</string>
+  <key>NSPhotoLibraryUsageDescription</key><string>指定されたアルバムの写真・動画を読み取り専用で解析します。</string>
 </dict></plist>
 EOF
 

@@ -12,14 +12,24 @@ struct BridgeRequest: Decodable {
 struct RequestSpec: Decodable {
     let assetIds: [String]?
     let runId: String?
+    let albumName: String?
+}
+
+struct AlbumRecord: Encodable {
+    let id: String
+    let name: String
+    let count: Int
 }
 
 struct AssetRecord: Encodable {
     let id: String
+    let filename: String?
+    let mediaType: String
     let creationDate: String?
     let modificationDate: String?
     let pixelWidth: Int
     let pixelHeight: Int
+    let durationSeconds: Double?
 }
 
 struct CardSignals: Encodable, Equatable {
@@ -42,11 +52,15 @@ struct ExportRecord: Encodable {
     let id: String
     let path: String
     let sha256: String
+    let mediaType: String
+    let byteCount: Int
+    let originalFilename: String?
 }
 
 struct BridgeOutput: Encodable {
     let type: String
     let authorization: String?
+    let album: AlbumRecord?
     let asset: AssetRecord?
     let classification: ClassificationRecord?
     let export: ExportRecord?
@@ -56,37 +70,43 @@ struct BridgeOutput: Encodable {
 
     static let authorization: (String) -> BridgeOutput = {
         BridgeOutput(
-            type: "authorization", authorization: $0, asset: nil,
+            type: "authorization", authorization: $0, album: nil, asset: nil,
+            classification: nil, export: nil, ok: nil, count: nil, error: nil)
+    }
+
+    static let album: (AlbumRecord) -> BridgeOutput = {
+        BridgeOutput(
+            type: "album", authorization: nil, album: $0, asset: nil,
             classification: nil, export: nil, ok: nil, count: nil, error: nil)
     }
 
     static let asset: (AssetRecord) -> BridgeOutput = {
         BridgeOutput(
-            type: "asset", authorization: nil, asset: $0,
+            type: "asset", authorization: nil, album: nil, asset: $0,
             classification: nil, export: nil, ok: nil, count: nil, error: nil)
     }
 
     static let classification: (ClassificationRecord) -> BridgeOutput = {
         BridgeOutput(
-            type: "classification", authorization: nil, asset: nil,
+            type: "classification", authorization: nil, album: nil, asset: nil,
             classification: $0, export: nil, ok: nil, count: nil, error: nil)
     }
 
     static let export: (ExportRecord) -> BridgeOutput = {
         BridgeOutput(
-            type: "export", authorization: nil, asset: nil,
+            type: "export", authorization: nil, album: nil, asset: nil,
             classification: nil, export: $0, ok: nil, count: nil, error: nil)
     }
 
     static let success: (Int) -> BridgeOutput = {
         BridgeOutput(
-            type: "end", authorization: nil, asset: nil,
+            type: "end", authorization: nil, album: nil, asset: nil,
             classification: nil, export: nil, ok: true, count: $0, error: nil)
     }
 
     static let failure: (String) -> BridgeOutput = {
         BridgeOutput(
-            type: "end", authorization: nil, asset: nil,
+            type: "end", authorization: nil, album: nil, asset: nil,
             classification: nil, export: nil, ok: false, count: 0, error: $0)
     }
 }
@@ -105,6 +125,20 @@ enum BridgeFailure: LocalizedError {
 }
 
 private let iso8601 = ISO8601DateFormatter()
+
+enum ExactMatch<Value> {
+    case none
+    case one(Value)
+    case many([Value])
+}
+
+func exactlyOne<Value>(_ values: [Value]) -> ExactMatch<Value> {
+    switch values.count {
+    case 0: .none
+    case 1: .one(values[0])
+    default: .many(values)
+    }
+}
 
 let authorizationName: (PHAuthorizationStatus) -> String = {
     switch $0 {
@@ -147,6 +181,30 @@ let allAssets: () -> [PHAsset] = {
     return (0..<result.count).map { result.object(at: $0) }
 }
 
+let matchingAlbums: (String) -> [PHAssetCollection] = { name in
+    let result = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: nil)
+    return (0..<result.count)
+        .map { result.object(at: $0) }
+        .filter { $0.localizedTitle == name }
+}
+
+let albumNamed: (String) throws -> PHAssetCollection = { name in
+    switch exactlyOne(matchingAlbums(name)) {
+    case .none:
+        throw BridgeFailure.unavailable("album not found: \(name)")
+    case let .one(album):
+        return album
+    case let .many(albums):
+        let identifiers = albums.map(\.localIdentifier).sorted().joined(separator: ",")
+        throw BridgeFailure.invalid("album name is ambiguous: \(name); ids=\(identifiers)")
+    }
+}
+
+let assetsInAlbum: (PHAssetCollection) -> [PHAsset] = { album in
+    let result = PHAsset.fetchAssets(in: album, options: nil)
+    return (0..<result.count).map { result.object(at: $0) }
+}
+
 let assetsByID: ([String]) -> [PHAsset] = { identifiers in
     let result = PHAsset.fetchAssets(withLocalIdentifiers: identifiers, options: nil)
     let byID = Dictionary(uniqueKeysWithValues: (0..<result.count).map {
@@ -156,13 +214,30 @@ let assetsByID: ([String]) -> [PHAsset] = { identifiers in
     return identifiers.compactMap { byID[$0] }
 }
 
+let mediaTypeName: (PHAssetMediaType) -> String = {
+    switch $0 {
+    case .image: "image"
+    case .video: "video"
+    case .audio: "audio"
+    case .unknown: "unknown"
+    @unknown default: "unknown"
+    }
+}
+
+let originalFilename: (PHAsset) -> String? = {
+    PHAssetResource.assetResources(for: $0).first?.originalFilename
+}
+
 let assetRecord: (PHAsset) -> AssetRecord = {
     AssetRecord(
         id: $0.localIdentifier,
+        filename: originalFilename($0),
+        mediaType: mediaTypeName($0.mediaType),
         creationDate: $0.creationDate.map(iso8601.string(from:)),
         modificationDate: $0.modificationDate.map(iso8601.string(from:)),
         pixelWidth: $0.pixelWidth,
-        pixelHeight: $0.pixelHeight)
+        pixelHeight: $0.pixelHeight,
+        durationSeconds: $0.mediaType == .video ? $0.duration : nil)
 }
 
 let requestedImage: (PHAsset, CGFloat) -> NSImage? = { asset, maximumDimension in
@@ -252,6 +327,11 @@ let validRunID: (String) -> Bool = {
     $0.range(of: #"\A[A-Za-z0-9._-]{1,80}\z"#, options: .regularExpression) != nil
 }
 
+let safeVideoExtension: (String) -> String = {
+    let candidate = URL(fileURLWithPath: $0).pathExtension.lowercased()
+    return ["mov", "mp4", "m4v"].contains(candidate) ? candidate : "mov"
+}
+
 let sha256: (Data) -> String = {
     SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined()
 }
@@ -275,7 +355,7 @@ let exportRoot: () -> URL = {
     return URL(fileURLWithPath: path, isDirectory: true)
 }
 
-let exportAsset: (PHAsset, String) throws -> ExportRecord = { asset, runID in
+let exportDirectory: (String) throws -> URL = { runID in
     guard validRunID(runID) else {
         throw BridgeFailure.invalid("runId must match [A-Za-z0-9._-]{1,80}")
     }
@@ -284,12 +364,99 @@ let exportAsset: (PHAsset, String) throws -> ExportRecord = { asset, runID in
         at: directory,
         withIntermediateDirectories: true,
         attributes: [.posixPermissions: 0o700])
+    return directory
+}
+
+let exportImage: (PHAsset, String) throws -> ExportRecord = { asset, runID in
+    let directory = try exportDirectory(runID)
     let data = try jpegData(asset)
     let digest = sha256(data)
     let destination = directory.appendingPathComponent(String(digest.prefix(24)) + ".jpg")
     try data.write(to: destination, options: .atomic)
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
-    return ExportRecord(id: asset.localIdentifier, path: destination.path, sha256: digest)
+    return ExportRecord(
+        id: asset.localIdentifier,
+        path: destination.path,
+        sha256: digest,
+        mediaType: "image",
+        byteCount: data.count,
+        originalFilename: originalFilename(asset))
+}
+
+let videoResource: (PHAsset) -> PHAssetResource? = { asset in
+    let resources = PHAssetResource.assetResources(for: asset)
+    return resources.first { $0.type == .fullSizeVideo }
+        ?? resources.first { $0.type == .video }
+        ?? resources.first { $0.type == .pairedVideo }
+}
+
+let writeVideoResource: (PHAssetResource, URL) throws -> Void = { resource, destination in
+    let options = PHAssetResourceRequestOptions()
+    options.isNetworkAccessAllowed = true
+    let semaphore = DispatchSemaphore(value: 0)
+    let lock = NSLock()
+    var completionError: Error?
+    PHAssetResourceManager.default().writeData(for: resource, toFile: destination, options: options) { error in
+        lock.lock()
+        completionError = error
+        lock.unlock()
+        semaphore.signal()
+    }
+    guard semaphore.wait(timeout: .now() + 1_800) == .success else {
+        throw BridgeFailure.unavailable("video export timed out")
+    }
+    lock.lock()
+    defer { lock.unlock() }
+    switch completionError {
+    case let .some(error):
+        throw BridgeFailure.unavailable("video export failed: \(error.localizedDescription)")
+    case .none:
+        return
+    }
+}
+
+let exportVideo: (PHAsset, String) throws -> ExportRecord = { asset, runID in
+    guard asset.duration <= 3_600 else {
+        throw BridgeFailure.invalid("video duration exceeds the 3600 second export limit")
+    }
+    guard let resource = videoResource(asset) else {
+        throw BridgeFailure.unavailable("video resource unavailable for asset \(asset.localIdentifier)")
+    }
+    let directory = try exportDirectory(runID)
+    let temporary = directory.appendingPathComponent(".\(UUID().uuidString).partial")
+    defer { try? FileManager.default.removeItem(at: temporary) }
+    try writeVideoResource(resource, temporary)
+    let attributes = try FileManager.default.attributesOfItem(atPath: temporary.path)
+    let byteCount = (attributes[.size] as? NSNumber)?.intValue ?? 0
+    // ponytail: 2 GiB is sufficient for the intended short tutorials; switch to
+    // a cancelling requestData stream if long-form source video becomes necessary.
+    guard byteCount > 0 && byteCount <= 2_147_483_648 else {
+        throw BridgeFailure.invalid("video export must be between 1 byte and 2 GiB")
+    }
+    let data = try Data(contentsOf: temporary, options: .mappedIfSafe)
+    let digest = sha256(data)
+    let fileExtension = safeVideoExtension(resource.originalFilename)
+    let destination = directory.appendingPathComponent(String(digest.prefix(24)) + "." + fileExtension)
+    switch FileManager.default.fileExists(atPath: destination.path) {
+    case true: try FileManager.default.removeItem(at: temporary)
+    case false: try FileManager.default.moveItem(at: temporary, to: destination)
+    }
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
+    return ExportRecord(
+        id: asset.localIdentifier,
+        path: destination.path,
+        sha256: digest,
+        mediaType: "video",
+        byteCount: byteCount,
+        originalFilename: resource.originalFilename)
+}
+
+let exportAsset: (PHAsset, String) throws -> ExportRecord = { asset, runID in
+    switch asset.mediaType {
+    case .image: try exportImage(asset, runID)
+    case .video: try exportVideo(asset, runID)
+    default: throw BridgeFailure.unavailable("unsupported media type for asset \(asset.localIdentifier)")
+    }
 }
 
 let boundedAssetIDs: (RequestSpec?) throws -> [String] = { spec in
@@ -298,6 +465,14 @@ let boundedAssetIDs: (RequestSpec?) throws -> [String] = { spec in
         throw BridgeFailure.invalid("assetIds count must be between 1 and 100")
     }
     return identifiers
+}
+
+let requiredAlbumName: (RequestSpec?) throws -> String = { spec in
+    let name = spec?.albumName ?? ""
+    guard !name.isEmpty && name.utf8.count <= 256 else {
+        throw BridgeFailure.invalid("albumName must be between 1 and 256 UTF-8 bytes")
+    }
+    return name
 }
 
 let execute: (BridgeRequest) throws -> [BridgeOutput] = { request in
@@ -312,6 +487,13 @@ let execute: (BridgeRequest) throws -> [BridgeOutput] = { request in
         try requireFullAuthorization()
         let records = allAssets().map(assetRecord).sorted { $0.id < $1.id }
         return records.map(BridgeOutput.asset) + [.success(records.count)]
+    case "albumSnapshot":
+        try requireFullAuthorization()
+        let name = try requiredAlbumName(request.spec)
+        let album = try albumNamed(name)
+        let records = assetsInAlbum(album).map(assetRecord).sorted { $0.id < $1.id }
+        let albumRecord = AlbumRecord(id: album.localIdentifier, name: name, count: records.count)
+        return [.album(albumRecord)] + records.map(BridgeOutput.asset) + [.success(records.count)]
     case "classify":
         try requireFullAuthorization()
         let identifiers = try boundedAssetIDs(request.spec)
@@ -323,7 +505,11 @@ let execute: (BridgeRequest) throws -> [BridgeOutput] = { request in
         guard let runID = request.spec?.runId else {
             throw BridgeFailure.invalid("runId is required")
         }
-        let records = try assetsByID(identifiers).map { try exportAsset($0, runID) }
+        let assets = assetsByID(identifiers)
+        guard assets.filter({ $0.mediaType == .video }).count <= 20 else {
+            throw BridgeFailure.invalid("a single export may contain at most 20 videos")
+        }
+        let records = try assets.map { try exportAsset($0, runID) }
         return records.map(BridgeOutput.export) + [.success(records.count)]
     default:
         throw BridgeFailure.invalid("unsupported operation: \(request.op)")

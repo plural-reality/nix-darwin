@@ -1,4 +1,4 @@
-# Photos business-card scan bridge
+# Read-only Photos bridge
 
 ## Decision
 
@@ -19,12 +19,17 @@ The weekly driver compares stable PhotoKit asset IDs, runs Vision only for new
 IDs, and exports only business-card candidates as bounded JPEG derivatives.
 The Photos library database and originals are never opened directly.
 
+The same bridge also supports an exact-name album snapshot. This does not add a
+second Photos boundary: album metadata, bounded JPEG derivatives, and bounded
+video resources all remain behind the same signed process and fixed export root.
+
 ## Interface
 
 ```bash
 photo-library status
 photo-library authorize
 photo-library snapshot
+photo-library album '髪の毛'
 printf '%s\n' '{"op":"classify","spec":{"assetIds":["..."]}}' | photo-library request
 printf '%s\n' '{"op":"export","spec":{"assetIds":["..."],"runId":"20260803T160000Z-a1b2"}}' | photo-library request
 
@@ -33,10 +38,18 @@ photo-card-scan pending
 photo-card-scan ack RUN_ID
 ```
 
-Every bridge response is JSONL and ends with an `end` record. Snapshot records
-contain only the stable asset ID, creation/modification timestamps, and pixel
-dimensions. Classification records contain boolean signals and a score, never
-recognized contact text.
+Every bridge response is JSONL and ends with an `end` record. The global
+`snapshot` remains image-only for the business-card difference driver.
+`albumSnapshot` emits one album record followed by image/video asset records
+with stable ID, original filename, media type, duration, timestamps, and pixel
+dimensions. Exact-name lookup fails closed when the name is absent or ambiguous.
+Classification records contain boolean signals and a score, never recognized
+contact text.
+
+Image export produces a bounded JPEG derivative. Video export is limited to 20
+videos per request, 3600 seconds and 2 GiB per asset, and preserves only a safe
+`mov`/`mp4`/`m4v` extension. Export destinations remain fixed below the bridge
+root; callers cannot supply a filesystem path.
 
 The bridge exposes no delete, edit, album mutation, arbitrary path, shell,
 JavaScript, SQL, or AppleScript operation. Export destinations are fixed below
@@ -63,6 +76,12 @@ and application-support directories.
 
 The LaunchAgent must execute the signed app binary directly. Do not put a shell
 or Home Manager launchd wrapper in front of the TCC-responsible process.
+
+An Apple or locally trusted signing identity provides authorization continuity
+across generations. When interactive keychain authorization is unavailable, the
+builder also accepts `PHOTO_LIBRARY_SIGNING_IDENTITY=-`; that ad-hoc signature is
+securely bound to one immutable cdhash and therefore requires Photos approval
+again after any source change.
 
 ## Activation boundary
 
