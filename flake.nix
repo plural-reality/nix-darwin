@@ -355,6 +355,19 @@
                 touch "$out"
               '';
 
+          checks.codex-task-audit =
+            pkgs.runCommand "codex-task-audit-check"
+              {
+                nativeBuildInputs = [ pkgs.nodejs_22 ];
+              }
+              ''
+                cp ${./scripts/codex-task-audit.ts} codex-task-audit.ts
+                cp ${./scripts/codex-task-audit.test.ts} codex-task-audit.test.ts
+                node --disable-warning=ExperimentalWarning --experimental-strip-types --experimental-sqlite \
+                  --test codex-task-audit.test.ts
+                touch "$out"
+              '';
+
           # Migration: nix run github:plural-reality/nix-darwin#migrate
           packages.migrate = pkgs.writeShellApplication {
             name = "migrate";
