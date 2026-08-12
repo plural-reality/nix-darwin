@@ -253,6 +253,15 @@ let
     '';
   };
 
+  # Read-only Codex task metadata audit: JSON stream -> JSON/Markdown candidates.
+  codexTaskAudit = pkgs.writeShellApplication {
+    name = "codex-task-audit";
+    runtimeInputs = [ pkgs.nodejs_22 ];
+    text = ''
+      exec ${pkgs.nodejs_22}/bin/node --disable-warning=ExperimentalWarning --experimental-strip-types --experimental-sqlite ${../scripts/codex-task-audit.ts} "$@"
+    '';
+  };
+
   # Read-only Mori MCP adapter. OAuth/runtime state remains outside Nix.
   mori = pkgs.writeShellApplication {
     name = "mori";
@@ -370,6 +379,7 @@ in
     freeeCall
     freeeReconcile
     codexName
+    codexTaskAudit
     mori
     transcriptSync
     imsgHistory
