@@ -69,6 +69,7 @@ let
   ) remoteMcpServers;
 
   codexMcpOauthCallback = userConfig.codexMcpOauthCallback or null;
+  codexRouterEnabled = userConfig.codexRouterEnabled or false;
 
   # SCRAPBOX_SID is deliberately NOT here: the SID is a rotating session cookie
   # whose runtime cache is outside Nix and validated by scrapbox_session.py. Projecting it here
@@ -179,6 +180,30 @@ let
       base_instructions = "";
     };
 
+  mkCodexDeepseekModel = {
+    slug,
+    displayName,
+    description,
+    contextWindow,
+    defaultReasoningLevel,
+    priority,
+  }:
+    (mkCodexGpt56Model {
+      inherit slug description priority defaultReasoningLevel;
+      displayName = displayName;
+      multiAgentVersion = "v1";
+    })
+    // {
+      context_window = contextWindow;
+      max_context_window = contextWindow;
+      prefer_websockets = false;
+      use_responses_lite = false;
+      input_modalities = [ "text" ];
+      supports_image_detail_original = false;
+      additional_speed_tiers = [ ];
+      service_tiers = [ ];
+    };
+
   codexModelCatalogFile = pkgs.writeText "codex-model-catalog.json" (
     builtins.toJSON {
       models = [
@@ -205,6 +230,32 @@ let
           defaultReasoningLevel = "medium";
           multiAgentVersion = "v1";
           priority = 3;
+        })
+      ]
+      ++ lib.optionals codexRouterEnabled [
+        (mkCodexDeepseekModel {
+          slug = "deepseek/deepseek-v4-pro";
+          displayName = "DeepSeek V4 Pro";
+          description = "DeepSeek V4 Pro via OpenRouter.";
+          contextWindow = 1048576;
+          defaultReasoningLevel = "medium";
+          priority = 4;
+        })
+        (mkCodexDeepseekModel {
+          slug = "deepseek/deepseek-v4-flash";
+          displayName = "DeepSeek V4 Flash";
+          description = "DeepSeek V4 Flash via OpenRouter.";
+          contextWindow = 1048576;
+          defaultReasoningLevel = "low";
+          priority = 5;
+        })
+        (mkCodexDeepseekModel {
+          slug = "deepseek/deepseek-v3.2";
+          displayName = "DeepSeek V3.2";
+          description = "DeepSeek V3.2 via OpenRouter.";
+          contextWindow = 163840;
+          defaultReasoningLevel = "medium";
+          priority = 6;
         })
       ];
     }
@@ -478,6 +529,9 @@ let
   // lib.optionalAttrs (codexMcpOauthCallback != null) {
     mcp_oauth_callback_port = codexMcpOauthCallback.port;
     mcp_oauth_callback_url = codexMcpOauthCallback.url;
+  }
+  // lib.optionalAttrs codexRouterEnabled {
+    openai_base_url = "http://127.0.0.1:21434/v1";
   };
 
   codexManagedConfigFile = pkgs.writeText "codex-managed-config.json" (
