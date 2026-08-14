@@ -49,6 +49,9 @@ def replace_plugins(document: MutableMapping, managed: MutableMapping) -> Mutabl
 
 def project(document: MutableMapping, managed: MutableMapping) -> MutableMapping:
     """Pure policy projection over a parsed TOML document."""
+    # Codex 0.147 layers named profiles from separate files. Its legacy
+    # in-document table is rejected, so remove the migrated projection.
+    document.pop("profiles", None)
     return merge(replace_plugins(replace_mcp_servers(document), managed), managed)
 
 
