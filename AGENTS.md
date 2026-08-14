@@ -4,7 +4,8 @@ This repository is the shared Nix/Home Manager source for local agent tooling.
 
 ## Source Of Truth
 
-- Shared Claude Code and Codex files are generated from `modules/claude-code.nix`.
+- Shared Claude Code and Codex user files are generated from `modules/claude-code.nix`.
+- Codex managed system hooks are owned only by `modules/codex-hooks.nix` and projected to `/etc/codex/hooks.json`.
 - Agent prompts and skills live under `prompt/`.
 - Shared CLI tools live under `scripts/` and are wired through `modules/shared-scripts.nix`.
 - Personal machine bindings belong in the downstream flake, not in this repository.

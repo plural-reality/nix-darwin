@@ -5,7 +5,7 @@ Read this before changing Nix/Home Manager, Claude/Codex prompts, skills, or sha
 ## Source Of Truth
 
 - Shared skills live at `prompt/claude-code/skills/<name>/`.
-- Claude memory = harness-native `~/.claude/projects/<project>/memory/` (canonical, auto-injected at SessionStart). Codex's own store = `~/.codex/memories`. Separate stores; never route Claude writes into `~/.codex/memories`.
+- Shared memory = Claude harness-native `~/.claude/projects/<project>/memory/` (canonical). Claude injects it natively; a Nix-managed Codex SessionStart hook projects the bounded pointer index. Codex native memory generation/use is disabled; never route shared writes into `~/.codex/memories`.
 - Shared scripts live at `scripts/` and are wired by `modules/shared-scripts.nix`.
 - The raw `~/.claude/scripts/*` runtime payload lives at `scripts/claude/` and is wired by `modules/claude-agent-scripts.nix` (recursive symlink → `~/.claude/scripts/`).
 - Agent prompt/config projection is owned by `modules/claude-code.nix`.
@@ -75,7 +75,7 @@ ls -1 "$(nix build .#desktop-skills --no-link --print-out-paths)" | rg '^<skill>
 
 ## Memory Change Fast Path
 
-Claude's self-learning memory is the harness-native auto-memory at `~/.claude/projects/<project>/memory/` (canonical, auto-injected at SessionStart). It is NOT Nix-managed: it is mutated only through the `self-learn` skill, which writes one fact per file plus a one-line `MEMORY.md` pointer and reads back to verify. Do not hand-edit it from Nix activation, and do not route Claude memory writes into `~/.codex/memories` (Claude never reads that path, so writes there never reach it). `~/.codex/memories` is Codex's own store only.
+Claude's self-learning memory is the harness-native auto-memory at `~/.claude/projects/<project>/memory/` (canonical). It is NOT Nix-managed: it is mutated only through the `self-learn` skill, which writes one fact per file plus a one-line `MEMORY.md` pointer and reads back to verify. Claude injects its index natively. Codex receives the same 200-line/25-KiB bounded pointer index through four Nix-managed SessionStart hook chunks (each below Codex's per-hook output limit), then opens only task-relevant topic files. Do not hand-edit memory from Nix activation, and do not route shared writes into `~/.codex/memories`; Codex native memory generation/use is disabled. The hook is projected at `/etc/codex/hooks.json`, Codex's managed system layer, rather than user hook state. Therefore no mutable trust hash or pre-approval bypass is required.
 
 ## Downstream Promotion
 

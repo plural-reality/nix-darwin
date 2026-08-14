@@ -1,7 +1,7 @@
 ---
 name: email
 description: >
-  himalaya CLI でメールの確認・閲覧・送信・返信、およびメールを根拠に
+  個人 Gmail を himalaya CLI で確認・閲覧・送信・返信し、メールを根拠に
   ユーザーの発言を裏取り（事実確認）する。
   トリガー: 「メール確認」「メールチェック」「受信箱」「inbox」
   「メール送って」「返信して」「email」「mail」
@@ -9,9 +9,10 @@ description: >
   「いつ買った/売った/届いた/予約した」「購入履歴」「注文を確認」
 ---
 
-# Email スキル
+# Email スキル（個人 Gmail）
 
-himalaya CLI ラッパー (`~/.claude/scripts/himalaya-mail.sh`) を使ってメール操作を行う。
+個人 Gmail は himalaya CLI ラッパー (`~/.claude/scripts/himalaya-mail.sh`) を使う。
+法人 `takagi@plural-reality.com` はこの skill ではなく `gws gmail` を使う。Gmail MCP/plugin は使わない。
 
 ## クイックリファレンス
 

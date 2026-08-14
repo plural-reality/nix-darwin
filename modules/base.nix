@@ -45,8 +45,6 @@ in
     jq # agent scripts parse JSON with bare `jq` (was relying on system /usr/bin/jq)
     himalaya # email skill / scripts/claude/himalaya-mail.sh (was Homebrew-only)
 
-    # Google Workspace CLI (see gdrive skill)
-    gws
   ];
 
   programs = {

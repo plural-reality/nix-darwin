@@ -81,8 +81,8 @@ const scbPluralPrompt = `Scrapbox のチームプロジェクト "plural-reality
 const gmailPrompt = `Gmail から、今日 ${DATE} 時点で「自分が返信・対応しないといけない」ものを抽出してください。
 
 手順:
-1. ToolSearch で "select:mcp__claude_ai_Gmail__search_threads" を実行。
-2. 未読・要返信・最近のスレッドを検索（例: is:unread newer_than:14d / in:inbox newer_than:10d / 実在の人物ドメイン newer_than:30d）。
+1. 個人 Gmail は email skill の himalaya ラッパ、法人 takagi@plural-reality.com は gws gmail を使う。Gmail MCP/plugin は使わない。
+2. 両経路で未読・要返信・最近のスレッドを検索（例: is:unread newer_than:14d / in:inbox newer_than:10d / 実在の人物ドメイン newer_than:30d）。
 3. 明確にアクションが必要なもの（返信待ち・締切・依頼・支払い・契約等）だけを TASK として抽出。ニュースレター・宣伝・自動通知・配送/認証コード等は除外。
 4. 差出人・件名から個人か多元現実(plural-reality)の仕事かを推定。
 取得できなければ reachable=false、notes に理由。`
