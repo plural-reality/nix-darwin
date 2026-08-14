@@ -53,6 +53,7 @@ let
   # projected into each client's native schema. OAuth credentials remain mutable
   # runtime state and are never copied into the Nix store.
   remoteMcpServers = userConfig.remoteMcpServers or { };
+  codexPlugins = userConfig.codexPlugins or { };
 
   claudeCodeRemoteMcpServers = builtins.mapAttrs (_: server: {
     type = "http";
@@ -212,50 +213,9 @@ let
 
   codexConfigPython = pkgs.python313.withPackages (ps: [ ps.tomlkit ]);
 
-  codexConfigMergeScript = pkgs.writeText "merge-codex-config.py" ''
-    from collections.abc import MutableMapping
-    from datetime import datetime, timezone
-    from pathlib import Path
-    import json
-    import sys
-
-    import tomlkit
-
-    managed_path = Path(sys.argv[1])
-    config_path = Path(sys.argv[2])
-
-    pruned_mcp_servers = {"apple-events", "beeper", "playwright"}
-
-    def merge(target, source):
-        for key, value in source.items():
-            if isinstance(value, dict):
-                current = target.get(key)
-                target[key] = merge(
-                    current if isinstance(current, MutableMapping) else tomlkit.table(),
-                    value,
-                )
-            else:
-                target[key] = value
-        return target
-
-    managed = json.loads(managed_path.read_text())
-
-    try:
-        document = tomlkit.parse(config_path.read_text()) if config_path.exists() else tomlkit.document()
-    except Exception as exc:
-        backup_path = config_path.with_suffix(
-            f".toml.invalid-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
-        )
-        config_path.rename(backup_path)
-        print(f"warning: moved invalid Codex config to {backup_path}: {exc}", file=sys.stderr)
-        document = tomlkit.document()
-
-    for server_name in pruned_mcp_servers:
-        if isinstance(document.get("mcp_servers"), MutableMapping):
-            document["mcp_servers"].pop(server_name, None)
-
-    config_path.write_text(tomlkit.dumps(merge(document, managed)))
-  '';
+  codexConfigMergeScript = pkgs.writeText "merge-codex-config.py" (
+    builtins.readFile ../scripts/merge-codex-config.py
+  );
 
   # Xcode Agent runs in a sandboxed environment without PATH inheritance.
   # All commands must use absolute Nix store paths.
@@ -388,8 +348,8 @@ let
 
   # Codex の turn 終了フック。以前はここでデスクトップ通知も出していたが、通知は全廃した
   # (2026-08-08)。残っている責務はセッションの自動命名だけなので、名前もそれに合わせる。
-  # `notify` は Codex にとって唯一の turn-end フック口であり、`codex-name --auto` の
-  # 自動呼び出し口はここ1箇所だけ(手動 CLI は shared-scripts.nix の `codex-name`)。
+  # `notify` is the legacy turn-complete callback used only for task naming.
+  # Lifecycle hooks are independently owned by modules/codex-hooks.nix.
   codexTurnEndNameHook = pkgs.writeShellApplication {
     name = "codex-name-on-turn-end";
     runtimeInputs = [ pkgs.llm-agents.codex ];
@@ -416,6 +376,16 @@ let
     notify = [
       "${codexTurnEndNameHook}/bin/codex-name-on-turn-end"
     ];
+
+    memories = {
+      generate_memories = false;
+      use_memories = false;
+    };
+
+    features = {
+      hooks = true;
+      memories = false;
+    };
 
     tui = {
       status_line = [
@@ -473,7 +443,8 @@ let
       "chrome@openai-bundled" = {
         enabled = true;
       };
-    };
+    }
+    // codexPlugins;
   }
   // lib.optionalAttrs (codexMcpOauthCallback != null) {
     mcp_oauth_callback_port = codexMcpOauthCallback.port;
@@ -791,14 +762,32 @@ in
     CODEX_CONFIG="$HOME/.codex/config.toml"
     mkdir -p "$HOME/.codex"
     ${codexConfigPython}/bin/python ${codexConfigMergeScript} ${codexManagedConfigFile} "$CODEX_CONFIG"
+    ${pkgs.coreutils}/bin/chmod 600 "$CODEX_CONFIG"
   '';
 
-  # (removed 2026-06-27) sharedAgentMemories: this used to symlink
-  # ~/.claude/memories -> ~/.codex/memories. Claude's self-learning memory is the
-  # harness-native auto-memory under ~/.claude/projects/<project>/memory/, which
-  # Claude reads directly; ~/.claude/memories was a dead store that no Claude path
-  # reads. Codex keeps ~/.codex/memories as its own store natively. The stale live
-  # symlink is removed out-of-band (rm ~/.claude/memories).
+  home.activation.removeLegacyCodexHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    LEGACY_HOOKS="$HOME/.codex/hooks.json"
+    LEGACY_HOOKS_SHA256="0dd0a2d540cfbef57e7b68473298aa68b140da6408475b21a39219bcf2ca6d3c"
+    if [ -f "$LEGACY_HOOKS" ] && [ ! -L "$LEGACY_HOOKS" ] \
+      && [ "$(${pkgs.coreutils}/bin/sha256sum "$LEGACY_HOOKS" | ${pkgs.coreutils}/bin/cut -d ' ' -f 1)" = "$LEGACY_HOOKS_SHA256" ]; then
+      ${pkgs.coreutils}/bin/rm "$LEGACY_HOOKS"
+    fi
+  '';
+
+  home.activation.removeLegacyAgentShadows = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    LEGACY_MEMORY="$HOME/.claude/memories"
+    LEGACY_AGENTS="$HOME/AGENTS.md"
+    LEGACY_AGENTS_SHA256="d673e46c7c9790b83d17425f736599421809df1d593a3c883c5c6232d8dd34f7"
+
+    if [ -L "$LEGACY_MEMORY" ] && [ "$(${pkgs.coreutils}/bin/readlink "$LEGACY_MEMORY")" = "$HOME/.codex/memories" ]; then
+      ${pkgs.coreutils}/bin/unlink "$LEGACY_MEMORY"
+    fi
+
+    if [ -f "$LEGACY_AGENTS" ] && [ ! -L "$LEGACY_AGENTS" ] \
+      && [ "$(${pkgs.coreutils}/bin/sha256sum "$LEGACY_AGENTS" | ${pkgs.coreutils}/bin/cut -d ' ' -f 1)" = "$LEGACY_AGENTS_SHA256" ]; then
+      ${pkgs.coreutils}/bin/rm "$LEGACY_AGENTS"
+    fi
+  '';
 
   home.activation.xcodeAgentSymlinks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     XCODE_DIR="$HOME/${xcodeAgentConfigDir}"

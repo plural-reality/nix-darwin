@@ -45,7 +45,7 @@ python3 -c "import datetime;d=datetime.date.today();print(d.isoformat());print(f
 ### A. 気がかりの一括処理（15分）— 唯一の新規取り込み
 自動化が拾えない口頭約束・メール・チャット・手書きメモを人手で処理し、**気がかりを全部 Scrapbox に capture**する。発火が要るものだけ Reminders へ。
 - 手書きメモ → Scrapbox（ToDoカンバン or 該当ページ）へ転記。
-- Gmail 個人（`email` skill / Gmail MCP）＋法人（`gws gmail`）の未読・スター → アクション化 or アーカイブ。
+- Gmail 個人（`email` skill / himalaya）＋法人（`gws gmail`）の未読・スター → アクション化 or アーカイブ。
 - Beeper 未返信・口約束（相手待ちとして拾う）。
 - `[claude code WIP.icon]` の未処理（`wip-crawl` の残り）。
 - Clarify（判断チャート）: 行動可能か → No なら ⏹️見送り / 📝資料。Yes なら次の物理的行動を1つ。2分以内=その場でやる。2分超=⏳相手待ち / 📅日時固定 / ⬜次にやる。複数行動の成果は案件ページにする。

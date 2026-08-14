@@ -64,7 +64,7 @@ scrapbox-write -p takalog -t "<PAGE>" --verbatim < /tmp/takalog_body.txt        
 | AIペンダント（Limitless） | `python3 ~/.claude/scripts/pendant.py today / search` |
 | Scrapbox tkgshn-private | Scrapbox API（SID 認証）。WebFetch は使わない |
 | Scrapbox plural-reality | Scrapbox API（SID 認証）。「ToDoカンバン」の絵文字規約に従う |
-| Gmail | MCP `mcp__claude_ai_Gmail__search_threads` |
+| Gmail | 個人は `email` skill / himalaya、法人は `gws gmail` |
 | ローカルメモリ | `~/.claude/projects/-Users-tkgshn/memory/` を Read |
 
 ## 注意

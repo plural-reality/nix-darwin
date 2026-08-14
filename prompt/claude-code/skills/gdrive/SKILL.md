@@ -27,21 +27,19 @@ Google Drive 上のドキュメントを、ブラウザを開かずターミナ�
 
 Taka の MacBook では `gws` は Domain-wide Delegation で `takagi@plural-reality.com` を impersonate する。したがって、結果は法人アカウント側の権限・共有ドライブ・共有ドキュメントを反映する。
 
-現在の DWD authorized scopes は **Drive / Docs / Sheets / Slides のみ**。利用できる代表操作:
+現在の DWD authorized scopes は **Drive / Docs / Sheets / Slides / Gmail / Calendar**。利用できる代表操作:
 
 - Drive: files list/get/create/copy/update/export、permissions、comments
 - Docs: documents get、batchUpdate
 - Sheets: spreadsheets / values の読取・更新
 - Slides: presentations の読取・更新
 
-現在の DWD では **Gmail と Google Calendar は未承認**。法人 Gmail / 法人 Google Calendar を `gws` で扱う必要が出た場合は、Workspace Admin Console の Domain-wide Delegation client `100692351286360570804` に scope を追加し、同じ scope を `/private/etc/nix-darwin/personal.nix` の wrapper `scopes` に追加してから使う。片側だけ変更してはいけない。
-
 アカウントの切り分け:
 
-- **個人 Gmail (`@gmail.com`)**: `gws` で読まない。個人メールの文脈なら Gmail connector / 個人 OAuth 側を使う。曖昧なら読む前に確認する。
-- **法人 Gmail (`takagi@plural-reality.com`)**: `gws` の対象になりうるが、現状は Gmail scope が無いので読めない。必要時に `gmail.readonly` / `gmail.modify` 等を明示追加してから使う。
+- **個人 Gmail (`@gmail.com`)**: `gws` で読まない。`email` skill の himalaya CLI を使う。曖昧なら読む前に確認する。
+- **法人 Gmail (`takagi@plural-reality.com`)**: `gws gmail` を使う。送信・返信は直前に宛先と本文をpreviewし、明示承認後にreadbackする。
 - **予定・空き時間確認**: Google Calendar ではなく Apple Calendar が authoritative。`gws` Calendar を空き判定の source of truth にしない。
-- **法人 Google Calendar のオブジェクト操作**: Google Workspace 側のカレンダーを明示された場合だけ扱う。現状は Calendar scope が無いので、必要時に `calendar.readonly` / `calendar.events` / `calendar` 等を明示追加してから使う。
+- **法人 Google Calendar のオブジェクト操作**: Google Workspace 側のカレンダーを明示された場合だけ `gws calendar` で扱う。
 
 ## Setup / Auth
 
@@ -77,7 +75,7 @@ OAuth は plural-reality.com 組織配下の Internal 設定なので、`*@plura
 - secret key name: `gws_agent_dwd_service_account_json`
 - service account: `gws-agent-dwd@plural-reality-gws.iam.gserviceaccount.com`
 - Workspace DWD client ID: `100692351286360570804`
-- authorized scopes: Drive / Docs / Sheets / Slides
+- authorized scopes: Drive / Docs / Sheets / Slides / Gmail / Calendar
 
 重要: `gws 0.22.5` は `GOOGLE_WORKSPACE_CLI_IMPERSONATED_USER` を直接サポートしない。過去の built-in impersonation は削除済みなので、service account JSON を `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE` に渡すだけでは service account 自身として動く。Taka の環境では wrapper が `sub=takagi@plural-reality.com` の JWT を作って token 注入することで DWD を成立させる。
 

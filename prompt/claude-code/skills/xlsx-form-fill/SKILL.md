@@ -28,8 +28,8 @@ description: >
 ## ワークフロー
 
 ### 0. メール添付の取得
-メールが **takagi@plural-reality.com（法人）宛**なら Gmail MCP では読めない（MCP は個人アカウント）。
-**gws** で取得する:
+メールが **takagi@plural-reality.com（法人）宛**なら **gws** で取得する。個人 Gmail は
+`email` skill の himalaya を使い、Gmail MCP/plugin は使わない:
 ```bash
 gws gmail users messages list --params '{"userId":"me","q":"件名 has:attachment newer_than:30d"}'
 gws gmail users messages get  --params '{"userId":"me","id":"MSGID","format":"full"}'   # attachmentId 取得
@@ -75,7 +75,7 @@ qlmanage -t -s128 -o /tmp/_ql filled.xlsx 2>&1 | grep -q produced && echo "Quick
 元と同じパーツ数＋QuickLook で開ければ正常。読み戻し確認時は `str(v or '')` 禁止（数値0が脱落）。
 
 ### 5. 返信下書き（gws・送信しない）
-Gmail MCP は個人アカウントなので、法人宛スレッドへの返信は gws で:
+法人宛スレッドへの返信下書きは gws で:
 ```bash
 # Python email.message で .eml 生成（From/To/Cc/Subject/In-Reply-To/References＋添付。日本語は lib が MIME 化）
 # In-Reply-To/References は元メールの Message-ID（messages get のヘッダから）

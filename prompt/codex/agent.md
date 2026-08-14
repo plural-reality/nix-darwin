@@ -28,9 +28,9 @@
 ## Shared Agent Skills And Memory
 
 - Managed shared skills live only in `~/Developer/plural-reality/nix-darwin/prompt/claude-code/skills/<name>/`. Home Manager projects that canonical source into both `~/.claude/skills` and `~/.codex/skills`; do not copy skill contents between runtime directories.
-- Claude's self-learning memory canonical store is the harness-native auto-memory under `~/.claude/projects/<project>/memory/` (home/personal agent context = `~/.claude/projects/-Users-tkgshn/memory/`). Codex has no SessionStart auto-injection, so to use it READ `~/.claude/projects/-Users-tkgshn/memory/MEMORY.md` first (one-line pointer index), then open only the relevant `feedback_/reference_/project_*.md` topic file.
+- Claude's self-learning memory canonical store is the harness-native auto-memory under `~/.claude/projects/<project>/memory/` (home/personal agent context = `~/.claude/projects/-Users-tkgshn/memory/`). A Nix-managed Codex `SessionStart` hook injects its bounded `MEMORY.md` pointer index. For every non-trivial task, use that index and READ only the relevant `feedback_/reference_/project_*.md` topic file before answering or acting; re-read the canonical file before relying on drift-prone facts.
 - WRITE: to add/update memory, use the `self-learn` skill against that store (one fact per file + one-line MEMORY.md pointer). Do NOT write to `~/.codex/memories` — Claude does not read it, so writes there never reach Claude.
-- `~/.codex/memories` stays Codex's own native store if Codex keeps one, but it is NOT the shared/canonical Claude memory.
+- Codex native memory generation/use is disabled in managed config. `~/.codex/memories` may remain as historical runtime state, but it is NOT read or written as shared memory.
 
 ## Browser Verification
 
