@@ -181,16 +181,22 @@ let
       base_instructions = "";
     };
 
-  mkCodexDeepseekModel = {
-    slug,
-    displayName,
-    description,
-    contextWindow,
-    defaultReasoningLevel,
-    priority,
-  }:
+  mkCodexDeepseekModel =
+    {
+      slug,
+      displayName,
+      description,
+      contextWindow,
+      defaultReasoningLevel,
+      priority,
+    }:
     (mkCodexGpt56Model {
-      inherit slug description priority defaultReasoningLevel;
+      inherit
+        slug
+        description
+        priority
+        defaultReasoningLevel
+        ;
       displayName = displayName;
       multiAgentVersion = "v1";
     })
@@ -410,6 +416,28 @@ let
     '';
   };
 
+  codexProfileConfigs = {
+    safe = {
+      approval_policy = "on-request";
+      sandbox_mode = "workspace-write";
+      model_reasoning_effort = "medium";
+    };
+    fast-local = {
+      approval_policy = "never";
+      sandbox_mode = "danger-full-access";
+      model_reasoning_effort = "low";
+    };
+    maximum-local = {
+      approval_policy = "never";
+      sandbox_mode = "danger-full-access";
+      model_reasoning_effort = "ultra";
+    };
+  };
+
+  codexProfileConfigFiles = lib.mapAttrs (
+    name: profile: pkgs.writeText "codex-${name}-profile.json" (builtins.toJSON profile)
+  ) codexProfileConfigs;
+
   codexManagedConfig = {
     approval_policy = "never";
     # The workspace is the ambient shell/filesystem mutation boundary. MCP,
@@ -419,9 +447,14 @@ let
     sandbox_mode = "workspace-write";
     suppress_unstable_features_warning = true;
 
+    features.multi_agent_v2 = {
+      enabled = true;
+      max_concurrent_threads_per_session = 3;
+    };
+
     model = "gpt-5.6-sol";
     model_catalog_json = "${codexModelCatalogFile}";
-    model_reasoning_effort = "low";
+    model_reasoning_effort = "ultra";
     service_tier = "priority";
     personality = "pragmatic";
     notify = [
@@ -456,19 +489,6 @@ let
     shell_environment_policy = {
       "inherit" = "core";
       set = sharedAgentEnv;
-    };
-
-    profiles = {
-      safe = {
-        approval_policy = "on-request";
-        sandbox_mode = "workspace-write";
-        model_reasoning_effort = "medium";
-      };
-      fast-local = {
-        approval_policy = "never";
-        sandbox_mode = "danger-full-access";
-        model_reasoning_effort = "low";
-      };
     };
 
     mcp_servers = {
@@ -813,10 +833,15 @@ in
   '';
 
   home.activation.codexDefaults = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    CODEX_CONFIG="$HOME/.codex/config.toml"
-    mkdir -p "$HOME/.codex"
-    ${codexConfigPython}/bin/python ${codexConfigMergeScript} ${codexManagedConfigFile} "$CODEX_CONFIG"
-    ${pkgs.coreutils}/bin/chmod 600 "$CODEX_CONFIG"
+    CODEX_HOME="$HOME/.codex"
+    mkdir -p "$CODEX_HOME"
+    ${codexConfigPython}/bin/python ${codexConfigMergeScript} ${codexManagedConfigFile} "$CODEX_HOME/config.toml"
+    ${lib.concatStringsSep "\n" (
+      lib.mapAttrsToList (name: configFile: ''
+        ${codexConfigPython}/bin/python ${codexConfigMergeScript} ${configFile} "$CODEX_HOME/${name}.config.toml"
+      '') codexProfileConfigFiles
+    )}
+    ${pkgs.coreutils}/bin/chmod 600 "$CODEX_HOME/config.toml" "$CODEX_HOME"/*.config.toml
   '';
 
   home.activation.removeLegacyCodexHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
