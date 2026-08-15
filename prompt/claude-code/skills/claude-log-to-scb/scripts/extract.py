@@ -25,8 +25,9 @@ from concurrent.futures import ThreadPoolExecutor
 CONV_DIR = os.path.expanduser("~/.claude/.cache/claude-log-to-scb/conv")
 EXTRACTED_PATH = os.path.expanduser("~/.claude/.cache/claude-log-to-scb/extracted.jsonl")
 MODEL = "claude-haiku-4-5"
+EXTRACTION_PROMPT_PREFIX = "あなたは AIアシスタントとの会話1件を分析し構造化抽出する。"
 
-PROMPT_HEAD = """あなたは AIアシスタントとの会話1件を分析し構造化抽出する。下のJSONオブジェクト「だけ」を出力せよ(マークダウン記法・前置き・説明を一切付けない):
+PROMPT_HEAD = EXTRACTION_PROMPT_PREFIX + """下のJSONオブジェクト「だけ」を出力せよ(マークダウン記法・前置き・説明を一切付けない):
 {"ja_summary":"日本語3〜6行。この会話における AIアシスタントの回答の要点を会話全体としてまとめる(英語のsummaryに引きずられず日本語で。結論・要点だけ、前置き不要)","people":["会話に出てくる実在の人物名(日本語表記優先・一般名詞や役割名は除く)"],"projects":["案件/組織/プロダクト名(例: 構想日本, 多元現実, Cartographer, 倍速会議)"],"decisions":["この会話で決まったこと"],"commitments":["TODO/約束(誰が何を)"]}
 該当が無い配列は [] にせよ。
 
@@ -62,9 +63,9 @@ def extract_one(uuid):
     path = os.path.join(CONV_DIR, f"{uuid}.json")
     compact = open(path).read()
     prompt = PROMPT_HEAD + compact
-    env = dict(os.environ, CLAUDE_DAILY_SUMMARY="1")  # avoid SessionEnd hook recursion
+    env = dict(os.environ, CLAUDE_SKIP_DAILY_CAPTURE="1")
     r = subprocess.run(
-        ["claude", "-p", "--model", MODEL, prompt],
+        ["claude", "-p", "--no-session-persistence", "--model", MODEL, prompt],
         capture_output=True, text=True, env=env,
     )
     if r.returncode != 0:

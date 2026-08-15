@@ -92,7 +92,7 @@ python3 $S/aggregate_and_upsert.py --project takalog --min-mentions 2
 
 ### Claude Code セッション取り込み(claude.ai と同じ takalog へ)
 
-`~/.claude/projects/**/*.jsonl`(Claude Code CLI のセッション)を claude.ai 会話と**同じ会話ページ形式**で takalog に取り込む。`sessions.py` が cwd→`[project]` リンクに正規化し、probe/一発実行(real user turn < 2、cwd が tmp)を除外。ユーザー入力=全文、Claude の作業=要点(haiku 要約・薄表示)。同じ extract/ingest 描画を再利用するので claude.ai 会話と 1 つの n-hop グラフに合流する。
+`~/.claude/projects/**/*.jsonl`(Claude Code CLI のセッション)を claude.ai 会話と**同じ会話ページ形式**で takalog に取り込む。`sessions.py` が cwd→`[project]` リンクに正規化し、probe/一発実行(real user turn < 2、cwd が tmp)と、抽出ワーカーのセッション(エンコード済みプロジェクトディレクトリ`-`、cwd=`/`、または固定抽出プロンプト)を除外。ユーザー入力=全文、Claude の作業=要点(haiku 要約・薄表示)。同じ extract/ingest 描画を再利用するので claude.ai 会話と 1 つの n-hop グラフに合流する。
 
 ```bash
 S=~/.claude/skills/claude-log-to-scb/scripts
@@ -227,7 +227,7 @@ ToS 留意: 自分の履歴でも「プログラムによる抽出」は規約�
 ## 注意
 
 - 私的データを読むため **共有 nix-darwin へは publish しない**(mac-local-data と同様)。
-- haiku 抽出の canonical は `extract.py`(`claude -p --model claude-haiku-4-5`・`CLAUDE_DAILY_SUMMARY=1` で SessionEnd hook 再帰回避)。大量初回のみ Workflow の `model:'haiku'` fan-out が速い。
+- haiku 抽出の canonical は `extract.py`(`claude -p --no-session-persistence --model claude-haiku-4-5`・`CLAUDE_SKIP_DAILY_CAPTURE=1` で日報収集hookを抑止)。抽出ワーカーはClaude Code履歴を永続化しない。大量初回のみ Workflow の `model:'haiku'` fan-out が速い。
 - takalog は読取も配線済(2026-06-01): cosense-context-proxy に `ACCESS_TOKEN_TAKALOG`、ローカル `cosense-fetch -p takalog` 対応。agent が h=1/h=2 で takalog を読める。
 - 関連: [mac-local-data](ローカルアプリデータ) / [daily-report](日次集約・同じ pipeline 思想) /
   [save-to-scrapbox](書込規約) / [scrapbox-llm-marking](書き分け)。
