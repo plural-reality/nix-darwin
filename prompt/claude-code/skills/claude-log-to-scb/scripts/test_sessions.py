@@ -2,7 +2,9 @@ import json
 import pathlib
 import tempfile
 import unittest
+from unittest.mock import patch
 
+import extract
 import sessions
 
 
@@ -33,6 +35,51 @@ class CodexSessionTests(unittest.TestCase):
             path = pathlib.Path(directory) / "empty.jsonl"
             path.write_text(json.dumps({"type": "session_meta", "payload": {"id": "empty", "cwd": "/Users/tkgshn"}}) + "\n")
             self.assertIsNone(sessions.parse_codex_session(path))
+
+    def test_rejects_root_and_extraction_worker_sessions(self):
+        events = [
+            {"timestamp": "2026-08-15T01:00:00Z", "type": "user", "cwd": "/", "message": {"content": [{"type": "text", "text": extract.EXTRACTION_PROMPT_PREFIX + "下のJSONを抽出"}]}},
+            {"timestamp": "2026-08-15T01:00:01Z", "type": "assistant", "cwd": "/", "message": {"content": [{"type": "text", "text": "{\"ja_summary\":\"ok\"}"}]}},
+            {"timestamp": "2026-08-15T01:00:02Z", "type": "user", "cwd": "/", "message": {"content": [{"type": "text", "text": "続けて"}]}},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "worker.jsonl"
+            path.write_text("".join(json.dumps(event, ensure_ascii=False) + "\n" for event in events))
+            self.assertIsNone(sessions.parse_session(path))
+
+            encoded_root = pathlib.Path(directory) / "-"
+            encoded_root.mkdir()
+            legacy_path = encoded_root / "legacy.jsonl"
+            legacy_events = [
+                {"timestamp": "2026-08-15T01:00:00Z", "type": "user", "cwd": "/Users/tkgshn/Developer/form-next-training", "message": {"content": [{"type": "text", "text": "通常の依頼"}]}},
+                {"timestamp": "2026-08-15T01:00:01Z", "type": "assistant", "cwd": "/Users/tkgshn/Developer/form-next-training", "message": {"content": [{"type": "text", "text": "対応中"}]}},
+                {"timestamp": "2026-08-15T01:00:02Z", "type": "user", "cwd": "/Users/tkgshn/Developer/form-next-training", "message": {"content": [{"type": "text", "text": "続けて"}]}},
+            ]
+            legacy_path.write_text("".join(json.dumps(event, ensure_ascii=False) + "\n" for event in legacy_events))
+            self.assertIsNone(sessions.parse_session(legacy_path))
+
+    def test_accepts_normal_non_root_session(self):
+        events = [
+            {"timestamp": "2026-08-15T01:00:00Z", "type": "user", "cwd": "/Users/tkgshn/Developer/project", "message": {"content": [{"type": "text", "text": "通常の依頼"}]}},
+            {"timestamp": "2026-08-15T01:00:01Z", "type": "assistant", "cwd": "/Users/tkgshn/Developer/project", "message": {"content": [{"type": "text", "text": "対応中"}]}},
+            {"timestamp": "2026-08-15T01:00:02Z", "type": "user", "cwd": "/Users/tkgshn/Developer/project", "message": {"content": [{"type": "text", "text": "続けて"}]}},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "normal.jsonl"
+            path.write_text("".join(json.dumps(event, ensure_ascii=False) + "\n" for event in events))
+            self.assertIsNotNone(sessions.parse_session(path))
+
+    def test_extract_disables_session_persistence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "conversation.json"
+            path.write_text(json.dumps({"name": "test", "transcript": "human: test"}))
+            with patch.object(extract, "CONV_DIR", directory), patch.object(
+                extract.subprocess,
+                "run",
+                return_value=type("Result", (), {"returncode": 0, "stdout": '{"ja_summary":"ok"}', "stderr": ""})(),
+            ) as run:
+                extract.extract_one("conversation")
+            self.assertIn("--no-session-persistence", run.call_args.args[0])
 
 
 if __name__ == "__main__":
