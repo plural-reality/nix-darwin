@@ -121,6 +121,14 @@ let
     # Codex 0.147 layers named profiles from separate files. Its legacy
     # in-document table is rejected, so remove the migrated projection.
     document.pop("profiles", None)
+    # Nix owns the default execution policy. Remove fields retired from that
+    # policy before merging so an earlier activation cannot keep forcing them.
+    document.pop("service_tier", None)
+    features = document.get("features")
+    if isinstance(features, MutableMapping):
+        multi_agent = features.get("multi_agent_v2")
+        if isinstance(multi_agent, MutableMapping):
+            multi_agent.pop("max_concurrent_threads_per_session", None)
 
     config_path.write_text(tomlkit.dumps(merge(document, managed)))
   '';
