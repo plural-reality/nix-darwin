@@ -241,6 +241,20 @@ let
     text = builtins.readFile ../scripts/freee-reconcile.sh;
   };
 
+  # Fable advisor transport: stdin brief -> validated response on stdout.
+  # JSON framing makes an empty successful CLI exit observable; one retry is
+  # performed before the adapter returns a precise non-zero diagnostic.
+  fableConsult = pkgs.writeShellApplication {
+    name = "fable-consult";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.gnugrep
+      pkgs.jq
+      pkgs.llm-agents.claude-code
+    ];
+    text = builtins.readFile ../scripts/fable-consult.sh;
+  };
+
   # Codex thread naming adapter: argv -> app-server protocol -> thread name.
   codexName = pkgs.writeShellApplication {
     name = "codex-name";
@@ -329,6 +343,7 @@ in
     ch
     freeeCall
     freeeReconcile
+    fableConsult
     codexName
     codexTaskAudit
     codexHandoff
@@ -379,7 +394,8 @@ in
   # scrapbox-rename shares the same dir (and its @cosense/std node_modules).
   home.file.".local/share/scrapbox-write/scrapbox-rename.mjs".source = ../scripts/scrapbox-rename.mjs;
   # VS16 正規化(純関数)。write/rename 両方が相対 import する共有モジュール。
-  home.file.".local/share/scrapbox-write/scrapbox-title-normalize.mjs".source = ../scripts/scrapbox-title-normalize.mjs;
+  home.file.".local/share/scrapbox-write/scrapbox-title-normalize.mjs".source =
+    ../scripts/scrapbox-title-normalize.mjs;
   home.file.".local/share/scrapbox-write/package.json".text = builtins.toJSON {
     name = "scrapbox-write";
     version = "1.0.0";
