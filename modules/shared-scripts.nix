@@ -241,6 +241,20 @@ let
     text = builtins.readFile ../scripts/freee-reconcile.sh;
   };
 
+  # Fable advisor transport: stdin brief -> validated response on stdout.
+  # JSON framing makes an empty successful CLI exit observable; one retry is
+  # performed before the adapter returns a precise non-zero diagnostic.
+  fableConsult = pkgs.writeShellApplication {
+    name = "fable-consult";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.gnugrep
+      pkgs.jq
+      pkgs.llm-agents.claude-code
+    ];
+    text = builtins.readFile ../scripts/fable-consult.sh;
+  };
+
   # Codex thread naming adapter: argv -> app-server protocol -> thread name.
   codexName = pkgs.writeShellApplication {
     name = "codex-name";
@@ -378,6 +392,7 @@ in
     ch
     freeeCall
     freeeReconcile
+    fableConsult
     codexName
     codexTaskAudit
     mori
