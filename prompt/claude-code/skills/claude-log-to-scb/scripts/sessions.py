@@ -14,8 +14,8 @@ Subcommands:
           + compact files for extraction
   render  load archive + extracted-sessions.jsonl -> write takalog pages
 
-Real session = cwd outside tmp/var-folders AND >= MIN real user turns. Probe /
-summarizer / one-shot sessions are skipped.
+Real session = cwd outside root/tmp/var-folders AND >= MIN real user turns.
+Probe / summarizer / one-shot sessions are skipped.
 """
 import sys
 import os
@@ -26,6 +26,7 @@ import time
 import argparse
 
 from common import msg_text  # noqa: F401  (kept for parity / future use)
+from extract import EXTRACTION_PROMPT_PREFIX
 from ingest import clean_title, jst, render, load_seen, save_seen, upsert as page_upsert
 
 PROJECTS_ROOT = os.path.expanduser("~/.claude/projects")
@@ -97,6 +98,8 @@ def is_real_user(o):
 
 def parse_session(path):
     """-> conversation-shaped dict, or None if not a real session."""
+    if os.path.basename(os.path.dirname(path)) == "-":
+        return None  # Claude's encoded project directory for cwd=/
     cwd = None
     first_ts = last_ts = None
     msgs = []
@@ -123,12 +126,14 @@ def parse_session(path):
             txt = ev_text(o)
             if txt:
                 msgs.append({"sender": "assistant", "text": txt})
-    if not cwd or "/var/folders/" in cwd or "/tmp/" in cwd or "/T/tmp." in cwd:
+    if not cwd or cwd == "/" or "/var/folders/" in cwd or "/tmp/" in cwd or "/T/tmp." in cwd:
         return None
     if real_user < 2:
         return None
     sid = os.path.splitext(os.path.basename(path))[0]
     first_human = next((m["text"] for m in msgs if m["sender"] == "human"), "")
+    if first_human.startswith(EXTRACTION_PROMPT_PREFIX):
+        return None
     fl = first_human.split("\n")[0].strip()
     short = (fl[:48] + "…") if len(fl) > 48 else fl
     title = clean_title(short, f"claude code {sid[:8]}")
