@@ -47,12 +47,19 @@ def replace_plugins(document: MutableMapping, managed: MutableMapping) -> Mutabl
     return merge(document, {"plugins": managed.get("plugins", {})})
 
 
+def remove_retired_policy(document: MutableMapping) -> MutableMapping:
+    """Remove policy fields that an earlier Nix projection used to manage."""
+    document.pop("profiles", None)
+    document.pop("service_tier", None)
+    features = document.get("features")
+    multi_agent = features.get("multi_agent_v2") if isinstance(features, MutableMapping) else None
+    isinstance(multi_agent, MutableMapping) and multi_agent.pop("max_concurrent_threads_per_session", None)
+    return document
+
+
 def project(document: MutableMapping, managed: MutableMapping) -> MutableMapping:
     """Pure policy projection over a parsed TOML document."""
-    # Codex 0.147 layers named profiles from separate files. Its legacy
-    # in-document table is rejected, so remove the migrated projection.
-    document.pop("profiles", None)
-    return merge(replace_plugins(replace_mcp_servers(document), managed), managed)
+    return merge(remove_retired_policy(replace_plugins(replace_mcp_servers(document), managed)), managed)
 
 
 def load_document(config_path: Path) -> MutableMapping:
