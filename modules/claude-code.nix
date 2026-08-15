@@ -449,13 +449,11 @@ let
 
     features.multi_agent_v2 = {
       enabled = true;
-      max_concurrent_threads_per_session = 3;
     };
 
-    model = "gpt-5.6-sol";
     model_catalog_json = "${codexModelCatalogFile}";
-    model_reasoning_effort = "ultra";
-    service_tier = "priority";
+    model = "gpt-5.6-terra";
+    model_reasoning_effort = "high";
     personality = "pragmatic";
     notify = [
       "${codexTurnEndNameHook}/bin/codex-name-on-turn-end"
