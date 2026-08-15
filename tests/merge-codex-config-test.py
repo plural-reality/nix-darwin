@@ -19,6 +19,7 @@ SPEC.loader.exec_module(MODULE)
 def main() -> None:
     current = tomlkit.parse(
         """
+service_tier = "priority"
 [mcp_servers.scrapbox]
 command = "npx"
 token = "secret"
@@ -28,6 +29,9 @@ command = "runtime"
 stale_token = "secret"
 [plugins."gmail@openai-curated"]
 enabled = true
+[features.multi_agent_v2]
+enabled = true
+max_concurrent_threads_per_session = 3
 [projects."/tmp/example"]
 trust_level = "trusted"
 """
@@ -41,6 +45,8 @@ trust_level = "trusted"
     assert "stale_token" not in projected["mcp_servers"]["Mori"]
     assert projected["plugins"] == {"gmail@openai-curated": {"enabled": False}}
     assert projected["projects"]["/tmp/example"]["trust_level"] == "trusted"
+    assert "service_tier" not in projected
+    assert projected["features"]["multi_agent_v2"] == {"enabled": True}
 
 
 if __name__ == "__main__":
