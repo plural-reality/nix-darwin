@@ -92,4 +92,4 @@ token は `~/.config/beeper/token` 平文＋MCP ヘッダにも複製。git に�
 - [[daily-report]] — 同じ日付ページの管理セクションを書く skill（住み分け: 上記の共存ノート）。
 - [[save-to-scrapbox]] / [[scrapbox-llm-marking]] — Scrapbox 書込と `[(` の canonical。
 - [[mac-local-data]] — ローカルアプリのデータ取得（Beeper は本 skill が canonical）。
-- `~/Developer/beeper-scrapbox-crm` — 同じ API を使う既存 CRM（gateway :8787）。
+- `~/Developer/beeper-scrapbox-crm` — 同じ API を使う既存 CRM（gateway :18787）。
