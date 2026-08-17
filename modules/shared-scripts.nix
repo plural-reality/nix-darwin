@@ -242,8 +242,8 @@ let
   };
 
   # Fable advisor transport: stdin brief -> validated response on stdout.
-  # JSON framing makes an empty successful CLI exit observable; one retry is
-  # performed before the adapter returns a precise non-zero diagnostic.
+  # JSON framing makes an empty successful CLI exit observable; bounded attempts
+  # and one retry prevent a stalled Fable process from blocking the caller.
   fableConsult = pkgs.writeShellApplication {
     name = "fable-consult";
     runtimeInputs = [

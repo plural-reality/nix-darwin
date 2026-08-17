@@ -9,6 +9,12 @@ brief="$(cat)"
   exit 64
 }
 
+timeout_seconds="${FABLE_TIMEOUT_SECONDS:-180}"
+[[ "$timeout_seconds" =~ ^[1-9][0-9]*$ ]] || {
+  printf '%s\n' 'fable-consult: FABLE_TIMEOUT_SECONDS must be a positive integer' >&2
+  exit 64
+}
+
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/fable-consult.XXXXXX")"
 trap 'command rm -rf -- "$scratch"' EXIT
 
@@ -17,7 +23,11 @@ invoke() {
   local exit_code=0
 
   printf '%s' "$brief" \
-    | claude \
+    | timeout \
+      --signal=TERM \
+      --kill-after=10s \
+      "${timeout_seconds}s" \
+      claude \
       --print \
       --safe-mode \
       --model fable \
