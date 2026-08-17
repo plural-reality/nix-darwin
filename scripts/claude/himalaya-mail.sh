@@ -6,6 +6,15 @@ set -euo pipefail
 
 HIMALAYA="himalaya"
 
+# Himalaya 1.x moved its macOS default under Application Support. Preserve a
+# migrated account without copying credentials: resolve the newest local
+# premigration file only when neither an injected nor canonical config exists.
+canonical_himalaya_config="$HOME/Library/Application Support/himalaya/config.toml"
+legacy_himalaya_config=$(find "$(dirname "$canonical_himalaya_config")" -maxdepth 1 \
+  -type f -name 'config.toml.premigrate-*' -print 2>/dev/null | sort | tail -n 1)
+[[ -n "${HIMALAYA_CONFIG:-}" || -f "$canonical_himalaya_config" || -z "$legacy_himalaya_config" ]] || \
+  export HIMALAYA_CONFIG="$legacy_himalaya_config"
+
 # デフォルトアカウント
 DEFAULT_ACCOUNT="gmail"
 
