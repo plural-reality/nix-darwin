@@ -19,6 +19,7 @@ Commands:
   inbox [account] [page-size]           List inbox envelopes
   read <id> [account]                   Read a message
   search <query> [account] [page-size]  Search messages (page-size default 40)
+  style <recipient> [account] [limit]   Show CRM rules + actual sent examples
   send <to> <subject> <body> [account]  Send a new message
   reply <id> <body> [account]           Reply to sender only
   reply-all <id> <body> [account]       Reply to all (To + CC)
@@ -62,6 +63,57 @@ case "${1:-help}" in
     local_page_size="${4:-40}"
     # shellcheck disable=SC2086
     $HIMALAYA envelope list -a "$local_account" -s "$local_page_size" $local_query
+    ;;
+
+  style)
+    local_recipient="${2:?Usage: himalaya-mail.sh style <recipient> [account] [limit]}"
+    local_account="${3:-$DEFAULT_ACCOUNT}"
+    local_limit="${4:-3}"
+    local_beeper_style="$HOME/.claude/skills/beeper-send/scripts/beeper-send.sh"
+
+    echo "# CRM人物別文体"
+    set +e
+    crm_style_output=$("$local_beeper_style" style "$local_recipient" 2>&1)
+    crm_style_status=$?
+    set -e
+    case "$crm_style_status" in
+      0) printf '%s\n' "$crm_style_output" ;;
+      44) echo "(CRM連絡先に一致なし。人物別ルールなし)" ;;
+      *) printf '%s\n' "$crm_style_output" >&2; exit "$crm_style_status" ;;
+    esac
+
+    sent_folder=$($HIMALAYA folder list -a "$local_account" -o json --quiet | \
+      python3 -c '
+import json, sys
+names = [(item.get("name", "") if isinstance(item, dict) else str(item)) for item in json.load(sys.stdin)]
+matches = [name for name in names if "送信済み" in name or "sent" in name.casefold()]
+print(matches[0] if matches else "")
+')
+    [[ -n "$sent_folder" ]] || { echo "ERROR: sent folder not found" >&2; exit 1; }
+
+    envelopes=$($HIMALAYA envelope list -a "$local_account" -f "$sent_folder" \
+      -s 40 -o json --quiet to "$local_recipient" order by date desc)
+    ids=$(MAIL_ENVELOPES="$envelopes" MAIL_LIMIT="$local_limit" python3 -c '
+import json, os
+items = json.loads(os.environ["MAIL_ENVELOPES"])
+print(" ".join(str(item["id"]) for item in items[:int(os.environ["MAIL_LIMIT"])]))
+')
+
+    echo "# 本人がこの宛先へ実際に送ったメール例"
+    [[ -n "$ids" ]] || { echo "(送信済みメールに一致なし)"; exit 0; }
+    example_index=0
+    for message_id in $ids; do
+      example_index=$((example_index + 1))
+      echo "## 例${example_index}"
+      $HIMALAYA message read -a "$local_account" -f "$sent_folder" --preview \
+        --no-headers --quiet "$message_id" | python3 -c '
+import re, sys
+lines = sys.stdin.read().splitlines()
+cut = next((i for i, line in enumerate(lines) if re.match(r"^(On .+wrote:|-{2,}\s*Original Message\s*-{2,}|.+<.+@.+>[:：])$", line.strip(), re.I)), len(lines))
+body = "\n".join(line for line in lines[:cut] if not line.lstrip().startswith(">"))
+print(body.strip()[:2400])
+'
+    done
     ;;
 
   send)
