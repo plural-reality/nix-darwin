@@ -244,6 +244,8 @@ let
   # Fable advisor transport: stdin brief -> validated response on stdout.
   # JSON framing makes an empty successful CLI exit observable; bounded attempts
   # and one retry prevent a stalled Fable process from blocking the caller.
+  # The adapter's default per-attempt deadline is 15 minutes because Fable's
+  # max-effort long-form consultations routinely take several minutes.
   fableConsult = pkgs.writeShellApplication {
     name = "fable-consult";
     runtimeInputs = [

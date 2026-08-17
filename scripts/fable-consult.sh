@@ -9,7 +9,7 @@ brief="$(cat)"
   exit 64
 }
 
-timeout_seconds="${FABLE_TIMEOUT_SECONDS:-180}"
+timeout_seconds="${FABLE_TIMEOUT_SECONDS:-900}"
 [[ "$timeout_seconds" =~ ^[1-9][0-9]*$ ]] || {
   printf '%s\n' 'fable-consult: FABLE_TIMEOUT_SECONDS must be a positive integer' >&2
   exit 64

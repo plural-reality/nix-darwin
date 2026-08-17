@@ -63,7 +63,7 @@ fable-consult < "$BRIEF_FILE"
 へ出す。内部では Claude Code を `--safe-mode` / Fable / max effort / plan-only / JSON 出力で呼ぶ。最初の呼出しが
 非ゼロ、invalid JSON、または空回答なら、同じ brief でもう1回だけ再試行する。2回とも失敗した場合は、取得できた
 `subtype` / `terminal_reason` / `stop_reason` / `api_error_status` / `result_bytes` を stderr に出して非ゼロ終了する。
-各試行には既定180秒の上限があり、`FABLE_TIMEOUT_SECONDS` で正の整数秒へ変更できる。上限超過も失敗として扱い、
+各試行には既定900秒（15分）の上限があり、`FABLE_TIMEOUT_SECONDS` で正の整数秒へ変更できる。Fableの高負荷な長文相談は数分かかるため、短いタイムアウトを既定にしない。上限超過も失敗として扱い、
 同じ brief を1回だけ再試行する。これにより Fable の無応答で呼出し側が無期限に停止しない。
 
 `claude ... --tools "Read,Glob,Grep" "$BRIEF"` のように prompt を `--tools` の後ろへ置いてはいけない。
