@@ -12,6 +12,12 @@
 | 人脈活用・紹介依頼・相談メッセージ | `ask-network` skill |
 | 返信の収集・統合・元の相手への返信作成 | `collect-and-reply` skill |
 
+## 外部メッセージの下書き確認
+
+- エージェントが本文を生成・編集したメール、Beeper、iMessage、DMその他の人への外部メッセージは、必ず二段階で送る。最初のターンでは送信先（相手・チャネル・返信先）と送信する本文全文を提示して停止し、その**後のユーザー発言**で未変更の下書きへの明示承認を得てから送信する。
+- 本文を提示する前の「送って」「返信して」は、内容の作成依頼であって、生成された下書きの承認ではない。同じターンで起草から送信まで進めない。CLIの `--ack`、ツール実行許可、一般的な継続許可も本文承認の代わりにしない。
+- 承認後に送信先、返信先、件名、本文のいずれかを変えた場合は、変更後の全文を再提示して再承認を得る。ユーザーが本文を逐語的に指定し「このまま送って」と依頼した場合だけ、その発言自体を本文承認としてよい。
+
 ## Agent Compatibility
 
 - `AGENTS.md` is the Codex-native repo rule file. `CLAUDE.md` is the Claude Code-native repo rule file. Either is a compatibility input when the other does not exist.
