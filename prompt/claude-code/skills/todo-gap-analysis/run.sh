@@ -43,8 +43,8 @@ CLAUDE_BIN="/etc/profiles/per-user/${USER}/bin/claude"
 [ -x "$CLAUDE_BIN" ] || CLAUDE_BIN="$(command -v claude || true)"
 
 echo "$(date '+%F %T') start (claude=$CLAUDE_BIN)" >> "$LOG"
-# autonomous 書き込みのため skip-permissions。finding は exact task anchor の直下だけへ局所反映し、
-# 横断 summary は daily page へ置く。独立した AI セクションは作らない。
-"$CLAUDE_BIN" -p "/todo-gap --autonomous : ToDoカンバン(plural-reality)を分析し、save-to-scrapbox の構造化index規約に従って exact task anchor の直下だけを更新して。ToDoに独立AIセクションやrun summaryを作らず、対象外の人間行をbyte単位で保持して再取得検証すること。" \
+# autonomous 書き込みのため skip-permissions。finding は canonical task/project pageへ局所反映し、
+# 横断 summary は daily page へ置く。2看板はindex移動が必要な時だけCAS付きreplaceする。
+"$CLAUDE_BIN" -p "/todo-gap --autonomous : ToDoカンバンとプロジェクト看板(plural-reality)を分析し、save-to-scrapboxのGTD canonical contractに従ってfindingをcanonical task/project pageへ更新して。2看板に独立AIセクションやrun summaryを書かず、index移動が必要な場合だけ全体候補を--mode replace --verbatim --expect-sha256で更新し、直APIで再取得検証すること。" \
   --dangerously-skip-permissions >> "$LOG" 2>&1 || echo "$(date '+%F %T') claude exited $?" >> "$LOG"
 echo "$(date '+%F %T') done" >> "$LOG"

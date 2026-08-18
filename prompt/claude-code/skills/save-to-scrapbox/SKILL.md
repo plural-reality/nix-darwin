@@ -242,13 +242,35 @@ Scrapbox記法で書く（Markdownではない）。固定テンプレートを�
 
 ## 追記・改訂のルール
 
+### GTDのcanonical contract
+
+GTDは1つの巨大ページに集約しない。正本を増やさず、同じScrapbox graphを次の3種類のviewへ分ける。
+
+- `ToDoカンバン`: 完了条件が明確で、実行可能な次アクションだけを置くcurated index。`@5分・スマホ` / `@PC` / `@家` / `@外出`と、`Waiting for Someone` / `Scheduled` / `Someday` / `Dependency`で現在位置を表す。
+- `プロジェクト看板`: 複数アクションを要する進行中の成果だけを置くcurated index。次アクションや進捗ログを複製しない。
+- 個別task/project page: 完了条件、次の一手、blocker、期限、履歴、証拠のcanonical source。看板へ詳細を展開しない。
+
+両看板は相互リンクする。タスクの詳細化は看板行を長くするのではなく、exact page objectのリンク先で行う。完了条件を確定できない気がかりや複数工程の成果は、ToDoへ残さず個別pageまたはプロジェクト看板へ送る。
+
+看板は時系列ログではない。独立したCodex/Claude進捗ブロック、日次報告、横断レポートを置かない。`Agent Queue`を置く場合、`[claude code WIP.icon]`はtrailing textなしの構造markerだけとし、agentの作業説明はcanonical task pageへ置く。
+
+2看板を書き換える唯一の手順:
+
+1. `cosense-fetch -r`で取得した`lines`から`.lines[].text`だけを順序どおりに抽出し、`JSON.stringify`相当のcompact JSON配列をSHA-256へ流す。例: `jq -cj '[.lines[].text]' raw.json | shasum -a 256 | cut -d ' ' -f1`。line object全体や末尾改行、`shasum`のファイル名欄を`--expect-sha256`へ含めない。
+2. 人間行をbyte単位で保持した全体候補をローカル生成する。
+3. `scrapbox-write --mode replace --verbatim --expect-sha256 <digest> --dry-run`で候補を固定する。
+4. 同じimmutable bodyを`--dry-run`なしで一度だけ送る。`prepend` / `append`は禁止。
+5. `cosense-fetch -r`で再取得し、dry-runのline arrayとの完全一致を確認する。
+
+`scrapbox-write`はこの境界をfail closedで強制する。CAS不一致なら他者の変更を候補へ統合し、再取得からやり直す。
+
 ### 原則: 内容の関係が読める位置へ置く
 
 配置は `prepend` / `append` の都合ではなく、ページ内で何に属する情報かで決める。
 
 - 時系列の living page に新しい独立ログを足す場合だけ、日付ブロックをタイトル直下へ `--prepend` する。
 - 既存の質問への回答、命題への理由・例・但し書き、ユーザーの訂正は、該当行の直下へ1段下げて置く。
-- 構造化 index / kanban では `prepend` も `append` もしない。exact な task/page-object 行を anchor にし、状態はその行、理由・期限・次の一手は直下の子行、詳細・履歴・証拠は canonical task page に置く。
+- 構造化 index / kanban では `prepend` も `append` もしない。状態はexactなtask/page-object行で表し、理由・期限・次の一手・詳細・履歴・証拠はcanonical task pageに置く。
 - ToDoカンバンへ横断レポートや日次まとめの独立 AI ブロックを作らない。run summary は当日の daily page へ置く。
 - anchor を特定できない場合は、無関係な位置へ仮置きせず、canonical page または daily page へ書く。必要なら書込みを止めて anchor を確認する。
 
