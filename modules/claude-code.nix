@@ -504,7 +504,7 @@ let
 
     plugins = {
       "computer-use@openai-bundled" = {
-        enabled = false;
+        enabled = true;
       };
       "browser@openai-bundled" = {
         enabled = false;
