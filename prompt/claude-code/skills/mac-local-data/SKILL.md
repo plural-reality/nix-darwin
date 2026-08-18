@@ -35,14 +35,19 @@ locate(app data dir)  →  identify(SQLite | LevelDB | plist)  →  decode(形�
 python3 ~/.claude/skills/mac-local-data/scripts/imessage.py stats
 python3 ~/.claude/skills/mac-local-data/scripts/imessage.py recent 20
 python3 ~/.claude/skills/mac-local-data/scripts/imessage.py search "サロモン" 10   # attributedBody まで走査
-python3 ~/.claude/skills/mac-local-data/scripts/imessage.py with "818062471623" 40 # 相手ごとのスレッド
-python3 ~/.claude/skills/mac-local-data/scripts/imessage.py list-chats 30          # グループ検索用の chat.db GUID
+python3 ~/.claude/skills/mac-local-data/scripts/imessage.py with "818062471623" 40 # その相手との 1:1 だけ
+python3 ~/.claude/skills/mac-local-data/scripts/imessage.py list-chats 30          # 最近動いた会話（date/GUID/名前/参加者）
 python3 ~/.claude/skills/mac-local-data/scripts/imessage.py chat "iMessage;+;..." 40 # chat.db GUID ごとのグループ履歴
 python3 ~/.claude/skills/mac-local-data/scripts/imessage.py list-handles 30        # 既知の番号/メール
 ```
 
 出力は TSV: `date <TAB> me|them <TAB> handle <TAB> text`。パイプして要約する。
+`list-chats` だけは `date <TAB> chat-guid <TAB> 名前 <TAB> 参加者`（GUID だけでは会話を選べないため）。
 
+- **`with` は「その相手との 1:1」だけを返す。** 会話の単位は handle ではなく chat なので、
+  参加者がちょうど 1 人の chat に絞っている。相手が入っているグループの発言は入らない
+  （handle だけで絞ると混入し、無関係な私信まで読み出してしまう）。グループを読むときは
+  `list-chats` で GUID を選んでから `chat` を使う。
 - 連絡先名 ↔ 番号の解決は `imessage-send` skill の Contacts.app 検索が canonical（番号が分からなければそちらで引いてから `with`）。
 - **送信はこの skill の責務外** → [[imessage-send]]（送信は必ず確認必須）。
 

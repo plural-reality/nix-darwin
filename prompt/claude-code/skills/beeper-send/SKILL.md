@@ -40,6 +40,7 @@ bash "$SKILL/scripts/beeper-send.sh" <subcmd> ...
 - BODY は `@/path/file`(UTF-8。**日本語は必ずこれ**。argv 経由は文字化け) か `"literal"`。
 
 CRM gateway の base は `BEEPER_CRM_GATEWAY`(既定 `http://localhost:18787`)。`/healthz` の `service=beeper-crm-gateway` を検証するため、同じポート上の別サービスを文体ガイド無しとして通過させない。
+この取得と検証は `scripts/crm-style` が唯一の実装（0=成功 / 44=該当連絡先なし / 1=それ以外）。`beeper-send.sh` も iMessage 側の `imsg-send` もこれを呼ぶだけで、問い合わせや fail closed 条件を再実装しない。
 
 ## 手順（毎回これ）
 

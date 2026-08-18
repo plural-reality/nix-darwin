@@ -38,7 +38,9 @@ STYLE_CONTACT=""
 CHAT_ID=""
 SKILL_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 IMESSAGE_READER="$(dirname "$SKILL_DIR")/mac-local-data/scripts/imessage.py"
-CRM_BASE="${BEEPER_CRM_GATEWAY:-http://localhost:18787}"
+# CRM 文体の取得と検証は beeper-send 側の crm-style が唯一の実装（gateway の URL も
+# 検証条件もあちらが持つ）。ここでは呼ぶだけで、問い合わせを再実装しない。
+CRM_STYLE="$(dirname "$SKILL_DIR")/beeper-send/scripts/crm-style"
 
 emit_err() { printf '{"ok":false,"error":"%s"}\n' "$1"; exit "${2:-1}"; }
 
@@ -129,42 +131,44 @@ else
 fi
 [ -n "$HANDLE" ] || emit_err "could not resolve recipient: $RECIPIENT (Contacts未ヒット。生ハンドルか aliases.tsv を使う)" 3
 
+# 下書き用の文脈を 1 行 JSON で吐く。履歴は --chat があればそのグループ、無ければ
+# 相手との 1:1 だけ（imessage.py with は直接チャットに限定済み。相手が入っている
+# 別グループの発言は混ざらない）。
 style_context() {
   [ -n "$STYLE_CONTACT" ] || emit_err "style contact required: use --style-contact <CRMの人物名>" 2
   [ -x "$IMESSAGE_READER" ] || emit_err "iMessage history reader not found: $IMESSAGE_READER" 6
+  [ -x "$CRM_STYLE" ] || emit_err "CRM style helper not found: $CRM_STYLE" 6
 
-  STYLE_CONTACT="$STYLE_CONTACT" CRM_BASE="$CRM_BASE" IMESSAGE_READER="$IMESSAGE_READER" HANDLE="$HANDLE" CHAT_ID="$CHAT_ID" python3 - <<'PY'
+  STYLE_CONTACT="$STYLE_CONTACT" CRM_STYLE="$CRM_STYLE" IMESSAGE_READER="$IMESSAGE_READER" HANDLE="$HANDLE" CHAT_ID="$CHAT_ID" python3 - <<'PY'
 import json
 import os
+import subprocess
 import sys
-from subprocess import CalledProcessError, run
-from urllib.parse import urlencode
-from urllib.request import urlopen
-from urllib.error import HTTPError, URLError
 
-url = f"{os.environ['CRM_BASE'].rstrip('/')}/api/style?{urlencode({'chat': os.environ['STYLE_CONTACT']})}"
-try:
-    with urlopen(url, timeout=15) as response:
-        style = json.load(response)
-except HTTPError as error:
-    print(error.read().decode("utf-8", "replace"), file=sys.stderr)
-    sys.exit(1)
-except URLError as error:
-    print(f"CRM style lookup failed: {error}", file=sys.stderr)
-    sys.exit(1)
-try:
-    command = (
-        [os.environ["IMESSAGE_READER"], "chat", os.environ["CHAT_ID"], "30"]
-        if os.environ["CHAT_ID"]
-        else [os.environ["IMESSAGE_READER"], "with", os.environ["HANDLE"], "30"]
-    )
-    history = run(command, check=True, capture_output=True, text=True, timeout=15).stdout
-except (CalledProcessError, OSError) as error:
-    print(f"iMessage history lookup failed: {error}", file=sys.stderr)
-    sys.exit(1)
-except TimeoutError:
-    print("iMessage history lookup timed out", file=sys.stderr)
-    sys.exit(1)
+
+def capture(command, label):
+    """外部プロセスの stdout をストリームとして受け取る。失敗は理由を残して即座に落とす。
+
+    subprocess.TimeoutExpired は TimeoutError を継承しないので、明示的に捕まえる
+    （取り違えると、固まった読取が traceback になって JSON 契約が崩れる）。
+    """
+    try:
+        done = subprocess.run(command, capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        sys.exit(f"{label} failed: {error}")
+    if done.returncode != 0:
+        sys.exit(f"{label} failed (exit {done.returncode}): {done.stderr.strip()[:400]}")
+    return done.stdout
+
+
+style = json.loads(capture(
+    [os.environ["CRM_STYLE"], os.environ["STYLE_CONTACT"]], "CRM style lookup"))
+history = capture(
+    [os.environ["IMESSAGE_READER"], "chat", os.environ["CHAT_ID"], "30"]
+    if os.environ["CHAT_ID"]
+    else [os.environ["IMESSAGE_READER"], "with", os.environ["HANDLE"], "30"],
+    "iMessage history lookup",
+)
 
 print(json.dumps({
     "styleContact": os.environ["STYLE_CONTACT"],
@@ -190,9 +194,13 @@ fi
 # --- body (stdin or -m) ---
 [ "$MSG_SET" -eq 1 ] || MSG="$(cat)"
 [ -n "$MSG" ] || emit_err "empty message body" 2
-STYLE_CONTEXT_OUTPUT="$(style_context)"
-STYLE_CONTEXT_RC=$?
-[ "$STYLE_CONTEXT_RC" -eq 0 ] || { printf '%s\n' "$STYLE_CONTEXT_OUTPUT"; exit "$STYLE_CONTEXT_RC"; }
+# 送信直前の fail closed ゲート: 「文体ガイドを引ける相手か」だけを確かめる。
+# ここで履歴を読み直さない。下書きは --context で作り終えており、送信時にもう一度
+# 私信を取り出す理由が無い（取得範囲は最小に保つ）。
+[ -n "$STYLE_CONTACT" ] || emit_err "style contact required: use --style-contact <CRMの人物名>" 2
+[ -x "$CRM_STYLE" ] || emit_err "CRM style helper not found: $CRM_STYLE" 6
+CRM_ERR="$("$CRM_STYLE" "$STYLE_CONTACT" 2>&1 >/dev/null)" \
+  || emit_err "CRM style unavailable for $STYLE_CONTACT: $(printf '%s' "$CRM_ERR" | tr '\n' ' ' | sed 's/\"/\x27/g')" 6
 
 # --- baseline → send → verify ---
 BASE="$(sqlite3 "$DB" 'SELECT IFNULL(MAX(ROWID),0) FROM message;' 2>/dev/null || echo 0)"

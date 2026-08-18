@@ -10,13 +10,14 @@ Sending is OUT OF SCOPE — use the `imessage-send` skill for that.
 Usage:
   imessage.py recent [N]                 # N newest messages (default 20)
   imessage.py search "query" [N]         # full-text search (default 40)
-  imessage.py with "name-or-number" [N]  # thread with one handle/person
+  imessage.py with "name-or-number" [N]  # 1:1 thread only (group chats excluded)
   imessage.py chat "chat-guid" [N]       # a group or direct chat by its chat.db GUID
-  imessage.py list-chats [N]              # recent chat.db GUIDs for `chat`
+  imessage.py list-chats [N]             # recently active chats: date, GUID, name, members
   imessage.py stats                      # totals
   imessage.py list-handles [N]           # known handles (phone/email)
 
 Output is TSV: date <TAB> dir <TAB> handle <TAB> text   (dir = me|them)
+except `list-chats`: date <TAB> chat-guid <TAB> name <TAB> members
 Designed for piping; the caller summarises. No network, no mutation.
 """
 import sqlite3
@@ -119,9 +120,24 @@ def search(cur, q, n=40):
     emit(sorted(rows, key=lambda r: r[0] or 0))
 
 
+# 「その相手との 1:1」を、相手ハンドルではなく chat で定義する。
+# message.handle_id は「どの会話か」を持たないので、handle だけで絞ると
+# 同じ人が参加する別グループでの発言まで混入する（＝私信の巻き込み）。
+# 参加者がちょうど 1 人の chat = 直接チャット。その GUID 集合で絞る。
+DIRECT_CHATS = """
+SELECT chj.chat_id
+FROM chat_handle_join chj JOIN handle hh ON hh.ROWID = chj.handle_id
+GROUP BY chj.chat_id
+HAVING count(*) = 1 AND max(hh.id) LIKE ?
+"""
+
+
 def with_handle(cur, who, n=60):
     rows = cur.execute(
-        SELECT + " WHERE h.id LIKE ? ORDER BY m.date DESC LIMIT ?", (f"%{who}%", n)
+        SELECT + " JOIN chat_message_join cmj ON cmj.message_id = m.ROWID"
+        f" WHERE cmj.chat_id IN ({DIRECT_CHATS})"
+        " ORDER BY m.date DESC LIMIT ?",
+        (f"%{who}%", n),
     ).fetchall()
     emit(rows[::-1])
 
@@ -158,10 +174,25 @@ def list_handles(cur, n=50):
 
 
 def list_chats(cur, n=50):
-    for (guid,) in cur.execute(
-        "SELECT guid FROM chat WHERE guid IS NOT NULL ORDER BY ROWID DESC LIMIT ?", (n,)
-    ).fetchall():
-        print(guid)
+    # 「最近動いた会話」順。chat.ROWID は作成順なので、久しぶりに動いた古い会話を
+    # 取りこぼす。GUID だけでは選べないので、名前と参加者も一緒に出す。
+    rows = cur.execute(
+        """
+        SELECT max(m.date), c.guid, IFNULL(NULLIF(c.display_name,''), c.chat_identifier),
+               (SELECT group_concat(h2.id, ',') FROM chat_handle_join chj
+                JOIN handle h2 ON h2.ROWID = chj.handle_id WHERE chj.chat_id = c.ROWID)
+        FROM chat c
+        JOIN chat_message_join cmj ON cmj.chat_id = c.ROWID
+        JOIN message m ON m.ROWID = cmj.message_id
+        WHERE c.guid IS NOT NULL
+        GROUP BY c.ROWID
+        ORDER BY max(m.date) DESC
+        LIMIT ?
+        """,
+        (n,),
+    ).fetchall()
+    for date, guid, label, members in rows:
+        print(f"{fmt_date(date)}\t{guid}\t{label or '-'}\t{members or '-'}")
 
 
 CMDS = {"recent": recent, "search": search, "with": with_handle, "chat": with_chat,
@@ -176,14 +207,14 @@ def main(argv):
         print(f"chat.db not found at {DB}", file=sys.stderr)
         return 2
     cmd, rest = argv[0], [int(a) if a.isdigit() else a for a in argv[1:]]
-    with connect() as c:
-        cur = c.cursor()
-        try:
-            CMDS[cmd](cur, *rest) if rest else CMDS[cmd](cur)
-        except sqlite3.OperationalError as e:
-            print(f"read error ({e}). Terminal likely lacks Full Disk Access.",
-                  file=sys.stderr)
-            return 3
+    # connect() 自体も OperationalError を投げる（Full Disk Access が無いと開けない）。
+    # try の外に出すと、いちばん多い原因のときだけ traceback になって案内が出ない。
+    try:
+        with connect() as c:
+            CMDS[cmd](c.cursor(), *rest)
+    except sqlite3.OperationalError as e:
+        print(f"read error ({e}). Terminal likely lacks Full Disk Access.", file=sys.stderr)
+        return 3
     return 0
 
 
