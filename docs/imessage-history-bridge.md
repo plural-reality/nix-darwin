@@ -84,7 +84,7 @@ imsg-history status
 imsg-history recent 20
 imsg-history search "query" 40
 imsg-history chats "display name or handle" 40
-imsg-history with "+8190..." 60
+imsg-history with "+8190..." 60   # direct thread only
 imsg-history chat "iMessage;+;..." 60
 ```
 

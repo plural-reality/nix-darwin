@@ -20,7 +20,7 @@ usage:
   imsg-history status
   imsg-history recent [LIMIT]
   imsg-history search QUERY [LIMIT]
-  imsg-history with HANDLE [LIMIT]
+  imsg-history with HANDLE [LIMIT]        direct thread only; groups are excluded
   imsg-history chat CHAT_GUID [LIMIT]
   imsg-history chats [QUERY] [LIMIT]
   JSON | imsg-history request

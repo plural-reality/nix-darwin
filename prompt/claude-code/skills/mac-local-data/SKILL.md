@@ -36,9 +36,11 @@ imsg-history status
 imsg-history recent 20
 imsg-history search "検索語" 10
 imsg-history chats "表示名またはhandle" 20
-imsg-history with "電話番号またはメール" 40
+imsg-history with "電話番号またはメール" 40   # その相手との1:1だけ（グループは含まない）
 imsg-history chat "chat GUID" 40
 ```
+
+`with`が返すのは**その相手との1:1だけ**。会話の単位はhandleではなくchatで、相手が参加するgroupは第三者の発言ごと別の会話なので混ぜない。groupを読むときは`chats`でGUIDを選んでから`chat`を使う。
 
 出力はJSONL。message/chat recordの後に必ず`{"type":"end","ok":true,"count":N}`が来る。上限に達したmessage pageは`nextCursor`を返すので、`spec.before`へその`{dateRaw,rowID,chatRowID}`を渡して1000件より古い履歴へ進む。複数chatに属するmessageはmembershipごとに1 record返す。本文には`decodeStatus`があり、`typedstream_heuristic`/`unsupported`/`attachment_only`でも行を捨てない。
 
