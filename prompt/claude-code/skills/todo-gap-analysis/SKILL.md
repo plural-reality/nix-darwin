@@ -5,7 +5,7 @@ description: "Cosense/ScrapboxのToDoカンバンページとネストされた�
 
 # ToDo Gap Analysis — 抜け漏れ調査スキル
 
-ToDoカンバン（Cosense/Scrapbox）上のステータスと、各ネストページの実際の進捗を突合し、差分・抜け漏れ・要フォロー事項を検出する。
+ToDoカンバンとプロジェクト看板（Cosense/Scrapbox）上のindexと、各task/project pageの実際の進捗を突合し、差分・抜け漏れ・要フォロー事項を検出する。
 
 ## 入力
 
@@ -16,9 +16,9 @@ ToDoカンバン（Cosense/Scrapbox）上のステータスと、各ネストペ
 
 ## 実行手順
 
-### Phase 1: メインページ取得
+### Phase 1: 2看板の取得
 
-cosense-fetch でカンバンページを取得する（WebFetch は Scrapbox 本文を壊すので使わない）。状態は4状態（canonical=plural-reality「ToDoカンバン」infobox）で判定する:
+cosense-fetch で`ToDoカンバン`と`プロジェクト看板`を取得する（WebFetch は Scrapbox 本文を壊すので使わない）。前者は完了条件が明確な次アクション、後者は複数アクションを要する進行中の成果だけを持つ。状態は4状態（canonical=plural-reality「ToDoカンバン」infobox）で判定する:
 - `⬜` 未着手 = 今すぐ着手可（自分のボール／実作業中含む）
 - `⏳` 進行中 = 相手ボール・返答待ち
 - `⏹️` 保留 = 今は着手不可（将来ToDo化 / 依存待ち）
@@ -26,11 +26,12 @@ cosense-fetch でカンバンページを取得する（WebFetch は Scrapbox �
 
 ```
 cosense-fetch "ToDoカンバン" -p plural-reality -h 2
+cosense-fetch "プロジェクト看板" -p plural-reality -h 2
 ```
 
 ### Phase 2: ネストページの並列取得
 
-メインページ内の `[リンクされたページ]` を全て抽出し、**並列で** cosense-fetch する（WebFetch は使わない）。
+ToDoカンバンのtask linkとプロジェクト看板のproject linkを抽出し、**並列で** cosense-fetch する（WebFetch は使わない）。相互リンク、icon、見出しは対象外にする。
 各ページからは以下を抽出:
 - 最終更新日
 - 実際の進捗状況（⬜未着手=今すぐ着手可 / ⏳進行中=相手待ち / ⏹️保留=着手不可 / ☑️完了）
@@ -96,10 +97,11 @@ cosense-fetch "ToDoカンバン" -p plural-reality -h 2
 
 ユーザーが「scbに書いて」「Scrapboxにまとめて」と言った場合:
 - `save-to-scrapbox` の canonical な配置規約に従う。独立したギャップ分析ページや、ToDoカンバン末尾のAI専用区画は作らない
-- finding は exact な task/page-object 行の直下へ、理由・期限・次の一手として短く置く。詳細・履歴・証拠は canonical task page に置く
+- finding、理由、期限、次の一手、詳細、履歴、証拠はcanonical task/project pageに置く。看板へ説明行を足さない
 - 推測だけならstatusを変えず、不確実性を灰色の子行として残す。status変更は根拠を確認して既存ページをin-place renameする
 - exact anchorが見つからないfindingと横断run summaryは当日のdaily pageへ置く
-- 書き込み後、対象行とcanonical pageを再取得し、人間行がbyte単位で不変なことを確認する
+- taskの追加・移動・status変更で看板indexの更新が必要な場合だけ、2看板を再取得して全体候補を生成し、`--mode replace --verbatim --expect-sha256`でCAS付き置換する
+- 書き込み後、2看板とcanonical pageを再取得し、人間行がbyte単位で不変なことを確認する
 
 ## 注意事項
 
@@ -119,11 +121,12 @@ headless 実行でも ToDoカンバンを横断レポート置場にしない。
 
 ### 手順
 1. Phase 1〜4 を実行し、findingを `{anchorTitle, evidence, childLines}` に正規化する。
-2. ToDoカンバンとcanonical task pageを毎回ライブ取得する。
-3. exact `[anchorTitle]` が1件だけ存在するfindingだけ、既存task行またはcanonical pageの対応命題へ局所反映する。
+2. 2看板とcanonical task/project pageを毎回ライブ取得する。
+3. exact `[anchorTitle]` が1件だけ存在するfindingだけ、canonical pageの対応命題へ局所反映する。
 4. anchorなし・重複anchor・横断所見はToDoへ書かず、当日のdailyへrun summaryとして置く。
-5. 書込前後で対象外の人間行を比較し、byte単位で不変でなければ中断する。
-6. 書込後に再取得し、重複findingがなく、AI行が `[( …]` のまま、taskとの親子関係が読めることを確認する。
+5. taskの追加・移動・status変更がなければ2看板を書かない。必要な場合は全体候補をCAS付きreplaceし、append/prependしない。
+6. 書込前後で対象外の人間行を比較し、byte単位で不変でなければ中断する。
+7. 書込後に再取得し、重複findingがなく、AI行が `[( …]` のまま、taskとの親子関係が読めることを確認する。
 
 ### 破壊防止
 - 文体からAI行を推測しない。`[( …]`、agent icon、既知の実patchだけを対象にする。

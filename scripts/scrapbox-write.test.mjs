@@ -20,6 +20,7 @@ import {
   linesDigest,
   markGrayText,
   matchClose,
+  validateBoardWrite,
   validateTaskTransition,
 } from "./scrapbox-write.mjs";
 
@@ -36,6 +37,61 @@ test("CAS guard accepts an unchanged base and rejects a concurrent edit", () => 
 test("CAS guard canonicalizes a not-yet-created page as a title-only page", () => {
   const strategy = guardPatchStrategy("New Page", linesDigest(["New Page"]), () => ["New Page", " body"]);
   assert.deepEqual(strategy([]), ["New Page", " body"]);
+});
+
+const boardArgs = (overrides = {}) => ({
+  project: "plural-reality",
+  title: "ToDoカンバン",
+  mode: "replace",
+  verbatim: true,
+  expectSha256: "a".repeat(64),
+  ...overrides,
+});
+
+test("GTD boards reject prepend/append and require a CAS-protected verbatim replace", () => {
+  const body = "[プロジェクト看板]\n\n[** @PC]";
+  assert.equal(validateBoardWrite(boardArgs({ mode: "prepend" }), body).ok, false);
+  assert.equal(validateBoardWrite(boardArgs({ mode: "append" }), body).ok, false);
+  assert.equal(validateBoardWrite(boardArgs({ verbatim: false }), body).ok, false);
+  assert.equal(validateBoardWrite(boardArgs({ expectSha256: undefined }), body).ok, false);
+  assert.equal(validateBoardWrite(boardArgs(), body).ok, true);
+});
+
+test("GTD boards reject standalone agent progress blocks", () => {
+  const report = "[プロジェクト看板]\n[( 調査進捗を記録][codex.icon]";
+  const claudeReport = "[プロジェクト看板]\n[( 調査進捗を記録][claude code.icon]";
+  const wipReport = "[プロジェクト看板]\n[claude code WIP.icon] 調査進捗";
+  const wipChildReport = "[プロジェクト看板]\n [claude code WIP.icon]\n  調査進捗: 3件確認";
+  const nestedWipReport = "[プロジェクト看板]\n [claude code WIP.icon]\n  [* wip]\n   調査進捗: 3件確認";
+  const structuralQueue = "[プロジェクト看板]\n [claude code WIP.icon]\n  [* todo]\n  [* wip]\n  [* done]";
+  const taskQueue = "[プロジェクト看板]\n [claude code WIP.icon]\n  [* todo]\n   [⬜ 明確な次アクション]\n  [* wip]\n   [( [⏳cc: 実行中のタスク]]\n  [* done]\n   [☑️ 完了したタスク]";
+  assert.equal(validateBoardWrite(boardArgs(), report).ok, false);
+  assert.equal(validateBoardWrite(boardArgs(), claudeReport).ok, false);
+  assert.equal(validateBoardWrite(boardArgs(), wipReport).ok, false);
+  assert.equal(validateBoardWrite(boardArgs(), wipChildReport).ok, false);
+  assert.equal(validateBoardWrite(boardArgs(), nestedWipReport).ok, false);
+  assert.equal(validateBoardWrite(boardArgs(), structuralQueue).ok, true);
+  assert.equal(validateBoardWrite(boardArgs(), taskQueue).ok, true);
+});
+
+test("each GTD board requires a reciprocal link and non-board pages stay unrestricted", () => {
+  assert.equal(validateBoardWrite(boardArgs(), "[** @PC]").ok, false);
+  assert.equal(validateBoardWrite(boardArgs(), "code:txt\n [プロジェクト看板]").ok, false);
+  assert.equal(validateBoardWrite(boardArgs(), "table:links\n [プロジェクト看板]").ok, false);
+  assert.equal(
+    validateBoardWrite(
+      boardArgs({ title: "プロジェクト看板" }),
+      "[ToDoカンバン]\n\n[** 進行中]",
+    ).ok,
+    true,
+  );
+  assert.equal(
+    validateBoardWrite(
+      boardArgs({ project: "tkgshn-private", title: "ToDoカンバン", mode: "prepend", verbatim: false, expectSha256: undefined }),
+      "自由な本文",
+    ).ok,
+    true,
+  );
 });
 
 // Faithful port of the canonical ungray() in tkgshn-extension/llm-auto-humanize: melt every

@@ -157,6 +157,83 @@ const validateTaskTransition = (args, body) =>
       }
     : { ok: true, value: body };
 
+const isBlankLine = (line) => line.trim() === "";
+const indentLen = (line) => /^(\s*)/.exec(line)[1].length;
+const isStructuralHeader = (line) => /^\s*(code:|table:)\S/.test(line);
+
+const GTD_BOARD_LINKS = Object.freeze({
+  "ToDoカンバン": "[プロジェクト看板]",
+  "プロジェクト看板": "[ToDoカンバン]",
+});
+const boardLink = (args) =>
+  args.project === "plural-reality" && Object.hasOwn(GTD_BOARD_LINKS, args.title)
+    ? GTD_BOARD_LINKS[args.title]
+    : undefined;
+const linesOutsideStructuralBlocks = (body) =>
+  body.split("\n").reduce(
+    (acc, line) => {
+      const blank = isBlankLine(line);
+      const inBlock = acc.block !== null && (blank || indentLen(line) > acc.block);
+      const block = inBlock ? acc.block : isStructuralHeader(line) ? indentLen(line) : null;
+      return { lines: inBlock ? acc.lines : [...acc.lines, line], block };
+    },
+    { lines: [], block: null },
+  ).lines;
+const bodyHasExactLine = (body, expected) =>
+  linesOutsideStructuralBlocks(body).some((line) => line.trim() === expected);
+const WIP_MARKER = "[claude code WIP.icon]";
+const isQueueHeading = (line) => /^\[\*+\s+(?:todo|wip|done)\]$/u.test(line.trim());
+const isQueueTask = (line) =>
+  /^(?:\[\(\s*)?\[(?:⬜|⏳|⏹️|🚨|☑️|⌛️|✅)[^\]\n]+\](?:\])?$/u.test(line.trim());
+const isAllowedWipQueueLine = (line) =>
+  isBlankLine(line) || isQueueHeading(line) || isQueueTask(line);
+const hasStandaloneAgentProgress = (body) =>
+  body.split("\n").reduce(
+    (acc, line) => {
+      const marker = line.includes(WIP_MARKER);
+      const exactMarker = line.trim() === WIP_MARKER;
+      const insideQueue =
+        acc.wipIndent !== null && (isBlankLine(line) || indentLen(line) > acc.wipIndent);
+      const forbidden =
+        acc.forbidden ||
+        /\[(?:codex|claude code)\.icon\]/u.test(line) ||
+        (marker && !exactMarker) ||
+        (insideQueue && !isAllowedWipQueueLine(line));
+      const wipIndent = exactMarker
+        ? indentLen(line)
+        : insideQueue
+          ? acc.wipIndent
+          : null;
+      return { forbidden, wipIndent };
+    },
+    { forbidden: false, wipIndent: null },
+  ).forbidden;
+
+// A GTD board is a curated index, not a log sink. Full replacement is the only write
+// boundary because it lets the caller prove the exact before/after line arrays. The
+// semantic details remain in save-to-scrapbox; this guard enforces only invariants that
+// are unambiguous at the transport boundary.
+const validateBoardWrite = (args, body) =>
+  boardLink(args) === undefined
+    ? { ok: true, value: body }
+  : args.mode !== "replace"
+    ? { ok: false, error: "GTD boards reject append/prepend; use a full replace" }
+  : !args.verbatim
+    ? { ok: false, error: "GTD boards require --verbatim to preserve the exact index" }
+  : args.expectSha256 === undefined
+    ? { ok: false, error: "GTD boards require --expect-sha256 for concurrent-edit protection" }
+  : !bodyHasExactLine(body, boardLink(args))
+    ? { ok: false, error: `GTD board requires reciprocal link ${boardLink(args)}` }
+  : hasStandaloneAgentProgress(body)
+    ? { ok: false, error: "GTD boards reject standalone Codex/Claude progress blocks" }
+  : { ok: true, value: body };
+
+const validateWrite = (args, body) =>
+  foldResult(validateBoardWrite(args, body), {
+    ok: (validBody) => validateTaskTransition(args, validBody),
+    error: (error) => ({ ok: false, error }),
+  });
+
 const foldResult = (result, handlers) =>
   result.ok
     ? handlers.ok(result.value)
@@ -170,7 +247,6 @@ const readStdin = () =>
     process.stdin.on("error", reject);
   });
 
-const isBlankLine = (line) => line.trim() === "";
 // Blank lines must stay truly empty: Scrapbox renders a space-only line as a stray
 // empty bullet (every body line is indented one level), so collapse blanks to "".
 const indentBodyLine = (line) => isBlankLine(line) ? "" : ` ${line}`;
@@ -253,8 +329,6 @@ const markGrayText = (text) =>
     .split(/(`[^`]+`)/)
     .map((seg) => (isCodeSpan(seg) ? seg : grayInline(seg)))
     .join("");
-const indentLen = (line) => /^(\s*)/.exec(line)[1].length;
-const isStructuralHeader = (line) => /^\s*(code:|table:)\S/.test(line);
 // Idempotent: a line whose LEADING decoration already carries '(' is already grey and is
 // left alone (protects page objects like `[( [⬜ task]]` from double-wrapping). Uses the
 // deco parser, not a substring scan — the old line.includes("[(") false-positived on prose
@@ -365,7 +439,7 @@ const main = () => {
           .then((bodyResult) =>
             foldResult(bodyResult, {
               ok: (body) =>
-                foldResult(validateTaskTransition(validArgs, body), {
+                foldResult(validateWrite(validArgs, body), {
                   ok: (validBody) => writePage(validArgs, validBody, patchStrategy),
                   error: die,
                 }),
@@ -395,5 +469,6 @@ export {
   guardPatchStrategy,
   markGrayText,
   matchClose,
+  validateBoardWrite,
   validateTaskTransition,
 };
