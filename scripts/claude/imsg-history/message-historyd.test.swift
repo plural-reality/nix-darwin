@@ -110,7 +110,10 @@ enum MessageHistoryBridgeTests {
             "iMessage;+;+819000000001", "chat-group",
         ])
         assert(search.map(\.guid) == ["m2", "m2"])
-        assert(withAlice.map(\.guid) == ["m1", "m2", "m2", "m3"])
+        // Chat 2 is a group alice is in, so neither its copy of m2 nor bob's m3
+        // belongs to the direct thread. Membership alone would return both.
+        assert(withAlice.map(\.guid) == ["m1", "m2"])
+        assert(withAlice.allSatisfy { $0.chatGUID == "iMessage;+;+819000000001" })
         assert(knownChats.count == 2)
         assert(knownChats.first { $0.guid == "chat-group" }?.participants == ["+819000000001", "bob@example.com"])
         assert(terminal(latestPageOutput)?.nextCursor == MessageCursor(

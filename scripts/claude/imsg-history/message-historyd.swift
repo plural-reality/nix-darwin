@@ -471,15 +471,19 @@ func queryMessages(database: ReadonlyDatabase, request: BridgeRequest) throws ->
                 limit: limit).reversed()
         } ?? { throw BridgeFailure.invalidRequest("chat requires a chatGUID") }()
     case "with":
+        // The direct thread only: a chat whose sole participant is the handle.
+        // Chat membership alone would also match every group the handle is in,
+        // returning third parties' messages as if they were this conversation.
         try request.spec?.handle.flatMap(normalizedText).map { handle in
             try rows(
                 database: database,
                 sql: messageSelect + """
-                 WHERE EXISTS (
-                   SELECT 1
+                 WHERE c.ROWID IN (
+                   SELECT members.chat_id
                      FROM chat_handle_join members
-                     JOIN handle target ON target.ROWID = members.handle_id
-                    WHERE members.chat_id = c.ROWID AND target.id = ?)
+                     JOIN handle participant ON participant.ROWID = members.handle_id
+                    GROUP BY members.chat_id
+                   HAVING COUNT(DISTINCT members.handle_id) = 1 AND MAX(participant.id) = ?)
                 \(beforeClause(request.spec?.before, true))
                  ORDER BY COALESCE(m.date, 0) DESC, m.ROWID DESC, c.ROWID DESC LIMIT \(limit)
                 """,
