@@ -4,34 +4,19 @@ set -euo pipefail
 
 BOUNDARY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/with-garmin-token"
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/garmin-token-test.XXXXXX")"
-STATE="$ROOT/state.json"
-SECRET="$ROOT/secret.yaml"
-SET_COUNT="$ROOT/set-count"
-FAKE_SOPS="$ROOT/sops"
+STORE_DIR="$ROOT/state"
+STORE="$STORE_DIR/tokens.json"
 CHILD="$ROOT/child"
 LOCK="$ROOT/lock"
 OLD='{"di_token":"old","di_refresh_token":"old-refresh","di_client_id":"client"}'
 NEW='{"di_token":"new","di_refresh_token":"new-refresh","di_client_id":"client"}'
 
 cleanup() {
+  chmod -R u+rwX "$ROOT" 2>/dev/null || true
   find "$ROOT" -type f -delete
-  rmdir "$ROOT"
+  find "$ROOT" -depth -type d -exec rmdir {} +
 }
 trap cleanup EXIT
-
-cat > "$FAKE_SOPS" <<'SH'
-#!/usr/bin/env bash
-set -euo pipefail
-case "$1" in
-  decrypt) cat "$TEST_TOKEN_STATE" ;;
-  set)
-    [[ "${FAKE_SET_FAIL:-0}" != 1 ]] || { cat >/dev/null; exit 55; }
-    python3 -c 'import json, os, pathlib, sys; pathlib.Path(os.environ["TEST_TOKEN_STATE"]).write_text(json.load(sys.stdin))'
-    printf x >> "$TEST_SET_COUNT"
-    ;;
-  *) exit 64 ;;
-esac
-SH
 
 cat > "$CHILD" <<'SH'
 #!/usr/bin/env bash
@@ -41,55 +26,70 @@ printf '%s %s\n' "$GARMINTOKENS" "$(stat -f '%Lp' "$GARMINTOKENS")" > "${CHILD_O
 sleep "${CHILD_SLEEP:-0}"
 exit "${CHILD_EXIT:-0}"
 SH
-chmod 0755 "$FAKE_SOPS" "$CHILD"
-: > "$SECRET"
+chmod 0755 "$CHILD"
+mkdir -p "$STORE_DIR"
 
 run_boundary() {
-  TEST_TOKEN_STATE="$STATE" TEST_SET_COUNT="$SET_COUNT" SOPS_BIN="$FAKE_SOPS" \
-    GARMIN_SECRET="$SECRET" GARMIN_TOKEN_LOCK="$LOCK" \
-    "$BOUNDARY" "$CHILD"
+  GARMIN_TOKEN_STORE="$STORE" GARMIN_TOKEN_LOCK="$LOCK" "$BOUNDARY" "$CHILD"
 }
 
-printf '%s' "$OLD" > "$STATE"; : > "$SET_COUNT"
+# A store that cannot be replaced must stop before the child observes a token.
+printf '%s' "$OLD" > "$STORE"
+chmod 0444 "$STORE"
 set +e
-CHILD_OBSERVATION="$ROOT/missing-secret" GARMIN_SECRET="$ROOT/missing.yaml" \
-  TEST_TOKEN_STATE="$STATE" TEST_SET_COUNT="$SET_COUNT" SOPS_BIN="$FAKE_SOPS" \
-  GARMIN_TOKEN_LOCK="$LOCK" "$BOUNDARY" "$CHILD"
+CHILD_OBSERVATION="$ROOT/read-only-store" run_boundary
 status=$?
 set -e
-[[ $status -eq 66 && ! -e "$ROOT/missing-secret" && ! -s "$SET_COUNT" ]]
+chmod 0600 "$STORE"
+[[ $status -eq 73 && ! -e "$ROOT/read-only-store" && "$(cat "$STORE")" == "$OLD" ]]
 
-chmod 0444 "$SECRET"
+# The atomic rename needs a writable directory, not just a writable file.
+chmod 0500 "$STORE_DIR"
 set +e
-CHILD_OBSERVATION="$ROOT/read-only-secret" run_boundary
+CHILD_OBSERVATION="$ROOT/read-only-dir" run_boundary
 status=$?
 set -e
-chmod 0600 "$SECRET"
-[[ $status -eq 73 && ! -e "$ROOT/read-only-secret" && ! -s "$SET_COUNT" ]]
+chmod 0700 "$STORE_DIR"
+[[ $status -eq 73 && ! -e "$ROOT/read-only-dir" ]]
 
-printf '%s' "$OLD" > "$STATE"; : > "$SET_COUNT"
+# Unchanged token: no write, and the ephemeral copy is 0600 and gone afterwards.
+printf '%s' "$OLD" > "$STORE"
+before="$(stat -f '%m %z' "$STORE")"
 CHILD_OBSERVATION="$ROOT/no-change" run_boundary
-[[ ! -s "$SET_COUNT" && "$(cat "$STATE")" == "$OLD" ]]
+[[ "$(cat "$STORE")" == "$OLD" && "$(stat -f '%m %z' "$STORE")" == "$before" ]]
 read -r ephemeral_path mode < "$ROOT/no-change"
 [[ "$mode" == 600 && ! -e "$ephemeral_path" ]]
 
-printf '%s' "$OLD" > "$STATE"; : > "$SET_COUNT"
+# Refreshed token is persisted, and the store keeps 0600.
+printf '%s' "$OLD" > "$STORE"
 CHILD_TOKEN_VALUE="$NEW" run_boundary
-[[ "$(cat "$SET_COUNT")" == x && "$(cat "$STATE")" == "$NEW" ]]
+[[ "$(cat "$STORE")" == "$NEW" && "$(stat -f '%Lp' "$STORE")" == 600 ]]
 
-printf '%s' "$OLD" > "$STATE"; : > "$SET_COUNT"
+# A failing command still rotated the token upstream; persist it, keep its status.
+printf '%s' "$OLD" > "$STORE"
 set +e; CHILD_TOKEN_VALUE="$NEW" CHILD_EXIT=42 run_boundary; status=$?; set -e
-[[ $status -eq 42 && "$(cat "$SET_COUNT")" == x && "$(cat "$STATE")" == "$NEW" ]]
+[[ $status -eq 42 && "$(cat "$STORE")" == "$NEW" ]]
 
-printf '%s' "$OLD" > "$STATE"; : > "$SET_COUNT"
+# An incomplete token must never replace a working one.
+printf '%s' "$OLD" > "$STORE"
 set +e; CHILD_TOKEN_VALUE='{}' run_boundary; status=$?; set -e
-[[ $status -ne 0 && ! -s "$SET_COUNT" && "$(cat "$STATE")" == "$OLD" ]]
+[[ $status -ne 0 && "$(cat "$STORE")" == "$OLD" ]]
 
-printf '%s' "$OLD" > "$STATE"; : > "$SET_COUNT"
-set +e; CHILD_TOKEN_VALUE="$NEW" FAKE_SET_FAIL=1 run_boundary; status=$?; set -e
-[[ $status -eq 55 && ! -s "$SET_COUNT" && "$(cat "$STATE")" == "$OLD" ]]
+# Bootstrap: no store yet, `garmin auth` mints the first token through the boundary.
+rm -f "$STORE"
+CHILD_TOKEN_VALUE="$NEW" run_boundary
+[[ "$(cat "$STORE")" == "$NEW" && "$(stat -f '%Lp' "$STORE")" == 600 ]]
 
-printf '%s' "$OLD" > "$STATE"; : > "$SET_COUNT"
+# Bootstrap creates the store directory at 0700 when it is absent.
+rm -rf "$STORE_DIR"
+CHILD_TOKEN_VALUE="$NEW" run_boundary
+[[ "$(stat -f '%Lp' "$STORE_DIR")" == 700 && "$(cat "$STORE")" == "$NEW" ]]
+
+# No staging file may survive a completed run.
+[[ -z "$(find "$STORE_DIR" -name 'tokens.json.*' -print -quit)" ]]
+
+# Concurrent runs serialise; the loser reports busy instead of racing the store.
+printf '%s' "$OLD" > "$STORE"
 CHILD_SLEEP=2 run_boundary & first_pid=$!
 sleep 0.2
 set +e; run_boundary; status=$?; set -e

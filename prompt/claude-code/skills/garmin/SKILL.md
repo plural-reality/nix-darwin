@@ -11,8 +11,8 @@ description: >-
 # Garmin skill
 
 自分の Garmin Connect データをターミナルから取得する薄いクライアント。
-認証は **canonical トークン1つ**（personal profileがbindしたwritable SOPS sourceの
-`garmin_tokens`を一時tokenstoreへ復号）。shared skillは具体的なsecretを含みません。
+認証は **ホストごとに1つの rotating token**（`~/.local/state/garmin/tokens.json`
+を一時tokenstoreへ複製）。shared skillは具体的なsecretを含みません。
 パスワードは保存していない。スクリプト自体は credential を一切知らない。
 
 ## 使い方
@@ -22,7 +22,7 @@ description: >-
 
 ```
 scripts/garmin recent [n]          # 直近n件のアクティビティ要約 (default 10)
-scripts/garmin auth                # 対話再認証 → rotating tokenをSOPSへ保存
+scripts/garmin auth                # 対話再認証 → rotating tokenをhost-local storeへ保存
 scripts/garmin last                # 最新アクティビティ要約
 scripts/garmin activity <id>       # アクティビティ詳細
 scripts/garmin details <id>        # 詳細(時系列メトリクス込み)
@@ -95,13 +95,16 @@ scripts/garmin help                # 一覧
 
 - 薄いCLIは **garminconnect 0.3.9**、GarminDBは **3.8.0** を固定。後者が
   `garminconnect 0.3.3` を内包するが、共有するDI tokenstore schemaは同じ。
-- `scripts/with-garmin-token` が唯一の復号/writeback境界。SOPSを0600一時tokenstoreへ
-  復号し、refreshでrotated tokenが変わった時だけSOPSへ戻し、平文を削除する。
-- concrete bindingはpersonal Home Managerの`GARMIN_SECRET`。Nix store内のskillや
-  read-only sops-nix materializationへはwritebackしない。
+- `scripts/with-garmin-token` が唯一の読み書き境界。host-local storeを0600一時
+  tokenstoreへ複製し、refreshでrotated tokenが変わった時だけatomic renameで書き戻す。
+- storeは **runtime state であって configuration ではない**。rotateする credential の
+  前世代には復旧価値がないため（再認証はどのみちpassword+MFAを要する）、gitで管理せず、
+  ホスト間でも共有しない。各ホストが独立したtoken系統を持つ。
+- 既定パスは `${XDG_STATE_HOME:-$HOME/.local/state}/garmin/tokens.json`。パスはtool側の
+  性質であり、呼び出し側は知らなくてよい。上書きは `GARMIN_TOKEN_STORE` のみ。
 - `lockf`でCLIとGarminDBを直列化し、refresh token rotationの競合を防ぐ。
 - Garmin SSO は 429 が出やすいので **login をループで叩かない**。トークン運用で login はほぼ不要。
 - refresh token失効時（パスワード変更等）のみ `scripts/garmin auth`。パスワード/MFAは
-  その端末で対話入力し、保存しない。成功したDI tokenだけSOPSへ保存する。
+  その端末で対話入力し、保存しない。成功したDI tokenだけhost-local storeへ保存する。
 - 詳細な設計判断は `DESIGN.md`。スマホ/Desktop 対応(bridge/MCP)は Phase B（未着手）。
 - Codex でも同じ skill body が `~/.agents/skills/garmin/` から使える（symlink）。

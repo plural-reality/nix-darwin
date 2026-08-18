@@ -3,11 +3,12 @@
 Run only through `garmin auth` (interactive; env overrides are supported).
 Produces the single
 canonical secret: garminconnect's session-state string (client.dumps()),
-written to GARMIN_TOKEN_OUT with 0600 perms. That string becomes GARMINTOKENS
-in SOPS; the raw password is never persisted. Verifies by pulling one activity.
+written to GARMIN_TOKEN_OUT with 0600 perms. The boundary persists that string
+into the host-local token store; the raw password is never persisted.
+Verifies by pulling one activity.
 
 The password is never persisted. The token is written to a 0600 ephemeral file
-and the wrapper encrypts it back into SOPS. garminconnect's
+and the wrapper renames it into the host-local store. garminconnect's
 curl_cffi engine impersonates a browser at the TLS layer, which is the fix for
 the Cloudflare/429 block that killed the old garth mobile-UA path.
 """

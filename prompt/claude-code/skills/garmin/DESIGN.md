@@ -18,9 +18,9 @@
 
 ## アーキテクチャ (概念1 / source of truth 1 / 境界1)
 ```
-          personal profileのwritable SOPS source ← 唯一の canonical value
-                    garmin_tokens = dumps()       （平文passwordは保存しない）
-                          │  with-garmin-token (唯一の復号/writeback境界)
+     ~/.local/state/garmin/tokens.json ← ホストごとの唯一の canonical value
+              0600 / dumps()の文字列        （平文passwordは保存しない）
+                          │  with-garmin-token (唯一の読み書き境界)
             ┌─────────────┴───────────────┐
    scripts/garmin.py(薄client)        scripts/garmindb-sync
    temp token path→load/dump          同じtemp config/token pathを使用
@@ -28,9 +28,10 @@
         │                                   │
    Claude Code CLI / Codex CLI         全履歴 SQLite (~/HealthData, ~/.GarminDb/*.db)
 ```
-- `scripts/with-garmin-token`が唯一の復号/writeback境界。SOPSから0600の一時tokenstoreへ復号し、
-  refresh後のrotated tokenを変更時だけSOPSへwritebackして一時平文を削除する。
-- `garmin auth`も同じ境界内で一時tokenstoreを置換するだけで、独自のSOPS writerを持たない。
+- `scripts/with-garmin-token`が唯一の読み書き境界。host-local storeを0600の一時tokenstoreへ
+  複製し、refresh後のrotated tokenを変更時だけatomic renameで書き戻して一時平文を削除する。
+- `garmin auth`も同じ境界内で一時tokenstoreを置換するだけで、独自のwriterを持たない。
+  storeが無い状態が bootstrap ケースで、初回tokenも同じ境界を通って書かれる。
 - `lockf`で全consumerを直列化し、refresh token rotationの競合とstale writeを防ぐ。
 - skill本体はzero-password。パスワード/MFAは`garmin auth`の端末プロセスだけに存在する。
 - 初回またはrevoke時だけemail+password、要求された場合はMFAを対話入力する。以降はtokenのみ。
@@ -40,10 +41,14 @@
 - Garmin SSO の **429 はクライアントUA/レート由来**。login をループで叩かない。トークン運用で login 自体をほぼ呼ばない。
 
 ## secret 配置の判断
-- shared skillはinterfaceだけを持ち、暗号済みconcrete value/pathは **personal.nix** がbindする。
-- `GARMIN_SECRET`はwritableなSOPS sourceを指す。Nix store内のskill ZIPやread-onlyの
-  sops-nix materializationをsource of truthにしない。
-- SOPS age recipient は個人profile側で決める。プロジェクトKMSではない。
+- rotating token と configuration secret は別のものなので、別の場所に置く。`secrets.yaml`
+  のような git 追跡下の SOPS store に混ぜると、checkout が恒久的に dirty になり、
+  ホスト間で ciphertext が conflict し、内容のない churn コミットが要る運用に落ちる。
+- storeは平文0600。復号鍵が同じディスクに平文で置かれる以上、ここでの暗号化は防御にならない。
+  境界自体もコマンド実行のたびに平文を materialize している。
+- パスは shared skill 側の既定値で閉じる。personal.nix はGarmin tokenのパスを知らない
+  （知る主体が増えるほど、その知識が食い違う場所が増える）。
+- ホストごとに独立した系統を持つ。共有すると refresh 時に互いの世代を無効化しうる。
 
 ## 後日 Phase B (スマホ/Desktop)
 - 同じ garminconnect ロジックを1プロセスの bridge に包み、MCP-over-HTTP + JSON の2トランスポートで公開。
