@@ -6,7 +6,7 @@ description: "macOS の iMessage を使って連絡先にメッセージを送�
 # iMessage Send Skill
 
 macOS の Messages.app / Contacts.app を AppleScript 経由で操作し、iMessage を送る。
-**宛先解決 → 送信 → chat.db での着地確認** までを `imsg-send` ヘルパーに集約してある。
+**CRM 文体取得 + MessageHistoryBridge経由のiMessage履歴取得 → 宛先解決 → 送信 → chat.db での着地確認** を `imsg-send` ヘルパーに集約してある。
 素の osascript を都度書くのではなく、原則このヘルパーを使う（過去にハマった落とし穴を全部吸収済み）。
 
 ## ヘルパー `imsg-send`
@@ -19,17 +19,20 @@ IO は Stream として扱う設計: **本文は stdin、宛先は引数、結�
 ```bash
 SK=~/.claude/skills/imessage-send/imsg-send
 
-# 1. まず宛先解決だけ確認（送信しない）— ユーザー確認の材料にする
-"$SK" --dry-run "Chanju"
-#   → {"ok":true,"dry_run":true,"recipient":"Chanju","handle":"+819091150163"}
+# 1. 下書き前に必ず、相手の CRM 文体と直近の会話を取得する（送信しない）
+"$SK" --context --style-contact "Kentaro Iwata" "Kentaro Iwata"
+#   → {"styleContact":"Kentaro Iwata","recipientHandle":"...","style":{...},"history":[...]}
 
-# 2. 送信（本文は stdin）。着地まで確認して JSON を返す
-printf '%s' "送りたい本文" | "$SK" "ちゃんじゅ"
+# グループの場合は `imsg-history chats` で見つけた chat GUID を指定して、そのグループ履歴を取得する
+"$SK" --context --style-contact "Kentaro Iwata" --chat "iMessage;+;..." "Kentaro Iwata"
+
+# 2. 送信（本文は stdin）。--style-contact は必須で、送信直前にも文体・履歴を再読込する
+printf '%s' "送りたい本文" | "$SK" --style-contact "Kentaro Iwata" "Kentaro Iwata"
 #   → {"ok":true,"handle":"+819091150163","rowid":111781}   ← rowid が出れば実際に送信された
 #   → {"ok":false,"error":"..."}                            ← 解決失敗 / 送信失敗 / 着地未確認
 
 # 本文を引数で渡すなら -m（改行や絵文字を含むなら stdin 推奨）
-"$SK" -m "本文" "+819091150163"
+"$SK" -m "本文" --style-contact "Kentaro Iwata" "+819091150163"
 ```
 
 宛先 `<recipient>` は次のいずれでも可:
@@ -39,12 +42,24 @@ printf '%s' "送りたい本文" | "$SK" "ちゃんじゅ"
 
 ## 手順（エージェント向け）
 
-1. `imsg-send --dry-run "<宛先>"` で解決されるハンドルを確定する。
+1. **下書きより前に必ず** `imsg-send --context --style-contact "<CRMの人物名>" [--chat "<chat.db GUID>"] "<宛先>"` を実行する。
+返った CRM の文体ガイド・関係性と、`history` の最近の送受信を読んで本文を作る。
+   `history` は `imsg-history`（署名済みread-only bridge）の成功した JSONL stream から得る。
+   文字列の人名を決め打ちしない。CRM が解決できる表示名をその都度使う。
 2. **ユーザー確認は必須。** 宛先（名前＋ハンドル）と本文を提示し、明示的な承認を得る
    （`AskUserQuestion` で「この文面で送っていいか」を聞くのが定番。言語の選択肢も同時に出せる）。
-3. 承認後、`printf '%s' "本文" | imsg-send "<宛先>"` で送信。
+3. 承認後、`printf '%s' "本文" | imsg-send --style-contact "<CRMの人物名>" "<宛先>"` で送信。
+   `--style-contact` が無ければ fail closed で送信しない。送信直前にも文体・履歴を再取得する。
 4. 返ってきた JSON の `"ok":true` と `rowid` を見て「送信完了」を報告する。
    `"ok":false` なら原因（解決失敗 / 送信失敗 / 着地未確認）をそのまま伝える。
+
+### グループとメンション
+
+- `--chat` は**グループ履歴を読むためだけ**の引数である。送信先をグループへ推測・変更しない。
+- 通知付きメンションは、Messages.app のグループ会話で `@` に続けて表示される候補を選択して初めて成立する。
+  `@Kentaro Iwata` という文字列をヘルパーから送るだけではメンションにならない。
+- したがってグループ送信・メンションが必要なときも、先に `--context --chat` で文脈を取得し、
+  本文の二段階承認後に Messages.app 上で候補を選択して送る。送信後は chat.db を再読込して確認する。
 
 ## エイリアス（個人マッピング）
 
