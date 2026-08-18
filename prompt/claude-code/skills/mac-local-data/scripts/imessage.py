@@ -11,6 +11,8 @@ Usage:
   imessage.py recent [N]                 # N newest messages (default 20)
   imessage.py search "query" [N]         # full-text search (default 40)
   imessage.py with "name-or-number" [N]  # thread with one handle/person
+  imessage.py chat "chat-guid" [N]       # a group or direct chat by its chat.db GUID
+  imessage.py list-chats [N]              # recent chat.db GUIDs for `chat`
   imessage.py stats                      # totals
   imessage.py list-handles [N]           # known handles (phone/email)
 
@@ -22,7 +24,7 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
-DB = os.path.expanduser("~/Library/Messages/chat.db")
+DB = os.environ.get("IMESSAGE_DB", os.path.expanduser("~/Library/Messages/chat.db"))
 APPLE_EPOCH = datetime(2001, 1, 1, tzinfo=timezone.utc)
 
 
@@ -124,6 +126,23 @@ def with_handle(cur, who, n=60):
     emit(rows[::-1])
 
 
+def with_chat(cur, chat_guid, n=60):
+    rows = cur.execute(
+        """
+        SELECT m.date, m.is_from_me, h.id AS handle, m.text, m.attributedBody
+        FROM chat c
+        JOIN chat_message_join cmj ON cmj.chat_id = c.ROWID
+        JOIN message m ON m.ROWID = cmj.message_id
+        LEFT JOIN handle h ON m.handle_id = h.ROWID
+        WHERE c.guid = ?
+        ORDER BY m.date DESC
+        LIMIT ?
+        """,
+        (chat_guid, n),
+    ).fetchall()
+    emit(rows[::-1])
+
+
 def stats(cur):
     tot = cur.execute("SELECT count(*) FROM message").fetchone()[0]
     me = cur.execute("SELECT count(*) FROM message WHERE is_from_me=1").fetchone()[0]
@@ -138,8 +157,15 @@ def list_handles(cur, n=50):
         print(hid)
 
 
-CMDS = {"recent": recent, "search": search, "with": with_handle,
-        "stats": stats, "list-handles": list_handles}
+def list_chats(cur, n=50):
+    for (guid,) in cur.execute(
+        "SELECT guid FROM chat WHERE guid IS NOT NULL ORDER BY ROWID DESC LIMIT ?", (n,)
+    ).fetchall():
+        print(guid)
+
+
+CMDS = {"recent": recent, "search": search, "with": with_handle, "chat": with_chat,
+        "stats": stats, "list-handles": list_handles, "list-chats": list_chats}
 
 
 def main(argv):
