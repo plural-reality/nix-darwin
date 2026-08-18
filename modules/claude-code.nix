@@ -618,6 +618,13 @@ in
                   command = script "nix-darwin-sync-check.sh";
                 }
                 {
+                  # 署名済み bridge の証明書が切れると build.sh が署名を拒み、source を
+                  # 更新しても古いバイナリが動き続ける。次にビルドするまで表面化しない
+                  # ので、セッション開始時に見えるところへ出す。
+                  type = "command";
+                  command = script "signed-bridge-check.sh";
+                }
+                {
                   type = "command";
                   command = script "init-prompt-on-new-project.sh";
                 }

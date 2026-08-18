@@ -139,3 +139,17 @@ the personal Nix binding.
 
 Building is not activation, and activation without the final live readback is
 not completion.
+
+Step 3 is the one that rots. The signing certificate expires, `build.sh` then
+refuses to sign, and the daemon keeps serving the previously signed binary —
+which still runs, because an expired certificate does not stop already-signed
+code. Nothing reports it until someone next builds. That is how a certificate
+that expired on 2026-08-03 went unnoticed until 2026-08-18, when a fix to the
+bridge was applied to the source but never reached the running daemon.
+
+`scripts/claude/signed-bridge-check.sh` surfaces this at Claude Code session
+start. It reads each deployed bridge's own signature to find the certificate
+that signed it, so it needs no copy of the identity configured downstream, and
+it stays silent unless a certificate is expired, expiring within 30 days, or
+missing. Renewing the certificate is a human step; rerun `imsg-history-build`
+afterwards, then read back through the socket.
