@@ -36,6 +36,8 @@ python3 ~/.claude/skills/mac-local-data/scripts/imessage.py stats
 python3 ~/.claude/skills/mac-local-data/scripts/imessage.py recent 20
 python3 ~/.claude/skills/mac-local-data/scripts/imessage.py search "サロモン" 10   # attributedBody まで走査
 python3 ~/.claude/skills/mac-local-data/scripts/imessage.py with "818062471623" 40 # 相手ごとのスレッド
+python3 ~/.claude/skills/mac-local-data/scripts/imessage.py list-chats 30          # グループ検索用の chat.db GUID
+python3 ~/.claude/skills/mac-local-data/scripts/imessage.py chat "iMessage;+;..." 40 # chat.db GUID ごとのグループ履歴
 python3 ~/.claude/skills/mac-local-data/scripts/imessage.py list-handles 30        # 既知の番号/メール
 ```
 

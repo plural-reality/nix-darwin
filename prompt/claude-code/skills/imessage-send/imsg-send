@@ -6,9 +6,10 @@
 #   これにより「本文の供給元（手打ち / ファイル / 別コマンドの出力）」と送信ロジックが分離する。
 #
 # 使い方:
-#   printf '%s' "本文" | imsg-send "<宛先>"
+#   imsg-send --context --style-contact "Kentaro Iwata" "<宛先>"
+#   printf '%s' "本文" | imsg-send --style-contact "Kentaro Iwata" "<宛先>"
 #   imsg-send --dry-run "<宛先>"        # 宛先解決だけして送信しない（本文不要）
-#   imsg-send -m "本文" "<宛先>"         # 本文を引数で渡す（stdin の代わり）
+#   imsg-send -m "本文" --style-contact "Kentaro Iwata" "<宛先>"
 #
 # <宛先> は次のどちらでもよい:
 #   - 連絡先名（例: "Chanju" / "ちゃんじゅ"）→ Contacts.app を複数パターンで検索
@@ -30,8 +31,14 @@ set -uo pipefail
 
 DB="$HOME/Library/Messages/chat.db"
 DRY=0
+CONTEXT=0
 MSG=""
 MSG_SET=0
+STYLE_CONTACT=""
+CHAT_ID=""
+SKILL_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+IMESSAGE_READER="$(dirname "$SKILL_DIR")/mac-local-data/scripts/imessage.py"
+CRM_BASE="${BEEPER_CRM_GATEWAY:-http://localhost:18787}"
 
 emit_err() { printf '{"ok":false,"error":"%s"}\n' "$1"; exit "${2:-1}"; }
 
@@ -40,6 +47,9 @@ ARGS=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --dry-run|-n) DRY=1; shift ;;
+    --context) CONTEXT=1; shift ;;
+    --style-contact) STYLE_CONTACT="$2"; shift 2 ;;
+    --chat) CHAT_ID="$2"; shift 2 ;;
     -m|--message) MSG="$2"; MSG_SET=1; shift 2 ;;
     --) shift; while [ "$#" -gt 0 ]; do ARGS+=("$1"); shift; done ;;
     -*) emit_err "unknown option: $1" 2 ;;
@@ -119,6 +129,59 @@ else
 fi
 [ -n "$HANDLE" ] || emit_err "could not resolve recipient: $RECIPIENT (Contacts未ヒット。生ハンドルか aliases.tsv を使う)" 3
 
+style_context() {
+  [ -n "$STYLE_CONTACT" ] || emit_err "style contact required: use --style-contact <CRMの人物名>" 2
+  [ -x "$IMESSAGE_READER" ] || emit_err "iMessage history reader not found: $IMESSAGE_READER" 6
+
+  STYLE_CONTACT="$STYLE_CONTACT" CRM_BASE="$CRM_BASE" IMESSAGE_READER="$IMESSAGE_READER" HANDLE="$HANDLE" CHAT_ID="$CHAT_ID" python3 - <<'PY'
+import json
+import os
+import sys
+from subprocess import CalledProcessError, run
+from urllib.parse import urlencode
+from urllib.request import urlopen
+from urllib.error import HTTPError, URLError
+
+url = f"{os.environ['CRM_BASE'].rstrip('/')}/api/style?{urlencode({'chat': os.environ['STYLE_CONTACT']})}"
+try:
+    with urlopen(url, timeout=15) as response:
+        style = json.load(response)
+except HTTPError as error:
+    print(error.read().decode("utf-8", "replace"), file=sys.stderr)
+    sys.exit(1)
+except URLError as error:
+    print(f"CRM style lookup failed: {error}", file=sys.stderr)
+    sys.exit(1)
+try:
+    command = (
+        [os.environ["IMESSAGE_READER"], "chat", os.environ["CHAT_ID"], "30"]
+        if os.environ["CHAT_ID"]
+        else [os.environ["IMESSAGE_READER"], "with", os.environ["HANDLE"], "30"]
+    )
+    history = run(command, check=True, capture_output=True, text=True, timeout=15).stdout
+except (CalledProcessError, OSError) as error:
+    print(f"iMessage history lookup failed: {error}", file=sys.stderr)
+    sys.exit(1)
+except TimeoutError:
+    print("iMessage history lookup timed out", file=sys.stderr)
+    sys.exit(1)
+
+print(json.dumps({
+    "styleContact": os.environ["STYLE_CONTACT"],
+    "recipientHandle": os.environ["HANDLE"],
+    **({"chatId": os.environ["CHAT_ID"]} if os.environ["CHAT_ID"] else {}),
+    "style": style,
+    "history": [line for line in history.splitlines() if line],
+}, ensure_ascii=False))
+PY
+  [ "$?" -eq 0 ] || emit_err "style context could not be resolved for: $STYLE_CONTACT" 6
+}
+
+if [ "$CONTEXT" -eq 1 ]; then
+  style_context
+  exit 0
+fi
+
 if [ "$DRY" -eq 1 ]; then
   printf '{"ok":true,"dry_run":true,"recipient":"%s","handle":"%s"}\n' "$RECIPIENT" "$HANDLE"
   exit 0
@@ -127,6 +190,9 @@ fi
 # --- body (stdin or -m) ---
 [ "$MSG_SET" -eq 1 ] || MSG="$(cat)"
 [ -n "$MSG" ] || emit_err "empty message body" 2
+STYLE_CONTEXT_OUTPUT="$(style_context)"
+STYLE_CONTEXT_RC=$?
+[ "$STYLE_CONTEXT_RC" -eq 0 ] || { printf '%s\n' "$STYLE_CONTEXT_OUTPUT"; exit "$STYLE_CONTEXT_RC"; }
 
 # --- baseline → send → verify ---
 BASE="$(sqlite3 "$DB" 'SELECT IFNULL(MAX(ROWID),0) FROM message;' 2>/dev/null || echo 0)"
