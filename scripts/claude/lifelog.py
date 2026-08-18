@@ -9,9 +9,9 @@ Sources:
   plaud     : Plaud公式CLI経由で全文Transcriptを同期。要約ではなく一次記録を使う。
   sessions  : Claude(~/.claude/projects/*/*.jsonl) + Codex(~/.codex/sessions/**/*.jsonl)
   typeless  : Typeless の音声入力DB（sqlite, refined_text + 入力先アプリ文脈）
-  gmail     : himalaya(IMAP) の「すべてのメール」当日封筒メタ（送受信/time/相手/subject/id）。
-              本文は転記せず index のみ。
-              本文は `himalaya message read -a gmail <id>` で live 取得する契約（world-model.md）。
+  gmail     : Google Workspace CLI の Gmail API で「すべてのメール」当日封筒メタ
+              （送受信/time/相手/subject/id）を取得。本文は転記せず index のみ。
+              `userId=me`（takagi@plural-reality.com）を正本にする。
   beeper    : Beeper Desktop のローカル HTTP API（127.0.0.1:23373）。Slack/iMessage/
               Twitter/Telegram/Matrix 等を集約した当日メッセージ。MCP ランタイム不要
               （token を読んで直接叩く）。低優先(bot等)除外。これが日次の canonical な
@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse, glob, json, os, re, shlex, sqlite3, subprocess, sys
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
+from itertools import count
 from pathlib import Path
 from typing import Any
 
@@ -435,73 +436,101 @@ def fetch_typeless(d: str) -> SourceResult:
     return _present(out, f"{len(out)}件")
 
 
-# ---------- gmail : himalaya(IMAP) all-mail envelopes, metadata index only ----------
+# ---------- gmail : gws Gmail API all-mail envelopes, metadata index only ----------
 def fetch_gmail(d: str) -> SourceResult:
-    """himalaya(IMAP) で当日(JST)送受信の Gmail 封筒メタを取得。
-    本文は転記しない（index のみ）。本文が要るときは `himalaya message read -a gmail <id>` で
-    live 取得する契約（world-model.md）。対象日をIMAP queryで先に絞り、全pageを取得してからJSTで
-    再検証する。新しいメールが500件以上あっても過去日のbackfillを欠落させない。"""
-    folder = "[Gmail]/すべてのメール"
-    day = datetime.strptime(d, "%Y-%m-%d").date()
-    previous, following = day - timedelta(days=1), day + timedelta(days=1)
-    page_size, max_pages = 200, 50
-    envs, complete, error_text = [], False, ""
-    for page in range(1, max_pages + 1):
-        try:
-            result = subprocess.run(
-                ["himalaya", "envelope", "list", "-a", "gmail", "-f", folder,
-                 "-o", "json", "-s", str(page_size), "-p", str(page),
-                 "after", previous.isoformat(), "and", "before", following.isoformat(),
-                 "order", "by", "date", "asc"],
-                capture_output=True, text=True, timeout=60)
-        except Exception as error:
-            return _failed(TRANSIENT_STATE, type(error).__name__)
-        if result.returncode != 0:
-            error_text = result.stderr.strip()
-            if page > 1 and "out of bound" in error_text.casefold():
-                complete = True
-                break
-            state = AUTH_STATE if any(code in error_text.casefold() for code in ("auth", "login", "credential")) else TRANSIENT_STATE
-            return _failed(state, "Gmailから取得できませんでした", envs)
-        try:
-            batch = json.loads(result.stdout)
-        except Exception:
-            return _failed(TRANSIENT_STATE, "Gmail応答を解釈できませんでした", envs)
-        envs.extend(batch)
-        if len(batch) < page_size:
-            complete = True
-            break
+    """gws Gmail API で当日(JST)送受信の封筒メタを取得する。
 
-    def _jst(dt: str):
+    Himalaya の v2 CLI は以前の `envelope list -f/-o` 形式を受け付けず、
+    失敗を空配列へ縮退させていた。Gmail API の message list→metadata get を
+    使い、本文を取得せず、時刻は internalDate を JST へ変換して再検証する。
+    """
+    gws = os.environ.get("LIFELOG_GWS_BIN", "gws")
+    day = datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=JST)
+    following = day + timedelta(days=1)
+    query = (f"after:{(day - timedelta(days=1)).strftime('%Y/%m/%d')} "
+             f"before:{(following + timedelta(days=1)).strftime('%Y/%m/%d')} in:anywhere")
+    page_token: str | None = None
+    message_rows: list[dict[str, Any]] = []
+
+    def call(service_args: list[str], params: dict[str, Any]) -> dict[str, Any]:
+        result = subprocess.run(
+            [gws, *service_args, "--params", json.dumps(params, ensure_ascii=False)],
+            capture_output=True, text=True, timeout=60)
         try:
-            return datetime.fromisoformat((dt or "").replace(" ", "T", 1)).astimezone(JST)
-        except Exception:
-            return None
+            payload = json.loads(result.stdout) if result.stdout.strip() else {}
+        except Exception as error:
+            raise RuntimeError("Gmail応答を解釈できませんでした") from error
+        if result.returncode != 0 or not isinstance(payload, dict) or payload.get("error"):
+            api_error = payload.get("error") if isinstance(payload, dict) else None
+            code = api_error.get("code", result.returncode) if isinstance(api_error, dict) else result.returncode
+            message = api_error.get("message", "") if isinstance(api_error, dict) else ""
+            raise RuntimeError(f"Gmail API error {code}: {message}")
+        return payload
 
     try:
-        import tomllib
-        cfg = Path(HOME, "Library/Application Support/himalaya/config.toml")
-        own = ((tomllib.loads(cfg.read_text()).get("accounts") or {}).get("gmail") or {}).get("email", "")
-    except Exception:
-        own = ""
-    unique = {str(e.get("id", "")): e for e in envs if e.get("id") is not None}
-    out = []
-    for e in unique.values():
-        t = _jst(e.get("date", ""))
-        if not t or t.strftime("%Y-%m-%d") != d:
-            continue
-        frm, to = e.get("from") or {}, e.get("to") or {}
-        sent = bool(own) and (frm.get("addr") or "").casefold() == own.casefold()
-        peer = to if sent else frm
-        out.append({"time": t.strftime("%H:%M"),
-                    "direction": "送信" if sent else "受信",
-                    "peer": peer.get("name") or peer.get("addr") or "",
-                    "from": frm.get("name") or frm.get("addr") or "",
-                    "subject": (e.get("subject") or "").strip(),
-                    "id": str(e.get("id", "")), "folder": folder})
-    out.sort(key=lambda e: e["time"])
-    return (_present(out, f"{len(out)}件") if complete
-            else _failed(TRANSIENT_STATE, f"{max_pages * page_size}件の安全上限に到達", out))
+        profile = call(["gmail", "users", "getProfile"], {"userId": "me"})
+        own = str(profile.get("emailAddress", "")).casefold()
+        if not own:
+            raise RuntimeError("Gmailアカウントを解決できませんでした")
+        for _ in range(50):
+            params: dict[str, Any] = {
+                "userId": "me", "q": query, "maxResults": 100,
+                "includeSpamTrash": True,
+            }
+            if page_token:
+                params["pageToken"] = page_token
+            payload = call(["gmail", "users", "messages", "list"], params)
+            batch = payload.get("messages") or []
+            if not isinstance(batch, list):
+                raise RuntimeError("Gmailメッセージ一覧の形式が不正です")
+            message_rows.extend(row for row in batch if isinstance(row, dict))
+            page_token = payload.get("nextPageToken")
+            if not page_token:
+                break
+        if page_token:
+            return _failed(TRANSIENT_STATE, "Gmailのページネーション上限に到達")
+    except Exception as error:
+        detail = str(error)
+        state = (AUTH_STATE if any(marker in detail.casefold()
+                                   for marker in ("auth", "credential", "401", "403", "permission"))
+                 else TRANSIENT_STATE)
+        return _failed(state, "Gmailから取得できませんでした")
+
+    folder = "[Gmail]/すべてのメール"
+    unique = {str(row.get("id")): row for row in message_rows if row.get("id")}
+    out: list[dict[str, str]] = []
+    try:
+        for message_id in unique:
+            payload = call(["gmail", "users", "messages", "get"], {
+                "userId": "me", "id": message_id, "format": "metadata",
+                "metadataHeaders": ["From", "To", "Date", "Subject"],
+            })
+            timestamp = datetime.fromtimestamp(
+                int(str(payload.get("internalDate", "0"))) / 1000, JST)
+            if not day <= timestamp < following:
+                continue
+            headers = {
+                str(header.get("name", "")).casefold(): str(header.get("value", ""))
+                for header in (payload.get("payload", {}) or {}).get("headers", [])
+                if isinstance(header, dict)
+            }
+            from_value, to_value = headers.get("from", ""), headers.get("to", "")
+            sent = own in {address.casefold() for address in
+                           re.findall(r"[A-Z0-9._%+\-]+@[A-Z0-9.\-]+", from_value, re.I)}
+            out.append({"time": timestamp.strftime("%H:%M"),
+                        "direction": "送信" if sent else "受信",
+                        "peer": to_value if sent else from_value,
+                        "from": from_value,
+                        "subject": headers.get("subject", "").strip(),
+                        "id": message_id, "folder": folder})
+    except Exception as error:
+        detail = str(error)
+        state = (AUTH_STATE if any(marker in detail.casefold()
+                                   for marker in ("auth", "credential", "401", "403", "permission"))
+                 else TRANSIENT_STATE)
+        return _failed(state, "Gmailから取得できませんでした", out)
+    out.sort(key=lambda row: (row["time"], row["id"]))
+    return _present(out, f"{len(out)}件")
 
 
 # ---------- beeper : Beeper Desktop local HTTP API (no MCP runtime needed) ----------
@@ -612,7 +641,7 @@ def fetch_scrapbox(d: str) -> SourceResult:
     def pages(project: str) -> tuple[list[dict], bool]:
         acc = []
         complete = False
-        for skip in range(0, 500, 100):
+        for skip in count(0, 100):
             url = f"https://scrapbox.io/api/pages/{project}?limit=100&skip={skip}&sort=updated"
             req = urllib.request.Request(
                 url, headers={"Cookie": f"connect.sid={sid}", "User-Agent": "personal-ops/1.0"})
@@ -633,7 +662,7 @@ def fetch_scrapbox(d: str) -> SourceResult:
         try:
             batch, complete = pages(project)
             out += batch
-            failures += ([] if complete else [f"{project}: 500件上限"])
+            failures += ([] if complete else [f"{project}: ページネーション未完了"])
         except Exception as e:
             print(f"[warn] scrapbox API failed for {project} (best-effort, partial): {type(e).__name__}",
                   file=sys.stderr)

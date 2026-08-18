@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import tempfile
+from datetime import datetime, timedelta, timezone
 from subprocess import CompletedProcess
 from pathlib import Path
 
@@ -169,10 +170,46 @@ def test_transcript_archive_source() -> None:
         os.environ["LIFELOG_TRANSCRIPT_DIR"] = original_root
 
 
+def test_gmail_uses_gws_metadata_without_himalaya() -> None:
+    original_run = ll.subprocess.run
+    day_timestamp = int(datetime(
+        2026, 8, 15, 12, 0,
+        tzinfo=timezone(timedelta(hours=9))).timestamp() * 1000)
+    responses = iter([
+        CompletedProcess([], 0, json.dumps({"emailAddress": "takagi@plural-reality.com"}), ""),
+        CompletedProcess([], 0, json.dumps({"messages": [{"id": "m1"}]}), ""),
+        CompletedProcess([], 0, json.dumps({
+            "id": "m1", "internalDate": str(day_timestamp),
+            "payload": {"headers": [
+                {"name": "From", "value": "Alice <alice@example.com>"},
+                {"name": "To", "value": "takagi@plural-reality.com"},
+                {"name": "Subject", "value": "確認"},
+            ]},
+        }), ""),
+    ])
+    calls: list[list[str]] = []
+    try:
+        ll.subprocess.run = lambda args, **_kwargs: (
+            calls.append(args) or next(responses))
+        result = ll.fetch_gmail("2026-08-15")
+        assert result.state == ll.OK_STATE
+        assert result.data == [{
+            "time": "12:00", "direction": "受信",
+            "peer": "Alice <alice@example.com>",
+            "from": "Alice <alice@example.com>", "subject": "確認",
+            "id": "m1", "folder": "[Gmail]/すべてのメール",
+        }]
+        assert calls[0][0:4] == ["gws", "gmail", "users", "getProfile"]
+        assert all("himalaya" not in arg for call in calls for arg in call)
+    finally:
+        ll.subprocess.run = original_run
+
+
 test_collection()
 test_calendar_uses_eventkit_snapshot()
 test_calendar_typed_eventkit_failures()
 test_calendar_bindings_match_calendar_app_names()
 test_archived_codex()
 test_transcript_archive_source()
+test_gmail_uses_gws_metadata_without_himalaya()
 print("ALL PASS")
