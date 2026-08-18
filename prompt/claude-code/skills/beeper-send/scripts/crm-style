@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# crm-style — beeper-crm-gateway から相手の文体ガイドを引く「唯一の」実装。
+#
+# 設計（IO は Stream として扱う）:
+#   引数は問い合わせキー、出力は検証済み JSON 1 行（stdout）、失敗は終了コードで表す。
+#   gateway が唯一の join/parse 実装なので、呼び出し側は問い合わせ結果を再解釈しない。
+#   beeper-send.sh / imsg-send はどちらもこれを呼ぶ（＝検証条件を二重定義しない）。
+#
+# 使い方:
+#   crm-style "<chatID | contactId | 表示名>"
+#
+# 終了コード:
+#   0   取得成功（stdout に JSON）
+#   44  該当連絡先なし（HTTP 404）
+#   1   それ以外（到達不能 / 別サービス / 未解決 / 不正応答）
+#
+# fail closed にする理由:
+#   1. localhost:18787 で 200 を返すものが beeper-crm-gateway とは限らない
+#      → /healthz の service 名を先に確かめる。別サービスの応答を成功扱いにしない。
+#   2. HTTP 200 でも contactId が無い応答は「誰の文体か分からない」状態
+#      → 文体ガイド無しの下書きを許してしまうので失敗にする。
+set -uo pipefail
+
+CRM_BASE="${BEEPER_CRM_GATEWAY:-http://localhost:18787}"
+QUERY="${1:?Usage: crm-style <chatID|contactId|name>}"
+
+enc=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$QUERY")
+
+health=$(curl -g -sf --max-time 5 "${CRM_BASE}/healthz") || {
+  echo "crm-style: CRM gateway unreachable at ${CRM_BASE}" >&2; exit 1; }
+CRM_HEALTH="$health" python3 -c '
+import json, os, sys
+try:
+    d = json.loads(os.environ["CRM_HEALTH"])
+except ValueError:
+    sys.exit(1)
+sys.exit(0 if isinstance(d, dict) and d.get("service") == "beeper-crm-gateway" else 1)
+' || { echo "crm-style: ${CRM_BASE} is not a beeper-crm-gateway" >&2; exit 1; }
+
+tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
+status=$(curl -g -sS --max-time 15 -o "$tmp" -w '%{http_code}' "${CRM_BASE}/api/style?chat=$enc") || {
+  echo "crm-style: style request failed" >&2; exit 1; }
+case "$status" in
+  200) ;;
+  404) cat "$tmp" >&2; exit 44 ;;
+  *)   cat "$tmp" >&2; exit 1 ;;
+esac
+
+python3 - "$tmp" <<'PY' || exit 1
+import json, sys
+try:
+    d = json.load(open(sys.argv[1], encoding="utf-8"))
+except ValueError:
+    sys.exit("crm-style: style response was not JSON")
+if not isinstance(d, dict):
+    sys.exit("crm-style: style response was not an object")
+if d.get("code"):
+    sys.exit(f"crm-style: style lookup failed: {d['code']} — {str(d.get('message',''))[:80]}")
+if not str(d.get("contactId") or "").strip():
+    sys.exit("crm-style: style response has no contactId (contact unresolved)")
+print(json.dumps(d, ensure_ascii=False))
+PY

@@ -24,6 +24,7 @@ set +H 2>/dev/null  # bash history expansion を無効化（! の問題を回避
 
 set -euo pipefail
 
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 API_BASE="http://localhost:23373"
 TOKEN_FILE="$HOME/.config/beeper/token"
 # Beeper CRM gateway (shared per-person style guide + learning loop).
@@ -140,23 +141,11 @@ require_send_ack() {
   fi
 }
 
+# 取得と検証は scripts/crm-style が唯一の実装。ここで再実装しない
+# （imsg-send も同じものを呼ぶ＝fail closed 条件を二重定義しない）。
+# 終了コード: 0=成功 / 44=該当連絡先なし / 1=それ以外。
 crm_style_json() {
-  local query="$1" enc health tmp status
-  enc=$(url_encode_chat_id "$query")
-  health=$(curl -g -sf --max-time 5 "${CRM_BASE}/healthz")
-  CRM_HEALTH="$health" python3 <<'PY'
-import json, os, sys
-d = json.loads(os.environ["CRM_HEALTH"])
-sys.exit(0 if d.get("service") == "beeper-crm-gateway" else 1)
-PY
-  tmp=$(mktemp)
-  status=$(curl -g -sS --max-time 15 -o "$tmp" -w '%{http_code}' \
-    "${CRM_BASE}/api/style?chat=$enc")
-  case "$status" in
-    200) cat "$tmp"; rm -f "$tmp" ;;
-    404) cat "$tmp" >&2; rm -f "$tmp"; return 44 ;;
-    *) cat "$tmp" >&2; rm -f "$tmp"; return 1 ;;
-  esac
+  "$SCRIPT_DIR/crm-style" "$1"
 }
 
 report_edit() {
@@ -409,11 +398,9 @@ PY
     chat_id="${2:?Usage: beeper-send.sh style CHAT_ID}"
     resp=$(crm_style_json "$chat_id")
     CRM_STYLE_RESP="$resp" python3 <<'PY'
-import os, json, sys
+import os, json
 raw = os.environ.get("CRM_STYLE_RESP", "").strip()
-d = json.loads(raw)
-if isinstance(d, dict) and d.get("code"):
-    print(f"style lookup failed: {d.get('code')} — {str(d.get('message',''))[:80]}", file=sys.stderr); sys.exit(1)
+d = json.loads(raw)  # crm-style が検証済み（error envelope / contactId 欠落は届かない）
 print(f"contactId={d.get('contactId','')}")
 print(f"memoTitle={d.get('memoTitle','')}")
 rules = d.get("rules", [])

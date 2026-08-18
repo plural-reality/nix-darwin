@@ -20,13 +20,15 @@ IO は Stream として扱う設計: **本文は stdin、宛先は引数、結�
 SK=~/.claude/skills/imessage-send/imsg-send
 
 # 1. 下書き前に必ず、相手の CRM 文体と直近の会話を取得する（送信しない）
+#    history は既定でその相手との 1:1 だけ。相手が入っている別グループの発言は混ざらない。
 "$SK" --context --style-contact "Kentaro Iwata" "Kentaro Iwata"
 #   → {"styleContact":"Kentaro Iwata","recipientHandle":"...","style":{...},"history":[...]}
 
-# グループの場合は chat.db の chat GUID を指定して、そのグループ履歴を取得する
+# グループ履歴が要るときだけ chat.db の chat GUID を明示する
+#   GUID は mac-local-data の `imessage.py list-chats`（最近動いた順・名前と参加者つき）で選ぶ
 "$SK" --context --style-contact "Kentaro Iwata" --chat "iMessage;+;..." "Kentaro Iwata"
 
-# 2. 送信（本文は stdin）。--style-contact は必須で、送信直前にも文体・履歴を再読込する
+# 2. 送信（本文は stdin）。--style-contact は必須で、送信直前に CRM で相手を再確認する
 printf '%s' "送りたい本文" | "$SK" --style-contact "Kentaro Iwata" "Kentaro Iwata"
 #   → {"ok":true,"handle":"+819091150163","rowid":111781}   ← rowid が出れば実際に送信された
 #   → {"ok":false,"error":"..."}                            ← 解決失敗 / 送信失敗 / 着地未確認
@@ -48,13 +50,17 @@ printf '%s' "送りたい本文" | "$SK" --style-contact "Kentaro Iwata" "Kentar
 2. **ユーザー確認は必須。** 宛先（名前＋ハンドル）と本文を提示し、明示的な承認を得る
    （`AskUserQuestion` で「この文面で送っていいか」を聞くのが定番。言語の選択肢も同時に出せる）。
 3. 承認後、`printf '%s' "本文" | imsg-send --style-contact "<CRMの人物名>" "<宛先>"` で送信。
-   `--style-contact` が無ければ fail closed で送信しない。送信直前にも文体・履歴を再取得する。
+   `--style-contact` が無ければ fail closed で送信しない。送信直前には
+   「その相手の文体ガイドを CRM から引けるか」だけを再確認する（履歴は読み直さない。
+   下書きは手順 1 で作り終えており、送信時にもう一度私信を取り出す理由が無い）。
+   CRM gateway が落ちている・別サービスが同じポートに居る・相手が未登録、のいずれでも送信しない。
 4. 返ってきた JSON の `"ok":true` と `rowid` を見て「送信完了」を報告する。
    `"ok":false` なら原因（解決失敗 / 送信失敗 / 着地未確認）をそのまま伝える。
 
 ### グループとメンション
 
 - `--chat` は**グループ履歴を読むためだけ**の引数である。送信先をグループへ推測・変更しない。
+- 逆に、1:1 の下書きに `--chat` を付けない。付けなければ履歴は 1:1 に限定される。
 - 通知付きメンションは、Messages.app のグループ会話で `@` に続けて表示される候補を選択して初めて成立する。
   `@Kentaro Iwata` という文字列をヘルパーから送るだけではメンションにならない。
 - したがってグループ送信・メンションが必要なときも、先に `--context --chat` で文脈を取得し、
