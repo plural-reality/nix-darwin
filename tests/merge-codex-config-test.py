@@ -32,6 +32,9 @@ enabled = true
 [features.multi_agent_v2]
 enabled = true
 max_concurrent_threads_per_session = 3
+[shell_environment_policy.set]
+SCRAPBOX_SID = "stale-secret"
+BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
 [projects."/tmp/example"]
 trust_level = "trusted"
 """
@@ -47,6 +50,8 @@ trust_level = "trusted"
     assert projected["projects"]["/tmp/example"]["trust_level"] == "trusted"
     assert "service_tier" not in projected
     assert projected["features"]["multi_agent_v2"] == {"enabled": True}
+    assert "SCRAPBOX_SID" not in projected["shell_environment_policy"]["set"]
+    assert projected["shell_environment_policy"]["set"]["BROWSER_USE_AVAILABLE_BACKENDS"] == "chrome,iab"
 
 
 if __name__ == "__main__":

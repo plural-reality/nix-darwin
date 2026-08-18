@@ -51,6 +51,10 @@ def remove_retired_policy(document: MutableMapping) -> MutableMapping:
     """Remove policy fields that an earlier Nix projection used to manage."""
     document.pop("profiles", None)
     document.pop("service_tier", None)
+    shell_policy = document.get("shell_environment_policy")
+    environment = shell_policy.get("set") if isinstance(shell_policy, MutableMapping) else None
+    # A rotating Scrapbox session belongs to its fail-closed runtime adapter, never config.toml.
+    isinstance(environment, MutableMapping) and environment.pop("SCRAPBOX_SID", None)
     features = document.get("features")
     multi_agent = features.get("multi_agent_v2") if isinstance(features, MutableMapping) else None
     isinstance(multi_agent, MutableMapping) and multi_agent.pop("max_concurrent_threads_per_session", None)
