@@ -13,6 +13,9 @@
 // Environment:
 //   SCRAPBOX_SID — connect.sid cookie value (URL-decoded, starts with "s:")
 
+import { createHash } from "node:crypto";
+import { normalizeStatusEmoji } from "./scrapbox-title-normalize.mjs";
+
 const usage = `Usage:
   scrapbox-write --title "Page Title" [--project plural-reality] [--mode replace|append|prepend] [--dry-run]
   scrapbox-write -t "Meeting Notes" -p plural-reality --append < body.txt
@@ -34,11 +37,11 @@ Options:
   -g, --gray            Wrap AI-written lines in the [( …] grey deco (default ON for
                         non-verbatim writes; idempotent; skips code:/table: blocks).
       --no-gray, --human  Write plain (un-greyed). For human-authored content.
+      --expect-sha256 <h> Replace only when the current canonical line array has this
+                          SHA-256. Concurrent edits abort instead of being overwritten.
   -n, --dry-run         Render Scrapbox lines to stdout without writing
   -h, --help            Show this help
 `;
-
-import { normalizeStatusEmoji } from "./scrapbox-title-normalize.mjs";
 
 const die = (msg) => { process.stderr.write(`scrapbox-write: ${msg}\n`); process.exit(1); };
 const showHelp = () => process.stdout.write(`${usage}\n`);
@@ -55,6 +58,7 @@ const optionsWithValue = {
   "--title": "title",
   "-t": "title",
   "--mode": "mode",
+  "--expect-sha256": "expectSha256",
 };
 
 const flagOptions = {
@@ -92,6 +96,7 @@ const parseArgs = (argv) =>
       dryRun: false,
       verbatim: false,
       gray: undefined,
+      expectSha256: undefined,
       unknownOptions: [],
     }
   );
@@ -109,6 +114,8 @@ const validateArgs = (argv, args, patchStrategy) => {
     ? { ok: false, error: `unknown option: ${args.unknownOptions.join(", ")}` }
   : !process.env.SCRAPBOX_SID && !args.dryRun
     ? { ok: false, error: "SCRAPBOX_SID environment variable is not set" }
+  : args.expectSha256 !== undefined && !/^[0-9a-f]{64}$/.test(args.expectSha256)
+    ? { ok: false, error: "--expect-sha256 requires 64 lowercase hexadecimal characters" }
   : !args.title || args.title.trim() === ""
     ? { ok: false, error: "--title (-t) is required" }
   : !patchStrategy
@@ -219,6 +226,72 @@ const markGrayText = (text) =>
     .join("");
 const indentLen = (line) => /^(\s*)/.exec(line)[1].length;
 const isStructuralHeader = (line) => /^\s*(code:|table:)\S/.test(line);
+
+const GTD_BOARD_LINKS = Object.freeze({
+  "ToDoカンバン": "[プロジェクト看板]",
+  "プロジェクト看板": "[ToDoカンバン]",
+});
+const boardLink = (args) =>
+  args.project === "plural-reality" && Object.hasOwn(GTD_BOARD_LINKS, args.title)
+    ? GTD_BOARD_LINKS[args.title]
+    : undefined;
+const linesOutsideStructuralBlocks = (body) =>
+  body.split("\n").reduce(
+    (acc, line) => {
+      const blank = isBlankLine(line);
+      const inBlock = acc.block !== null && (blank || indentLen(line) > acc.block);
+      const block = inBlock ? acc.block : isStructuralHeader(line) ? indentLen(line) : null;
+      return { lines: inBlock ? acc.lines : [...acc.lines, line], block };
+    },
+    { lines: [], block: null },
+  ).lines;
+const bodyHasExactLine = (body, expected) =>
+  linesOutsideStructuralBlocks(body).some((line) => line.trim() === expected);
+const WIP_MARKER = "[claude code WIP.icon]";
+const isQueueHeading = (line) => /^\[\*+\s+(?:todo|wip|done)\]$/u.test(line.trim());
+const isQueueTask = (line) =>
+  /^(?:\[\(\s*)?\[(?:⬜|⏳|⏹️|🚨|☑️|⌛️|✅)[^\]\n]+\](?:\])?$/u.test(line.trim());
+const isAllowedWipQueueLine = (line) =>
+  isBlankLine(line) || isQueueHeading(line) || isQueueTask(line);
+const hasStandaloneAgentProgress = (body) =>
+  body.split("\n").reduce(
+    (acc, line) => {
+      const marker = line.includes(WIP_MARKER);
+      const exactMarker = line.trim() === WIP_MARKER;
+      const insideQueue =
+        acc.wipIndent !== null && (isBlankLine(line) || indentLen(line) > acc.wipIndent);
+      const forbidden =
+        acc.forbidden ||
+        /\[(?:codex|claude code)\.icon\]/u.test(line) ||
+        (marker && !exactMarker) ||
+        (insideQueue && !isAllowedWipQueueLine(line));
+      const wipIndent = exactMarker
+        ? indentLen(line)
+        : insideQueue
+          ? acc.wipIndent
+          : null;
+      return { forbidden, wipIndent };
+    },
+    { forbidden: false, wipIndent: null },
+  ).forbidden;
+
+// A GTD board is a curated index, not a log sink. Full replacement is the only write
+// boundary because it lets the caller prove the exact before/after line arrays.
+const validateBoardWrite = (args, body) =>
+  boardLink(args) === undefined
+    ? { ok: true, value: body }
+  : args.mode !== "replace"
+    ? { ok: false, error: "GTD boards reject append/prepend; use a full replace" }
+  : !args.verbatim
+    ? { ok: false, error: "GTD boards require --verbatim to preserve the exact index" }
+  : args.expectSha256 === undefined
+    ? { ok: false, error: "GTD boards require --expect-sha256 for concurrent-edit protection" }
+  : !bodyHasExactLine(body, boardLink(args))
+    ? { ok: false, error: `GTD board requires reciprocal link ${boardLink(args)}` }
+  : hasStandaloneAgentProgress(body)
+    ? { ok: false, error: "GTD boards reject standalone Codex/Claude progress blocks" }
+  : { ok: true, value: body };
+
 // Idempotent: a line whose LEADING decoration already carries '(' is already grey and is
 // left alone (protects page objects like `[( [⬜ task]]` from double-wrapping). Uses the
 // deco parser, not a substring scan — the old line.includes("[(") false-positived on prose
@@ -252,6 +325,14 @@ const bodyToLines = (title, body, verbatim, gray) => {
   return [title, ...grayed.map(verbatim ? (line) => line : indentBodyLine)];
 };
 const lineText = (line) => typeof line === "string" ? line : line.text;
+const linesDigest = (lines) =>
+  createHash("sha256").update(JSON.stringify(lines)).digest("hex");
+const guardPatchStrategy = (title, expected, strategy) => (currentLines) => {
+  const current = currentLines.length === 0 ? [title] : currentLines.map(lineText);
+  return expected === undefined || linesDigest(current) === expected
+    ? strategy(currentLines)
+    : (() => { throw new Error("concurrent edit detected; write aborted"); })();
+};
 const withBlankSeparator = (lines) =>
   lines.length <= 1 || isBlankLine(lines.at(-1) ?? "")
     ? lines
@@ -324,7 +405,16 @@ const writePage = (args, body, patchStrategy) =>
   args.dryRun
     ? Promise.resolve(renderDryRun(normalizeStatusEmoji(args.title), body, args.verbatim, effectiveGray(args)))
     : resolveWriteTitle(args.project, args.title, process.env.SCRAPBOX_SID).then((title) =>
-        patchPage(args.project, title, patchStrategy(title, body, args.verbatim, effectiveGray(args)), process.env.SCRAPBOX_SID)
+        patchPage(
+          args.project,
+          title,
+          guardPatchStrategy(
+            title,
+            args.expectSha256,
+            patchStrategy(title, body, args.verbatim, effectiveGray(args)),
+          ),
+          process.env.SCRAPBOX_SID,
+        )
           .then((result) =>
             result.ok
               ? process.stdout.write(`https://scrapbox.io/${args.project}/${encodeURIComponent(title)}\n`)
@@ -344,7 +434,11 @@ const main = () => {
           .then(validateBody)
           .then((bodyResult) =>
             foldResult(bodyResult, {
-              ok: (body) => writePage(validArgs, body, patchStrategy),
+              ok: (body) =>
+                foldResult(validateBoardWrite(validArgs, body), {
+                  ok: (validBody) => writePage(validArgs, validBody, patchStrategy),
+                  error: die,
+                }),
               error: die,
             })
           ),
@@ -360,4 +454,14 @@ const isEntry = import.meta.url === pathToFileURL(process.argv[1] ?? "").href;
 isEntry && main().catch((error) => die(formatUnknownError(error)));
 
 // Pure grey-marking logic, exported for unit tests and one-off in-place re-marking.
-export { markGrayText, grayCore, grayBodyLines, leadingDeco, matchClose, isAlreadyGray };
+export {
+  grayBodyLines,
+  grayCore,
+  guardPatchStrategy,
+  isAlreadyGray,
+  leadingDeco,
+  linesDigest,
+  markGrayText,
+  matchClose,
+  validateBoardWrite,
+};
