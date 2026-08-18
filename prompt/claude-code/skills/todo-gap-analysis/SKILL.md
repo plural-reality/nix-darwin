@@ -5,7 +5,7 @@ description: "Cosense/ScrapboxのToDoカンバンページとネストされた�
 
 # ToDo Gap Analysis — 抜け漏れ調査スキル
 
-ToDoカンバン（Cosense/Scrapbox）上のステータスと、各ネストページの実際の進捗を突合し、差分・抜け漏れ・要フォロー事項を検出する。
+ToDoカンバンとプロジェクト看板（Cosense/Scrapbox）上のindexと、各task/project pageの実際の進捗を突合し、差分・抜け漏れ・要フォロー事項を検出する。
 
 ## 入力
 
@@ -16,19 +16,20 @@ ToDoカンバン（Cosense/Scrapbox）上のステータスと、各ネストペ
 
 ## 実行手順
 
-### Phase 1: メインページ取得
+### Phase 1: 2看板の取得
 
-cosense-fetch でカンバンページを取得する（WebFetch は Scrapbox 本文を壊すので使わない）。状態語彙の正本は [[scrapbox-status]] skill:
+cosense-fetchで`ToDoカンバン`と`プロジェクト看板`を取得する（WebFetchはScrapbox本文を壊すので使わない）。前者は完了条件が明確な次アクション、後者は複数アクションを要する進行中の成果だけを持つ。状態語彙の正本は[[scrapbox-status]] skill:
 - `⬜` 未着手 / `⏳` 進行中（`⏳cc:`=claude 実行中） / `⏹️` 保留 / `🚨` 人間の判断待ち / `☑️` 完了
 - 旧表記の読み替え: `⌛️`（廃止）は `⏳`、`✅` は `☑️` として扱う（新規には書かない）
 
 ```
 cosense-fetch "ToDoカンバン" -p plural-reality -h 2
+cosense-fetch "プロジェクト看板" -p plural-reality -h 2
 ```
 
 ### Phase 2: ネストページの並列取得
 
-メインページ内の `[リンクされたページ]` を全て抽出し、**並列で** cosense-fetch する（WebFetch は使わない）。
+ToDoカンバンのtask linkとプロジェクト看板のproject linkを抽出し、**並列で**cosense-fetchする（WebFetchは使わない）。相互リンク、icon、見出しは対象外にする。
 各ページからは以下を抽出:
 - 最終更新日
 - 実際の進捗状況（⬜未着手=今すぐ着手可 / ⏳進行中=相手待ち / ⏹️保留=着手不可 / ☑️完了）
@@ -93,10 +94,12 @@ cosense-fetch "ToDoカンバン" -p plural-reality -h 2
 ### Phase 6: Scrapbox 書き戻し（オプション）
 
 ユーザーが「scbに書いて」「Scrapboxにまとめて」と言った場合:
-- `scrapbox-write` コマンドで `plural-reality` プロジェクトに書き込む
-- ページタイトル: `{対象ページ名} ギャップ分析 ({日付})`
-- Scrapbox記法を使用（Markdownではない）
-- 書き込み後、URLを返す
+- `save-to-scrapbox`のcanonicalな配置規約に従う。独立したギャップ分析ページや、ToDoカンバン末尾のAI専用区画は作らない
+- finding、理由、期限、次の一手、詳細、履歴、証拠はcanonical task/project pageに置く。看板へ説明行を足さない
+- 推測だけならstatusを変えず、不確実性を灰色の子行として残す。status変更は根拠を確認して既存ページをin-place renameする
+- exact anchorが見つからないfindingと横断run summaryは当日のdaily pageへ置く
+- taskの追加・移動・status変更で看板indexの更新が必要な場合だけ、2看板を再取得して全体候補を生成し、`--mode replace --verbatim --expect-sha256`でCAS付き置換する
+- 書き込み後、2看板とcanonical pageを再取得し、人間行がbyte単位で不変なことを確認する
 
 ## 注意事項
 
