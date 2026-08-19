@@ -542,6 +542,12 @@ let
     # then narrows itself to OpenAI's server-side allow-list — every routed model is
     # dropped from the menu even though the app server lists them. Naming the provider is
     # also the honest description: auth, catalog and upstream all belong to the router.
+    # Threads and scheduled tasks created before this provider existed carry the built-in
+    # `openai` provider id, and the app honours the id recorded on the thread. Without this
+    # they resolve to api.openai.com and fail with `invalid_api_key`. The two keys address
+    # different consumers -- new threads via `codex-router`, already-recorded ones via the
+    # built-in id -- so both point at the loopback router.
+    openai_base_url = "http://127.0.0.1:21434/v1";
     model_provider = "codex-router";
     model_providers.codex-router = {
       name = "Codex Router";
