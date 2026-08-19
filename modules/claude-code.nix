@@ -209,6 +209,17 @@ let
       supports_image_detail_original = false;
       additional_speed_tiers = [ ];
       service_tiers = [ ];
+      # Everything below keeps the tool set expressible as plain `function` tools.
+      # OpenRouter's Responses translation forwards those and silently drops
+      # `type: "custom"` ones, so a model reached through the router never sees them.
+      # `code_mode_only` ships the shell as a single grammar-constrained custom tool
+      # (`exec`, a JavaScript orchestrator), which therefore arrives with no shell at
+      # all: the model then invents `exec` calls from the system prompt and every one
+      # comes back aborted. `direct` sends `exec_command` and friends as functions.
+      tool_mode = "direct";
+      # The freeform apply_patch is the one remaining custom tool. Sending it would be
+      # sending nothing, so it is dropped here and edits go through the shell instead.
+      apply_patch_tool_type = null;
     };
 
   codexModelCatalogFile = pkgs.writeText "codex-model-catalog.json" (
