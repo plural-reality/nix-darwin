@@ -181,7 +181,7 @@ let
       base_instructions = "";
     };
 
-  mkCodexDeepseekModel =
+  mkCodexRoutedModel =
     {
       slug,
       displayName,
@@ -240,7 +240,7 @@ let
         })
       ]
       ++ lib.optionals codexRouterEnabled [
-        (mkCodexDeepseekModel {
+        (mkCodexRoutedModel {
           slug = "deepseek/deepseek-v4-pro";
           displayName = "DeepSeek V4 Pro";
           description = "DeepSeek V4 Pro via OpenRouter.";
@@ -248,7 +248,7 @@ let
           defaultReasoningLevel = "medium";
           priority = 4;
         })
-        (mkCodexDeepseekModel {
+        (mkCodexRoutedModel {
           slug = "deepseek/deepseek-v4-flash";
           displayName = "DeepSeek V4 Flash";
           description = "DeepSeek V4 Flash via OpenRouter.";
@@ -256,13 +256,29 @@ let
           defaultReasoningLevel = "low";
           priority = 5;
         })
-        (mkCodexDeepseekModel {
+        (mkCodexRoutedModel {
           slug = "deepseek/deepseek-v3.2";
           displayName = "DeepSeek V3.2";
           description = "DeepSeek V3.2 via OpenRouter.";
           contextWindow = 163840;
           defaultReasoningLevel = "medium";
           priority = 6;
+        })
+        (mkCodexRoutedModel {
+          slug = "qwen/qwen3.8-max";
+          displayName = "Qwen3.8 Max";
+          description = "Qwen3.8 Max via OpenRouter.";
+          contextWindow = 1000000;
+          defaultReasoningLevel = "medium";
+          priority = 7;
+        })
+        (mkCodexRoutedModel {
+          slug = "moonshotai/kimi-k3";
+          displayName = "Kimi K3";
+          description = "MoonshotAI Kimi K3 via OpenRouter.";
+          contextWindow = 1048576;
+          defaultReasoningLevel = "medium";
+          priority = 8;
         })
       ];
     }
