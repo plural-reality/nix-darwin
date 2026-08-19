@@ -19,7 +19,6 @@ in
 
     # AI tooling
     llm-agents.codex
-    llm-agents.openclaw
 
     # Development
     # tmux は下の programs.tmux が導入する (single source なのでここには書かない)
