@@ -536,7 +536,21 @@ let
     mcp_oauth_callback_url = codexMcpOauthCallback.url;
   }
   // lib.optionalAttrs codexRouterEnabled {
-    openai_base_url = "http://127.0.0.1:21434/v1";
+    # The loopback router is a provider of its own, not OpenAI reached at a different
+    # address, so it is declared as one. Overriding `openai_base_url` instead leaves the
+    # app believing the built-in OpenAI provider is in use, and the Desktop model picker
+    # then narrows itself to OpenAI's server-side allow-list — every routed model is
+    # dropped from the menu even though the app server lists them. Naming the provider is
+    # also the honest description: auth, catalog and upstream all belong to the router.
+    model_provider = "codex-router";
+    model_providers.codex-router = {
+      name = "Codex Router";
+      base_url = "http://127.0.0.1:21434/v1";
+      wire_api = "responses";
+      # Credentials still come from ~/.codex/auth.json rather than an env var; the router
+      # substitutes its own key on the requests it forwards to OpenRouter.
+      requires_openai_auth = true;
+    };
   };
 
   codexManagedConfigFile = pkgs.writeText "codex-managed-config.json" (
