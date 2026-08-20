@@ -204,7 +204,9 @@ def render(conv, ext, archive_dir, today):
 
 def upsert(title, body, project, dry_run):
     body = normalize(body)
-    cmd = [SCRAPBOX_WRITE, "-p", project, "-t", title, "--verbatim"]
+    # `--title=` の一体形。Codex/Claude のセッション要約は "-" 始まりになることがあり、
+    # 分離形だと scrapbox-write がタイトルを次のフラグと読んで "-t requires a value" で落ちる。
+    cmd = [SCRAPBOX_WRITE, "-p", project, f"--title={title}", "--verbatim"]
     if dry_run:
         cmd.append("--dry-run")
     try:

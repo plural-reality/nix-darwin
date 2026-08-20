@@ -295,8 +295,14 @@ def _scrapbox_targets(cmd: str) -> list[str]:
         proj, title, dry, j = "plural-reality", None, False, i + 1
         while j < n:                                   # scrapbox-write 自身のオプション列だけ消費
             tk = toks[j]
+            # `--opt=value` の一体形。"-" 始まりのタイトルはこの形でしか渡せないので先に見る。
+            if "=" in tk and tk.split("=", 1)[0] in _SBW_VAL_OPT:
+                key, val = tk.split("=", 1)
+                title = val if key in _SBW_TITLE_OPT else title
+                proj = val if key in _SBW_PROJ_OPT else proj
+                j += 1
             # 値を取るオプション。値が `-` 始まり = CLI 側でも欠落扱い(isMissingOptionValue)なので消費しない。
-            if tk in _SBW_VAL_OPT and j + 1 < n and not toks[j + 1].startswith("-"):
+            elif tk in _SBW_VAL_OPT and j + 1 < n and not toks[j + 1].startswith("-"):
                 title = toks[j + 1] if tk in _SBW_TITLE_OPT else title
                 proj = toks[j + 1] if tk in _SBW_PROJ_OPT else proj
                 j += 2

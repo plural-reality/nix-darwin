@@ -38,6 +38,9 @@ Options:
       --no-gray, --human  Write plain (un-greyed). For human-authored content.
       --allow-open-task   Allow completion-looking text to be written under an open
                           (⬜/⏳/⏹️/⌛️) task title. Historical notes only; never closure.
+      --title=<t>       Same as -t, but as one token. Required when the title begins
+                        with "-" (Scrapbox titles may); the separate form would read
+                        the value as the next flag. Works for every value option.
       --expect-sha256 <h> Replace only when the current canonical line array has this
                           SHA-256. Concurrent edits abort instead of being overwritten.
   -n, --dry-run         Render Scrapbox lines to stdout without writing
@@ -61,6 +64,15 @@ const optionsWithValue = {
   "--mode": "mode",
   "--expect-sha256": "expectSha256",
 };
+
+// `--opt=value`. Required for values that legitimately begin with "-" (Scrapbox page
+// titles may), which the separate form cannot express: the parser reads the value as
+// the next flag and reports "requires a value".
+const splitInline = (arg) => [arg.slice(0, arg.indexOf("=")), arg.slice(arg.indexOf("=") + 1)];
+const inlineOption = (arg) =>
+  arg.includes("=") && optionsWithValue[splitInline(arg)[0]] !== undefined
+    ? { key: optionsWithValue[splitInline(arg)[0]], value: splitInline(arg)[1] }
+    : undefined;
 
 const flagOptions = {
   "--append": { mode: "append" },
@@ -87,6 +99,8 @@ const parseArgs = (argv) =>
         ? { ...acc, [optionsWithValue[arg]]: optionValue(arr, i) }
       : flagOptions[arg] !== undefined
         ? { ...acc, ...flagOptions[arg] }
+      : inlineOption(arg) !== undefined
+        ? { ...acc, [inlineOption(arg).key]: inlineOption(arg).value }
       : arg.startsWith("-")
         ? { ...acc, unknownOptions: [...acc.unknownOptions, arg] }
       : acc,

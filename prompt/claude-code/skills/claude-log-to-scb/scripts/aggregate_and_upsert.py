@@ -103,7 +103,9 @@ def merge(existing, block):
 
 
 def upsert(project, title, body_lines, dry_run, cookie):
-    cmd = [SCRAPBOX_WRITE, "-p", project, "-t", title, "--verbatim"]
+    # `--title=` の一体形。Codex/Claude のセッション要約は "-" 始まりになることがあり、
+    # 分離形だと scrapbox-write がタイトルを次のフラグと読んで "-t requires a value" で落ちる。
+    cmd = [SCRAPBOX_WRITE, "-p", project, f"--title={title}", "--verbatim"]
     if dry_run:
         cmd.append("--dry-run")
     env = dict(os.environ, SCRAPBOX_SID=cookie)
