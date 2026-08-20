@@ -323,6 +323,21 @@ let
     cp -Lf "$SBDIR/scrapbox-rename.mjs" "$SBDIR/_run_rename.mjs" 2>/dev/null || true
     exec ${pkgs.nodejs}/bin/node "$SBDIR/_run_rename.mjs" "$@"
   '';
+  # ── GTD Canvas ──────────────────────────────────────────
+  # Scrapbox の ToDoカンバンを付箋レイアウトで見せ、ドラッグでの移動を CAS 付きで
+  # Scrapbox へ書き戻すローカルサーバ。読み取り(gtd-fetch/gtd-external)と描画(gtd-canvas)は
+  # 純粋関数で、副作用はこのサーバの POST /move だけに閉じている。
+  # ディレクトリごと1つの store path へ置くのは、ESM の相対 import を realpath 基準で
+  # 解決させるため(ファイル単位の symlink だと兄弟モジュールを見失う)。
+  gtd-canvas-serve = pkgs.writeScriptBin "gtd-canvas-serve" ''
+    #!${pkgs.bash}/bin/bash
+    # launchd の最小 PATH では cosense-fetch / scrapbox-write / scrapbox-rename / evkit /
+    # jq / curl が見えないので明示注入する。
+    export PATH="/run/current-system/sw/bin:/etc/profiles/per-user/$USER/bin:$HOME/.local/bin:${pkgs.jq}/bin:${pkgs.curl}/bin:$PATH"
+    export LANG=ja_JP.UTF-8 LC_ALL=ja_JP.UTF-8
+    exec ${pkgs.nodejs}/bin/node "$HOME/.local/share/gtd-canvas/bin/gtd-serve.mjs" "$@"
+  '';
+
 in
 {
   home.packages = [
@@ -352,6 +367,9 @@ in
     # Scrapbox writer
     scrapbox-write
     scrapbox-rename
+
+    # GTD Canvas server
+    gtd-canvas-serve
 
     # CLI tools used by scripts
     pkgs.python313Packages.markitdown
