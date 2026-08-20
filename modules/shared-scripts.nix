@@ -438,6 +438,11 @@ in
   home.file.".local/bin/scrapbox-write".source = "${scrapbox-write}/bin/scrapbox-write";
   home.file.".local/bin/scrapbox-rename".source = "${scrapbox-rename}/bin/scrapbox-rename";
   home.file.".local/bin/photo-library".source = "${photoLibrary}/bin/photo-library";
+  home.file.".local/bin/gtd-canvas-serve".source = "${gtd-canvas-serve}/bin/gtd-canvas-serve";
+
+  # ディレクトリ丸ごと1つの store path。ファイル単位の symlink にすると、ESM が
+  # realpath 基準で兄弟 import を解決できず gtd-canvas.mjs を見失う。
+  home.file.".local/share/gtd-canvas/bin".source = ../scripts/claude/gtd;
 
   # prompt-review collector (nix-shell shebang, self-contained)
   home.file.".local/bin/prompt-review-collect" = {
