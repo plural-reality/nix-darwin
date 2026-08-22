@@ -21,26 +21,6 @@ PROJECTS_DIR = CLAUDE_DIR / "projects"
 DB_PATH = CLAUDE_DIR / ".session-search.db"
 
 
-def init_db(conn: sqlite3.Connection) -> None:
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS files (
-            path TEXT PRIMARY KEY,
-            mtime REAL
-        )
-    """)
-    conn.execute("DROP TABLE IF EXISTS messages_fts")
-    conn.execute("""
-        CREATE VIRTUAL TABLE messages_fts USING fts5(
-            content,
-            project UNINDEXED,
-            session_id UNINDEXED,
-            role UNINDEXED,
-            line_no UNINDEXED,
-            tokenize='trigram'
-        )
-    """)
-
-
 def extract_text(msg: dict) -> str:
     content = msg.get("message", {}).get("content", "")
     if isinstance(content, str):
@@ -69,7 +49,7 @@ def index_file(conn: sqlite3.Connection, filepath: str, mtime: float) -> None:
             except (json.JSONDecodeError, ValueError):
                 continue
             role = msg.get("type", "")
-            if role not in ("human", "assistant"):
+            if role not in ("user", "assistant"):
                 continue
             text = extract_text(msg)
             if not text.strip():
@@ -85,20 +65,35 @@ def index_file(conn: sqlite3.Connection, filepath: str, mtime: float) -> None:
 
 
 def rebuild_index(conn: sqlite3.Connection, force: bool = False) -> int:
+    """Build or update the FTS index. On force, drops and recreates tables."""
     if force:
-        init_db(conn)
+        conn.execute("DROP TABLE IF EXISTS files")
+        conn.execute("DROP TABLE IF EXISTS messages_fts")
+        conn.execute("CREATE TABLE files (path TEXT PRIMARY KEY, mtime REAL)")
+        conn.execute("""
+            CREATE VIRTUAL TABLE messages_fts USING fts5(
+                content,
+                project UNINDEXED,
+                session_id UNINDEXED,
+                role UNINDEXED,
+                line_no UNINDEXED,
+                tokenize='trigram'
+            )
+        """)
+        conn.commit()
+
     indexed = 0
     pattern = str(PROJECTS_DIR / "*" / "*.jsonl")
     for filepath in sorted(glob.glob(pattern)):
         stat = os.stat(filepath)
         row = conn.execute("SELECT mtime FROM files WHERE path = ?", (filepath,)).fetchone()
-        if row is not None and not force and abs(row[0] - stat.st_mtime) < 1.0:
+        if row is not None and abs(row[0] - stat.st_mtime) < 1.0:
             continue
-        # Delete old entries for this file before re-indexing
         session_id = Path(filepath).stem
+        project = Path(filepath).parent.name.replace("-Users-tkgshn", "~").replace("-", "/")
         conn.execute(
             "DELETE FROM messages_fts WHERE session_id = ? AND project = ?",
-            (session_id, Path(filepath).parent.name.replace("-Users-tkgshn", "~").replace("-", "/")),
+            (session_id, project),
         )
         index_file(conn, filepath, stat.st_mtime)
         indexed += 1
@@ -129,10 +124,11 @@ def main() -> None:
     interactive = "-i" in args
     query_args = [a for a in args if a not in ("--rebuild", "-i")]
 
+    needs_rebuild = rebuild_flag or not DB_PATH.exists()
     conn = sqlite3.connect(str(DB_PATH))
     try:
-        init_db(conn)
-        n = rebuild_index(conn, force=rebuild_flag)
+        print(f"DEBUG: needs_rebuild={needs_rebuild}", file=sys.stderr)
+        n = rebuild_index(conn, force=needs_rebuild)
 
         if not query_args:
             print(f"Indexed {n} new/updated files.")
@@ -158,7 +154,7 @@ def main() -> None:
         for r in results:
             proj = r["project"]
             sid = r["session_id"][:8]
-            role = "H" if r["role"] == "human" else "A"
+            role = "H" if r["role"] == "user" else "A"
             snippet = r["snippet"].replace("\n", " ")[:200]
             print(f"[{proj}/{sid} {role}] {snippet}")
     finally:
