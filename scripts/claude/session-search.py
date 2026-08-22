@@ -127,7 +127,6 @@ def main() -> None:
     needs_rebuild = rebuild_flag or not DB_PATH.exists()
     conn = sqlite3.connect(str(DB_PATH))
     try:
-        print(f"DEBUG: needs_rebuild={needs_rebuild}", file=sys.stderr)
         n = rebuild_index(conn, force=needs_rebuild)
 
         if not query_args:
