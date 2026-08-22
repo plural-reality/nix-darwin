@@ -6,6 +6,11 @@
 #
 # The hook injects only titles and one-line stubs. Page bodies stay outside the
 # prompt until the agent explicitly fetches the relevant page with cosense-fetch.
+#
+# Hermes-inspired prompt cache tier design: injection order is
+#   1. stable (rules that never change within a session)
+#   2. context-derived (cwd, git branch)
+#   3. volatile (timestamps at date-only precision to maximize prefix cache hits)
 set -uo pipefail
 
 [ "${CLAUDE_AUTO_TITLE:-}" = "1" ] && exit 0
@@ -14,17 +19,14 @@ INPUT=$(cat 2>/dev/null || true)
 PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty' 2>/dev/null || true)
 [ -z "$PROMPT" ] && exit 0
 
+# ── Tier 3 (volatile): date-only timestamp — stable across turns on the same day ──
+TODAY=$(date +%Y-%m-%d)
+
 [ -z "${SCRAPBOX_SID:-}" ] && exit 0
 
 FETCH="${COSENSE_FETCH:-$HOME/.local/bin/cosense-fetch}"
 [ -x "$FETCH" ] || exit 0
 
-# Latency gate (2026-06-22): extract ONLY explicit reference markers — Japanese quotes
-# 「」『』, "double"/'single' quotes, #tags, and CamelCase/UPPER identifiers. Bare kanji/
-# katakana runs were removed so plain prose and acknowledgements ("了解", "続けて",
-# "fix the parser") no longer trigger the 3-project Scrapbox fan-out on EVERY message
-# (UserPromptSubmit is synchronous and blocks the prompt). Marker-less prompts yield no
-# candidates and exit at the `[ -z "$CANDS" ]` check below.
 CANDS=$(printf '%s' "$PROMPT" \
   | grep -oE '「[^」]+」|『[^』]+』|"[^"]+"|'"'"'[^'"'"']+'"'"'|[A-Z][A-Za-z0-9_-]{2,}|#[^[:space:]　]+' 2>/dev/null \
   | sed -E 's/^[「『"#'"'"']//; s/["」』'"'"']$//' \
@@ -87,10 +89,15 @@ MENU=$(cat "$TMPD"/*.out 2>/dev/null \
   | grep -vE "background: ?'?#|padding:|margin:|serviceworker|\.js:[0-9]+|console\.(log|error)|=> \{|function ?\(" \
   | awk -F'): ' '!seen[$1]++' \
   | head -10)
-[ -z "$MENU" ] && exit 0
 
-CTX=$(printf '%s\n%s' \
-  "[Scrapbox 関連ページ候補(自動・タイトルのみ。全文が要るものは cosense-fetch \"タイトル\" -p PROJECT -h 2 で取得)]" \
-  "$MENU")
+# Build output in cache-tier order: volatile timestamp first (changes least often), then context
+if [ -n "$MENU" ]; then
+  CTX="[$TODAY]"
+  CTX+=$'\n'
+  CTX+=$'[Scrapbox 関連ページ候補(自動・タイトルのみ。全文が要るものは cosense-fetch "タイトル" -p PROJECT -h 2 で取得)]'
+  CTX+=$'\n'"$MENU"
+else
+  CTX="[$TODAY]"
+fi
 
 jq -cn --arg c "$CTX" '{hookSpecificOutput:{hookEventName:"UserPromptSubmit", additionalContext:$c}}'

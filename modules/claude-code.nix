@@ -768,6 +768,11 @@ in
                   type = "command";
                   command = script "hook-compaction-recovery.sh";
                 }
+                # Hermes-inspired: record compression generation for session lineage
+                {
+                  type = "command";
+                  command = script "session-lineage.sh record";
+                }
               ];
             }
           ];
@@ -792,6 +797,22 @@ in
                   type = "command";
                   command = script "hook-compact-prep-reminder.sh";
                 }
+                # Hermes-inspired: inject compact generation info after compression
+                {
+                  type = "command";
+                  command = script "session-lineage.sh read";
+                }
+              ];
+            }
+          ];
+          Skill = [
+            {
+              matcher = "*";
+              hooks = [
+                {
+                  type = "command";
+                  command = script "skill-telemetry.sh";
+                }
               ];
             }
           ];
@@ -807,6 +828,12 @@ in
                 # — a non-zero exit (2) with a stderr reason is how a Stop hook blocks.
                 # The script fails open on any error so it cannot wedge Stop, and fires at
                 # most once per session (loud gate; the second Stop passes through).
+                # Hermes-inspired: background self-improvement review fork (async, one-shot per session)
+                {
+                  type = "command";
+                  async = true;
+                  command = script "background-review-fork.sh";
+                }
                 {
                   type = "command";
                   command = "${pkgs.python313}/bin/python3 ${homeDir}/.claude/scripts/stop-task-reconcile-gate.py";
