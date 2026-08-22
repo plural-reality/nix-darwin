@@ -291,6 +291,17 @@ let
           defaultReasoningLevel = "medium";
           priority = 8;
         })
+        # Stealth model: the vendor is undisclosed and the slug lives under
+        # `stealth/`, which the router already treats as routed because the slug
+        # is vendor-namespaced. Free while the evaluation window lasts.
+        (mkCodexRoutedModel {
+          slug = "stealth/ox-alpha";
+          displayName = "Ox Alpha";
+          description = "Ox Alpha (stealth frontier coding model) via OpenRouter.";
+          contextWindow = 1048576;
+          defaultReasoningLevel = "high";
+          priority = 9;
+        })
       ];
     }
   );
