@@ -75,7 +75,7 @@ pdftotext -layout /tmp/meguro-center.pdf /tmp/meguro-center.txt
 
 プール開放枠は Apple カレンダーだけでなく **intervals.icu** にも NOTE として重ねる（FORMスイム計画と同じ盤面で「泳げる日」を可視化・突き合わせるため）。Apple カレンダー書込み（下流1）と独立した別シンク。
 
-- **変換**: `~/Developer/form-next-training/src/pool-to-intervals.mjs` — このskillの月JSON `<YYYY-MM>.json` を stdin → intervals.icu events[]。タイトルは `🏊 プール HH:MM-HH:MM`（intervals.icu の import は先頭 `HH:MM` を剥がすバグがあるため、絵文字前置＋ASCIIハイフンで時刻を保持）。
+- **変換**: `~/Developer/form-next-training/src/pool-to-intervals.mjs` — このskillの月JSON `<YYYY-MM>.json` を stdin → intervals.icu events[]。タイトルは `目黒区民プール開放時間: 屋内 09:00-22:00`（施設メモと明示し、トレーニングと混同しない。屋内/屋外は月JSONのtitle接頭辞 `[屋内]`/`[屋外]`から自動判定。先頭が非数値＋ASCIIハイフンなので import の先頭時刻剥がしバグも回避）。
 - **投入**: `~/Developer/form-next-training/src/push-intervals.sh` — `external_id=meguro-<date>-<HHMM>` で upsert（＝月次洗い替えと冪等。重複しない）。`.env` に `INTERVALS_API_KEY` / `INTERVALS_ATHLETE_ID`。
 - **月次手順に追加**: 月JSONを書いたら `cd ~/Developer/form-next-training && set -a; . .env; set +a; node src/pool-to-intervals.mjs < ~/.claude/scripts/meguro-pool/<YYYY-MM>.json | src/push-intervals.sh`。
 - **関連**: プロジェクト `form-next-training`（FORMゴーグルの次トレ→intervals.icu同期）。canonical手順は Scrapbox tkgshn-private「iOSアプリの内部APIをmitmproxyでリバースエンジニアリングする手順 (FORM Swim実例)」。
