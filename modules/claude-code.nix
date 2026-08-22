@@ -71,6 +71,12 @@ let
 
   codexMcpOauthCallback = userConfig.codexMcpOauthCallback or null;
   codexRouterEnabled = userConfig.codexRouterEnabled or false;
+  # The model the picker and `codex exec` start from. Codex Desktop writes the
+  # picker's choice back into config.toml, so this is the value each apply
+  # resets to, not a lock. Downstreams that route to a model the base does not
+  # ship (or that simply prefer a different starting point) bind it here rather
+  # than layering a second activation over the managed config.
+  codexModel = userConfig.codexModel or "gpt-5.6-terra";
 
   # SCRAPBOX_SID is deliberately NOT here: the SID is a rotating session cookie
   # whose runtime cache is outside Nix and validated by scrapbox_session.py. Projecting it here
@@ -490,7 +496,7 @@ let
     };
 
     model_catalog_json = "${codexModelCatalogFile}";
-    model = "gpt-5.6-terra";
+    model = codexModel;
     model_reasoning_effort = "high";
     personality = "pragmatic";
     notify = [
