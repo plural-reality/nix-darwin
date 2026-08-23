@@ -88,6 +88,12 @@ chanju	+819091150163
 
 ## 落とし穴（ヘルパーで対処済み・素のosascriptで書くとき注意）
 
+- **`osascript /dev/stdin` にヒアドキュメントを渡さない**: シェルによってはヒアドキュメントが
+  パイプとして渡り、osascript はシーク不能な `/dev/stdin` をスクリプトファイルとして開けず
+  `osascript: /dev/stdin: I/O error (bummers)` で落ちる（AppleEvents 権限の問題ではない）。
+  argv を使いたい（＝引用符・絵文字・改行を安全に渡したい）なら `mktemp` で実ファイルに書いて
+  `osascript "$file" "$a" "$b"` とする。argv 不要なら `... | osascript` / `osascript <<'OSA'`
+  （引数なし＝stdin をスクリプトとして読む形）は問題ない。
 - **Contacts の予約語衝突**: `set phones to ""` のように `phones`/`emails` と同名の変数を作ると
   `Can't set every phone to ""` (-10006) で落ちる。プロパティは必ず `(phones of p)` と括る。
 - **送信確認に text 列を使わない**: 近年の macOS は `message.text` が NULL で本文は `attributedBody`
