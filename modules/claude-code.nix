@@ -805,17 +805,6 @@ in
               ];
             }
           ];
-          Skill = [
-            {
-              matcher = "*";
-              hooks = [
-                {
-                  type = "command";
-                  command = script "skill-telemetry.sh";
-                }
-              ];
-            }
-          ];
           Stop = [
             {
               hooks = [
