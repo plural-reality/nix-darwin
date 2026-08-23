@@ -207,7 +207,12 @@ STYLE_CONTEXT_RC=$?
 BASE="$(sqlite3 "$DB" 'SELECT IFNULL(MAX(ROWID),0) FROM message;' 2>/dev/null || echo 0)"
 
 # 本文・ハンドルは argv で AppleScript に渡す（スクリプト本文に埋め込まないので引用符・絵文字・改行が安全）。
-SEND_ERR="$(osascript /dev/stdin "$HANDLE" "$MSG" 2>&1 <<'OSA'
+# argv を使うには osascript にスクリプト「ファイル」を渡す必要があるが、`osascript /dev/stdin` は不可。
+# シェルによってはヒアドキュメントがパイプとして渡り、osascript はシーク不能な /dev/stdin を
+# スクリプトとして開けず `I/O error (bummers)` で落ちる。実ファイルに書いてから渡す。
+OSA_TMP="$(mktemp -t imsgosa)"
+trap 'rm -f "$OSA_TMP"' EXIT
+cat >"$OSA_TMP" <<'OSA'
 on run {h, m}
   tell application "Messages"
     set svc to (1st account whose service type = iMessage)
@@ -215,7 +220,7 @@ on run {h, m}
   end tell
 end run
 OSA
-)"
+SEND_ERR="$(osascript "$OSA_TMP" "$HANDLE" "$MSG" 2>&1)"
 [ -z "$SEND_ERR" ] || emit_err "osascript send failed: $(printf '%s' "$SEND_ERR" | tr '\n' ' ' | sed 's/\"/\x27/g')" 4
 
 # 末尾10桁（メールならローカル＋ドメイン）で、送信直後に増えた is_from_me=1 行を照合。
