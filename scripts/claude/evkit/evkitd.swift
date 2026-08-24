@@ -442,36 +442,8 @@ let eventValue: (EKEvent) -> SnapshotEvent = { event in
 }
 
 let calendarEvents: (EKEventStore, EKCalendar) -> [EKEvent] = { store, calendar in
-    let gregorian = Calendar(identifier: .gregorian)
-    let now = Date()
-    let ranges = (-3..<3).compactMap { offset -> (Date, Date)? in
-        let rangeStart = gregorian.date(byAdding: .year, value: offset, to: now)
-        let rangeEnd = gregorian.date(byAdding: .year, value: offset + 1, to: now)
-        return rangeStart.flatMap { first in rangeEnd.map { (first, $0) } }
-    }
-    let events = ranges.flatMap { range in
-        store.events(matching: store.predicateForEvents(
-            withStart: range.0, end: range.1, calendars: [calendar]))
-    }
-    return Array(events.reduce(into: [String: EKEvent]()) { result, event in
-        let title = event.title ?? ""
-        let key = "\(event.calendarItemIdentifier)|\(event.startDate.timeIntervalSince1970)|\(event.endDate.timeIntervalSince1970)|\(title)"
-        result[key] = event
-    }.values)
-}
-
-let allCalendarEvents: (EKEventStore, EKCalendar) -> [EKEvent] = { store, calendar in
-    let gregorian = Calendar(identifier: .gregorian)
-    let base = gregorian.date(from: DateComponents(year: 2000, month: 1, day: 1))!
-    let ranges = (0..<100).compactMap { offset -> (Date, Date)? in
-        let rangeStart = gregorian.date(byAdding: .year, value: offset, to: base)
-        let rangeEnd = gregorian.date(byAdding: .year, value: offset + 1, to: base)
-        return rangeStart.flatMap { first in rangeEnd.map { (first, $0) } }
-    }
-    let events = ranges.flatMap { range in
-        store.events(matching: store.predicateForEvents(
-            withStart: range.0, end: range.1, calendars: [calendar]))
-    }
+    let events = store.events(matching: store.predicateForEvents(
+        withStart: Date.distantPast, end: Date.distantFuture, calendars: [calendar]))
     return Array(events.reduce(into: [String: EKEvent]()) { result, event in
         let title = event.title ?? ""
         let key = "\(event.calendarItemIdentifier)|\(event.startDate.timeIntervalSince1970)|\(event.endDate.timeIntervalSince1970)|\(title)"
@@ -680,7 +652,7 @@ func calendarDeleteResult(
     guard let calendar = store.calendars(for: .event)
         .first(where: { $0.calendarIdentifier == request.id })
     else { fail("calendar not found: \(request.id)") }
-    let entry = calendarLedgerEntry(calendar, allCalendarEvents(store, calendar))
+    let entry = calendarLedgerEntry(calendar, calendarEvents(store, calendar))
     guard calendarDeletionMatches(request, entry) else {
         fail("calendar precondition mismatch", [
             "actual": [

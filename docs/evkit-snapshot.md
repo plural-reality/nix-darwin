@@ -23,7 +23,7 @@ must repeat the expected name, source identity/type, and `expectedEventCount: 0`
 ```
 
 The signed bridge reads the calendar by ID, checks every precondition and
-writability, verifies the calendar is empty across the 2000–2100 range, and
+  writability, verifies the calendar is empty across EventKit's full date range, and
 only then calls `removeCalendar`. A mismatch fails closed. Callers must read
 the catalog again and verify the ID is absent after a successful response.
 
