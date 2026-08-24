@@ -16,7 +16,7 @@
 #   evkit status                                  # 許可状態を見る
 #   evkit seed                                    # 初回の許可ダイアログを出す(Air の画面で承認)
 #   evkit snapshot            < snapshot.json     # Calendar + Reminders を一括読取
-#   evkit calendar            < events.json
+#   evkit calendar            < events.json  # calendarId is required
 #   evkit reminders.recurring < spec.json
 #   evkit reminders.geofence  < spec.json
 #   evkit reminders.section   < spec.json     # リマインダーの「セクション」(EventKit に無い)
