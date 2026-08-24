@@ -50,6 +50,7 @@
           modules ? [ ],
           system ? "aarch64-darwin",
           upstreamPath ? null,
+          enableHomeManager ? true,
         }:
         nix-darwin.lib.darwinSystem {
           specialArgs = {
@@ -166,7 +167,8 @@
             )
 
             ./modules/codex-hooks.nix
-
+          ]
+          ++ nixpkgs.lib.optionals enableHomeManager [
             inputs.home-manager.darwinModules.home-manager
             {
               home-manager.useGlobalPkgs = true;
@@ -175,44 +177,59 @@
               home-manager.extraSpecialArgs = {
                 inherit userConfig secretsFile upstreamPath;
               };
-              home-manager.users.${userConfig.username} =
-                {
-                  config,
-                  lib,
-                  pkgs,
-                  ...
-                }:
-                {
-                  home.packages = [
-                    inputs.kimi-cli.packages.${system}.default
-                    (import ./packages/codelayer { inherit pkgs; })
-                  ];
-
-                  imports = [
-                    inputs.mac-app-util.homeManagerModules.default
-                    ./modules/base.nix
-                    ./modules/claude-code.nix
-                    ./modules/shared-scripts.nix
-                    ./modules/claude-agent-scripts.nix
-                  ]
-                  ++ (nixpkgs.lib.optional (secretsFile != null) inputs.sops-nix.homeManagerModules.sops);
-
-                  programs.home-manager.enable = true;
-                  home.username = userConfig.username;
-                  home.homeDirectory = "/Users/${userConfig.username}";
-                  home.stateVersion = "24.05";
-
-                  sops = lib.mkIf (secretsFile != null) {
-                    age.keyFile = "${config.home.homeDirectory}/.config/sops/age/keys.txt";
-                    defaultSopsFile = secretsFile;
-                  };
-                  launchd.agents.sops-nix.config.EnvironmentVariables.PATH = lib.mkIf (secretsFile != null) (
-                    lib.mkForce "/usr/bin:/bin:/usr/sbin:/sbin"
-                  );
-                };
+              home-manager.users.${userConfig.username} = mkHomeModule {
+                inherit
+                  userConfig
+                  secretsFile
+                  upstreamPath
+                  system
+                  ;
+              };
             }
           ]
           ++ modules;
+        };
+
+      mkHomeModule =
+        {
+          userConfig,
+          secretsFile ? null,
+          system ? "aarch64-darwin",
+          upstreamPath ? null,
+        }:
+        {
+          config,
+          lib,
+          pkgs,
+          ...
+        }:
+        {
+          home.packages = [
+            inputs.kimi-cli.packages.${system}.default
+            (import ./packages/codelayer { inherit pkgs; })
+          ];
+
+          imports = [
+            inputs.mac-app-util.homeManagerModules.default
+            ./modules/base.nix
+            ./modules/claude-code.nix
+            ./modules/shared-scripts.nix
+            ./modules/claude-agent-scripts.nix
+          ]
+          ++ (nixpkgs.lib.optional (secretsFile != null) inputs.sops-nix.homeManagerModules.sops);
+
+          programs.home-manager.enable = true;
+          home.username = userConfig.username;
+          home.homeDirectory = "/Users/${userConfig.username}";
+          home.stateVersion = "24.05";
+
+          sops = lib.mkIf (secretsFile != null) {
+            age.keyFile = "${config.home.homeDirectory}/.config/sops/age/keys.txt";
+            defaultSopsFile = secretsFile;
+          };
+          launchd.agents.sops-nix.config.EnvironmentVariables.PATH = lib.mkIf (secretsFile != null) (
+            lib.mkForce "/usr/bin:/bin:/usr/sbin:/sbin"
+          );
         };
 
       # Complete downstream flake outputs: darwinConfigurations + devShells + formatter + apps
@@ -223,6 +240,7 @@
           modules ? [ ],
           system ? "aarch64-darwin",
           upstreamPath ? null,
+          enableHomeManager ? true,
         }:
         let
           pkgs = import nixpkgs { inherit system; };
@@ -235,6 +253,7 @@
               modules
               system
               upstreamPath
+              enableHomeManager
               ;
           };
           devShells.${system}.default = pkgs.mkShell {
@@ -600,7 +619,7 @@
         };
 
       flake = {
-        lib = { inherit mkSystem mkDownstreamFlake; };
+        lib = { inherit mkSystem mkDownstreamFlake mkHomeModule; };
       };
     };
 }
