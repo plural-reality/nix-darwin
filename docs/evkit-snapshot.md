@@ -27,6 +27,11 @@ writability, verifies the calendar is empty across the 2000–2100 range, and
 only then calls `removeCalendar`. A mismatch fails closed. Callers must read
 the catalog again and verify the ID is absent after a successful response.
 
+`evkit calendar.rename` is likewise ID-keyed and checks the current name and
+source identity before saving. It refuses read-only calendars; a candidate
+whose ledger entry has `writable: false` is reported unchanged rather than
+being renamed through a weaker API.
+
 ## Boundary
 
 `evkit snapshot` is the single bulk-read operation for Apple Calendar and
