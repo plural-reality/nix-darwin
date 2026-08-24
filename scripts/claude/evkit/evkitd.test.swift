@@ -11,6 +11,10 @@ enum EventKitBridgeTests {
         id: "calendar-personal", name: "Personal", source: source)
     static let shared = SnapshotContainer(
         id: "calendar-shared", name: "Shared", source: source)
+    static let ledger = CalendarLedgerEntry(
+        id: "calendar-empty", name: "Business", source: source, writable: true,
+        eventCount: 0, firstEventStart: nil, lastEventEnd: nil,
+        representativeTitles: [])
 
     static let events: [SnapshotEvent] = [
         SnapshotEvent(
@@ -135,6 +139,18 @@ enum EventKitBridgeTests {
                 containers: SnapshotContainers(calendars: [], reminderLists: []))
             precondition(!failed.ok && !failed.partial)
             precondition(failed.events.isEmpty && failed.reminders.isEmpty)
+        },
+        {
+            let request = CalendarDeleteRequest(
+                id: "calendar-empty", expectedName: "Business",
+                expectedSourceID: "source-1", expectedSourceName: "iCloud",
+                expectedSourceType: 2, expectedEventCount: 0)
+            precondition(calendarDeletionMatches(request, ledger))
+            precondition(!calendarDeletionMatches(
+                CalendarDeleteRequest(
+                    id: "calendar-empty", expectedName: "Business",
+                    expectedSourceID: "source-1", expectedSourceName: "iCloud",
+                    expectedSourceType: 2, expectedEventCount: 1), ledger))
         },
         {
             let encoded = try! encodeSnapshot(makeSnapshotResponse(
