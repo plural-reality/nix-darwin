@@ -192,6 +192,15 @@ enum EventKitBridgeTests {
             precondition(request.groups.first?.calendars.first?.id == "calendar-shared")
         },
         {
+            let data = Data("""
+            {"eventID":"event-1","sourceCalendarID":"calendar-old","targetCalendarID":"calendar-new","expectedTitle":"Meeting","expectedStart":"2026-08-24T01:00:00Z","expectedEnd":"2026-08-24T02:00:00Z","expectedSourceName":"Old","expectedSourceSourceID":"source-old","expectedSourceSourceType":2,"expectedTargetName":"New","expectedTargetSourceID":"source-new","expectedTargetSourceType":2}
+            """.utf8)
+            let request = try! JSONDecoder().decode(EventMoveRequest.self, from: data)
+            precondition(request.eventID == "event-1")
+            precondition(request.sourceCalendarID == "calendar-old")
+            precondition(request.targetCalendarID == "calendar-new")
+        },
+        {
             let encoded = try! encodeSnapshot(makeSnapshotResponse(
                 eventStatus: AuthorizationState(raw: 3, name: "fullAccess"),
                 reminderStatus: AuthorizationState(raw: 3, name: "fullAccess"),

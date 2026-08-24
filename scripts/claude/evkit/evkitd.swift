@@ -138,6 +138,30 @@ struct CalendarColorResponse: Codable, Equatable {
     let error: SourceFailure?
 }
 
+struct EventMoveRequest: Decodable {
+    let eventID: String
+    let sourceCalendarID: String
+    let targetCalendarID: String
+    let expectedTitle: String
+    let expectedStart: String
+    let expectedEnd: String
+    let expectedSourceName: String
+    let expectedSourceSourceID: String
+    let expectedSourceSourceType: Int
+    let expectedTargetName: String
+    let expectedTargetSourceID: String
+    let expectedTargetSourceType: Int
+}
+
+struct EventMoveResponse: Codable, Equatable {
+    let ok: Bool
+    let op: String
+    let eventID: String?
+    let sourceCalendarID: String?
+    let targetCalendarID: String?
+    let error: SourceFailure?
+}
+
 struct SnapshotSelectors: Codable, Equatable {
     let names: [String]
     let ids: [String]
@@ -604,6 +628,12 @@ func encodeCalendarColor(_ response: CalendarColorResponse) throws -> Data {
     return try encoder.encode(response)
 }
 
+func encodeEventMove(_ response: EventMoveResponse) throws -> Data {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    return try encoder.encode(response)
+}
+
 let recurrenceFrequency: (EKRecurrenceFrequency) -> String = {
     switch $0 {
     case .daily: "daily"
@@ -982,6 +1012,67 @@ func calendarColorResult(
     } ?? fail("calendar color response encoding failed")
 }
 
+func eventMoveResult(
+    store: EKEventStore, specData: Data, status: AuthorizationState
+) -> Never {
+    guard let request = try? JSONDecoder().decode(EventMoveRequest.self, from: specData),
+        let expectedStart = parseISO8601(request.expectedStart),
+        let expectedEnd = parseISO8601(request.expectedEnd),
+        expectedStart < expectedEnd,
+        request.sourceCalendarID != request.targetCalendarID
+    else { fail("bad event.move spec") }
+    _ = fullAccessError(source: "events", status: status).map {
+        fail($0.message, ["code": $0.code, "status": status.raw])
+    }
+    let calendars = store.calendars(for: .event)
+    guard let source = calendars.first(where: { $0.calendarIdentifier == request.sourceCalendarID }),
+        let target = calendars.first(where: { $0.calendarIdentifier == request.targetCalendarID })
+    else { fail("event.move source or target not found") }
+    let sourceValueSnapshot = sourceValue(source.source)
+    let targetValueSnapshot = sourceValue(target.source)
+    guard source.title == request.expectedSourceName,
+        sourceValueSnapshot.id == request.expectedSourceSourceID,
+        sourceValueSnapshot.type == request.expectedSourceSourceType,
+        target.title == request.expectedTargetName,
+        targetValueSnapshot.id == request.expectedTargetSourceID,
+        targetValueSnapshot.type == request.expectedTargetSourceType,
+        source.allowsContentModifications,
+        target.allowsContentModifications
+    else { fail("event.move calendar precondition mismatch") }
+    let sourceEvents = allCalendarEvents(store, source)
+    guard let event = store.event(withIdentifier: request.eventID)
+        ?? sourceEvents.first(where: { $0.calendarItemIdentifier == request.eventID })
+    else { fail("event.move event not found: \(request.eventID)") }
+    guard event.title == request.expectedTitle,
+        event.startDate == expectedStart,
+        event.endDate == expectedEnd,
+        event.calendar?.calendarIdentifier == request.sourceCalendarID
+    else { fail("event.move event precondition mismatch") }
+    let targetConflict = allCalendarEvents(store, target).contains {
+        eventIdentity($0) == eventIdentity(event)
+    }
+    guard !targetConflict else { fail("event.move found an exact target conflict") }
+    do {
+        event.calendar = target
+        try store.save(event, span: .thisEvent, commit: true)
+    } catch {
+        fail("event.move failed: \(error)")
+    }
+    let moved = allCalendarEvents(store, target).first {
+        eventIdentity($0) == eventIdentity(event)
+    }
+    guard let moved, moved.calendar?.calendarIdentifier == request.targetCalendarID else {
+        fail("event.move readback mismatch")
+    }
+    let response = EventMoveResponse(
+        ok: true, op: "event.move", eventID: moved.calendarItemIdentifier,
+        sourceCalendarID: request.sourceCalendarID,
+        targetCalendarID: request.targetCalendarID, error: nil)
+    return (try? encodeEventMove(response)).map {
+        respondData($0, ok: true)
+    } ?? fail("event move response encoding failed")
+}
+
 func snapshotResult(
     store: EKEventStore, specData: Data,
     eventStatus: AuthorizationState, reminderStatus: AuthorizationState
@@ -1130,6 +1221,9 @@ func runBridge() -> Never {
     if op == "calendar.color" {
         calendarColorResult(store: store, specData: specData, status: eventStatus)
     }
+    if op == "event.move" {
+        eventMoveResult(store: store, specData: specData, status: eventStatus)
+    }
     if op == "snapshot" {
         snapshotResult(
             store: store, specData: specData,
@@ -1137,7 +1231,7 @@ func runBridge() -> Never {
     }
 
     guard let handler = handlers[op] else {
-        fail("unknown op: \(op)", ["ops": Array(handlers.keys).sorted() + ["calendar.catalog", "calendar.delete", "calendar.rename", "calendar.merge", "calendar.color", "snapshot", "status", "seed"]])
+        fail("unknown op: \(op)", ["ops": Array(handlers.keys).sorted() + ["calendar.catalog", "calendar.delete", "calendar.rename", "calendar.merge", "calendar.color", "event.move", "snapshot", "status", "seed"]])
     }
 
     let needsEvent = op == "calendar"

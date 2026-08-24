@@ -59,6 +59,11 @@ and the response includes the old/new color for canonical readback.
 }
 ```
 
+`evkit event.move` moves one event by stable event ID between two writable
+calendars. It repeats both calendar identities and the event title/start/end,
+rejects exact target conflicts, and verifies the destination calendar after
+the commit.
+
 ## Boundary
 
 `evkit snapshot` is the single bulk-read operation for Apple Calendar and
