@@ -59,6 +59,24 @@ struct CalendarDeleteResponse: Codable, Equatable {
     let error: SourceFailure?
 }
 
+struct CalendarRenameRequest: Decodable {
+    let id: String
+    let expectedName: String
+    let newName: String
+    let expectedSourceID: String
+    let expectedSourceName: String
+    let expectedSourceType: Int
+}
+
+struct CalendarRenameResponse: Codable, Equatable {
+    let ok: Bool
+    let op: String
+    let id: String?
+    let oldName: String?
+    let newName: String?
+    let error: SourceFailure?
+}
+
 struct SnapshotSelectors: Codable, Equatable {
     let names: [String]
     let ids: [String]
@@ -72,11 +90,14 @@ struct SnapshotEvent: Codable, Equatable {
     let allDay: Bool
     let location: String?
     let timeZone: String?
+    // The bridge deliberately projects only its own stable marker rather than
+    // exposing arbitrary private event notes to a consumer.
+    let beeperCrmMessageId: String?
     let calendar: SnapshotContainer
     let source: SnapshotSource
 
     enum CodingKeys: String, CodingKey {
-        case id, title, start, end, allDay, location, timeZone, calendar, source
+        case id, title, start, end, allDay, location, timeZone, beeperCrmMessageId, calendar, source
     }
 
     func encode(to encoder: Encoder) throws {
@@ -90,6 +111,8 @@ struct SnapshotEvent: Codable, Equatable {
             ?? values.encodeNil(forKey: .location)
         try timeZone.map { try values.encode($0, forKey: .timeZone) }
             ?? values.encodeNil(forKey: .timeZone)
+        try beeperCrmMessageId.map { try values.encode($0, forKey: .beeperCrmMessageId) }
+            ?? values.encodeNil(forKey: .beeperCrmMessageId)
         try values.encode(calendar, forKey: .calendar)
         try values.encode(source, forKey: .source)
     }
@@ -379,6 +402,17 @@ let containerValue: (EKCalendar) -> SnapshotContainer = { calendar in
         source: sourceValue(calendar.source))
 }
 
+let beeperCrmMessageId: (String?) -> String? = { notes in
+    notes?.split(separator: "\n")
+        .compactMap { line in
+            line.hasPrefix("beeper-crm:msg:")
+                ? String(line.dropFirst("beeper-crm:msg:".count))
+                : nil
+        }
+        .first
+        .flatMap { $0.isEmpty ? nil : $0 }
+}
+
 let selectedCalendars: ([EKCalendar], SnapshotSelectors) -> [EKCalendar] = {
     calendars, selectors in
     let names = Set(selectors.names)
@@ -402,6 +436,7 @@ let eventValue: (EKEvent) -> SnapshotEvent = { event in
         allDay: event.isAllDay,
         location: event.location,
         timeZone: event.timeZone?.identifier,
+        beeperCrmMessageId: beeperCrmMessageId(event.notes),
         calendar: calendar,
         source: calendar.source)
 }
@@ -454,6 +489,12 @@ func encodeCalendarCatalog(_ response: CalendarCatalogResponse) throws -> Data {
 func encodeCalendarDelete(_ response: CalendarDeleteResponse) throws -> Data {
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .iso8601
+    encoder.outputFormatting = [.sortedKeys]
+    return try encoder.encode(response)
+}
+
+func encodeCalendarRename(_ response: CalendarRenameResponse) throws -> Data {
+    let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
     return try encoder.encode(response)
 }
@@ -662,6 +703,45 @@ func calendarDeleteResult(
     } ?? fail("calendar delete response encoding failed")
 }
 
+func calendarRenameResult(
+    store: EKEventStore, specData: Data, status: AuthorizationState
+) -> Never {
+    guard let request = try? JSONDecoder().decode(CalendarRenameRequest.self, from: specData)
+    else { fail("bad calendar.rename spec") }
+    _ = fullAccessError(source: "events", status: status).map {
+        fail($0.message, ["code": $0.code, "status": status.raw])
+    }
+    let newName = request.newName.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !newName.isEmpty, newName != request.expectedName else {
+        fail("calendar.rename requires a distinct non-empty newName")
+    }
+    guard let calendar = store.calendars(for: .event)
+        .first(where: { $0.calendarIdentifier == request.id })
+    else { fail("calendar not found: \(request.id)") }
+    let actualSource = sourceValue(calendar.source)
+    guard calendar.title == request.expectedName,
+        actualSource.id == request.expectedSourceID,
+        actualSource.name == request.expectedSourceName,
+        actualSource.type == request.expectedSourceType
+    else { fail("calendar rename precondition mismatch") }
+    guard calendar.allowsContentModifications else {
+        fail("calendar is not writable: \(calendar.title)")
+    }
+    let oldName = calendar.title
+    calendar.title = newName
+    do {
+        try store.saveCalendar(calendar, commit: true)
+    } catch {
+        fail("calendar rename failed: \(error)")
+    }
+    let response = CalendarRenameResponse(
+        ok: true, op: "calendar.rename", id: calendar.calendarIdentifier,
+        oldName: oldName, newName: newName, error: nil)
+    return (try? encodeCalendarRename(response)).map {
+        respondData($0, ok: true)
+    } ?? fail("calendar rename response encoding failed")
+}
+
 func snapshotResult(
     store: EKEventStore, specData: Data,
     eventStatus: AuthorizationState, reminderStatus: AuthorizationState
@@ -804,6 +884,9 @@ func runBridge() -> Never {
     if op == "calendar.delete" {
         calendarDeleteResult(store: store, specData: specData, status: eventStatus)
     }
+    if op == "calendar.rename" {
+        calendarRenameResult(store: store, specData: specData, status: eventStatus)
+    }
     if op == "snapshot" {
         snapshotResult(
             store: store, specData: specData,
@@ -811,7 +894,7 @@ func runBridge() -> Never {
     }
 
     guard let handler = handlers[op] else {
-        fail("unknown op: \(op)", ["ops": Array(handlers.keys).sorted() + ["calendar.catalog", "calendar.delete", "snapshot", "status", "seed"]])
+        fail("unknown op: \(op)", ["ops": Array(handlers.keys).sorted() + ["calendar.catalog", "calendar.delete", "calendar.rename", "snapshot", "status", "seed"]])
     }
 
     let needsEvent = op == "calendar"
