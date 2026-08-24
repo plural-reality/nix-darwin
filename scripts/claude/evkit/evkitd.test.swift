@@ -13,6 +13,7 @@ enum EventKitBridgeTests {
         id: "calendar-shared", name: "Shared", source: source)
     static let ledger = CalendarLedgerEntry(
         id: "calendar-empty", name: "Business", source: source, writable: true,
+        colorHex: nil,
         eventCount: 0, firstEventStart: nil, lastEventEnd: nil,
         representativeTitles: [])
 
@@ -180,6 +181,15 @@ enum EventKitBridgeTests {
             precondition(request.sourceID == "source-old")
             precondition(request.targetID == "source-new")
             precondition(request.removeSource)
+        },
+        {
+            let data = Data("""
+            {"allowReadOnly":true,"groups":[{"color":"#5e35b1","calendars":[{"id":"calendar-shared","expectedName":"Shared","expectedSourceID":"source-1","expectedSourceName":"iCloud","expectedSourceType":2}]}]}
+            """.utf8)
+            let request = try! JSONDecoder().decode(CalendarColorRequest.self, from: data)
+            precondition(request.allowReadOnly)
+            precondition(request.groups.first?.color == "#5e35b1")
+            precondition(request.groups.first?.calendars.first?.id == "calendar-shared")
         },
         {
             let encoded = try! encodeSnapshot(makeSnapshotResponse(

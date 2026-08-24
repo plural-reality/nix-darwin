@@ -9,6 +9,7 @@
 import CoreLocation
 import EventKit
 import Foundation
+import AppKit
 
 // MARK: - Immutable snapshot values and pure transforms
 
@@ -29,6 +30,7 @@ struct CalendarLedgerEntry: Codable, Equatable {
     let name: String
     let source: SnapshotSource
     let writable: Bool
+    let colorHex: String?
     let eventCount: Int
     let firstEventStart: Date?
     let lastEventEnd: Date?
@@ -101,6 +103,38 @@ struct CalendarMergeResponse: Codable, Equatable {
     let targetID: String?
     let movedEventCount: Int
     let sourceRemoved: Bool
+    let error: SourceFailure?
+}
+
+struct CalendarColorTarget: Decodable {
+    let id: String
+    let expectedName: String
+    let expectedSourceID: String
+    let expectedSourceName: String
+    let expectedSourceType: Int
+}
+
+struct CalendarColorGroup: Decodable {
+    let color: String
+    let calendars: [CalendarColorTarget]
+}
+
+struct CalendarColorRequest: Decodable {
+    let groups: [CalendarColorGroup]
+    let allowReadOnly: Bool
+}
+
+struct CalendarColorChange: Codable, Equatable {
+    let id: String
+    let name: String
+    let oldColorHex: String?
+    let newColorHex: String
+}
+
+struct CalendarColorResponse: Codable, Equatable {
+    let ok: Bool
+    let op: String
+    let changes: [CalendarColorChange]
     let error: SourceFailure?
 }
 
@@ -310,12 +344,38 @@ let representativeTitles: ([EKEvent]) -> [String] = { events in
     Array(Set(events.compactMap(\.title).filter { !$0.isEmpty }).sorted().prefix(5))
 }
 
+let colorHex: (CGColor?) -> String? = { color in
+    color.flatMap { NSColor(cgColor: $0)?.usingColorSpace(.sRGB) }.map { color in
+        String(
+            format: "#%02X%02X%02X",
+            Int((color.redComponent * 255).rounded()),
+            Int((color.greenComponent * 255).rounded()),
+            Int((color.blueComponent * 255).rounded()))
+    }
+}
+
+let parseColorHex: (String) -> CGColor? = { value in
+    let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        .replacingOccurrences(of: "#", with: "")
+    guard normalized.count == 6,
+        let red = Int(normalized.prefix(2), radix: 16),
+        let green = Int(normalized.dropFirst(2).prefix(2), radix: 16),
+        let blue = Int(normalized.dropFirst(4).prefix(2), radix: 16)
+    else { return nil }
+    return CGColor(
+        red: CGFloat(red) / 255,
+        green: CGFloat(green) / 255,
+        blue: CGFloat(blue) / 255,
+        alpha: 1)
+}
+
 let calendarLedgerEntry: (EKCalendar, [EKEvent]) -> CalendarLedgerEntry = { calendar, events in
     CalendarLedgerEntry(
         id: calendar.calendarIdentifier,
         name: calendar.title,
         source: sourceValue(calendar.source),
         writable: calendar.allowsContentModifications,
+        colorHex: colorHex(calendar.cgColor),
         eventCount: events.count,
         firstEventStart: events.map(\.startDate).min(),
         lastEventEnd: events.map(\.endDate).max(),
@@ -533,6 +593,12 @@ func encodeCalendarRename(_ response: CalendarRenameResponse) throws -> Data {
 }
 
 func encodeCalendarMerge(_ response: CalendarMergeResponse) throws -> Data {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    return try encoder.encode(response)
+}
+
+func encodeCalendarColor(_ response: CalendarColorResponse) throws -> Data {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
     return try encoder.encode(response)
@@ -850,6 +916,72 @@ func calendarMergeResult(
     } ?? fail("calendar merge response encoding failed")
 }
 
+func calendarColorResult(
+    store: EKEventStore, specData: Data, status: AuthorizationState
+) -> Never {
+    guard let request = try? JSONDecoder().decode(CalendarColorRequest.self, from: specData)
+    else { fail("bad calendar.color spec") }
+    _ = fullAccessError(source: "events", status: status).map {
+        fail($0.message, ["code": $0.code, "status": status.raw])
+    }
+    guard request.allowReadOnly else {
+        fail("calendar.color requires explicit allowReadOnly=true for shared calendars")
+    }
+    let groups = request.groups.compactMap { group -> (CalendarColorGroup, CGColor, String)? in
+        parseColorHex(group.color).flatMap { color in
+            colorHex(color).map { canonical in (group, color, canonical) }
+        }
+    }
+    guard !groups.isEmpty, groups.count == request.groups.count else {
+        fail("calendar.color requires non-empty six-digit hex colors")
+    }
+    let targets = groups.flatMap { group in group.0.calendars }
+    guard !targets.isEmpty, Set(targets.map(\.id)).count == targets.count else {
+        fail("calendar.color requires distinct non-empty calendar IDs")
+    }
+    let calendars = store.calendars(for: .event)
+    let resolved = targets.compactMap { target -> (EKCalendar, CGColor, String)? in
+        guard let calendar = calendars.first(where: { $0.calendarIdentifier == target.id }) else {
+            return nil
+        }
+        let source = sourceValue(calendar.source)
+        guard calendar.title == target.expectedName,
+            source.id == target.expectedSourceID,
+            source.name == target.expectedSourceName,
+            source.type == target.expectedSourceType
+        else { return nil }
+        let group = groups.first(where: { $0.0.calendars.contains(where: { $0.id == target.id }) })!
+        return (calendar, group.1, group.2)
+    }
+    guard resolved.count == targets.count else {
+        fail("calendar.color precondition mismatch")
+    }
+    let changes = resolved.map { calendar, _, canonical in
+        CalendarColorChange(
+            id: calendar.calendarIdentifier,
+            name: calendar.title,
+            oldColorHex: colorHex(calendar.cgColor),
+            newColorHex: canonical)
+    }
+    do {
+        _ = try resolved.map { calendar, color, _ in
+            calendar.cgColor = color
+            try store.saveCalendar(calendar, commit: false)
+        }
+        try store.commit()
+    } catch {
+        fail("calendar color update failed: \(error)")
+    }
+    guard resolved.allSatisfy({ colorHex($0.0.cgColor) == $0.2 }) else {
+        fail("calendar color update readback mismatch")
+    }
+    let response = CalendarColorResponse(
+        ok: true, op: "calendar.color", changes: changes, error: nil)
+    return (try? encodeCalendarColor(response)).map {
+        respondData($0, ok: true)
+    } ?? fail("calendar color response encoding failed")
+}
+
 func snapshotResult(
     store: EKEventStore, specData: Data,
     eventStatus: AuthorizationState, reminderStatus: AuthorizationState
@@ -995,6 +1127,9 @@ func runBridge() -> Never {
     if op == "calendar.merge" {
         calendarMergeResult(store: store, specData: specData, status: eventStatus)
     }
+    if op == "calendar.color" {
+        calendarColorResult(store: store, specData: specData, status: eventStatus)
+    }
     if op == "snapshot" {
         snapshotResult(
             store: store, specData: specData,
@@ -1002,7 +1137,7 @@ func runBridge() -> Never {
     }
 
     guard let handler = handlers[op] else {
-        fail("unknown op: \(op)", ["ops": Array(handlers.keys).sorted() + ["calendar.catalog", "calendar.delete", "calendar.rename", "calendar.merge", "snapshot", "status", "seed"]])
+        fail("unknown op: \(op)", ["ops": Array(handlers.keys).sorted() + ["calendar.catalog", "calendar.delete", "calendar.rename", "calendar.merge", "calendar.color", "snapshot", "status", "seed"]])
     }
 
     let needsEvent = op == "calendar"

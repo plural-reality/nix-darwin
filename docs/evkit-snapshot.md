@@ -38,6 +38,27 @@ stable IDs. It verifies both calendars, exact expected event counts, and exact
 event-key conflicts before committing. `removeSource: true` removes the source
 only after all events have moved and the source is empty.
 
+`evkit calendar.color` is a typed, ID-keyed batch color update. Each target
+must repeat its current name and source identity; shared/read-only calendars
+require explicit `allowReadOnly: true`. Colors are six-digit sRGB hex values,
+and the response includes the old/new color for canonical readback.
+
+```json
+{
+  "allowReadOnly": true,
+  "groups": [{
+    "color": "#5E35B1",
+    "calendars": [{
+      "id": "...",
+      "expectedName": "Chanjuの共有カレンダー（Personal）",
+      "expectedSourceID": "...",
+      "expectedSourceName": "iCloud",
+      "expectedSourceType": 2
+    }]
+  }]
+}
+```
+
 ## Boundary
 
 `evkit snapshot` is the single bulk-read operation for Apple Calendar and
