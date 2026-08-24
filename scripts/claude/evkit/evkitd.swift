@@ -78,6 +78,32 @@ struct CalendarRenameResponse: Codable, Equatable {
     let error: SourceFailure?
 }
 
+struct CalendarMergeRequest: Decodable {
+    let sourceID: String
+    let targetID: String
+    let expectedSourceName: String
+    let expectedTargetName: String
+    let expectedSourceSourceID: String
+    let expectedSourceSourceName: String
+    let expectedSourceSourceType: Int
+    let expectedTargetSourceID: String
+    let expectedTargetSourceName: String
+    let expectedTargetSourceType: Int
+    let expectedSourceEventCount: Int
+    let expectedTargetEventCount: Int
+    let removeSource: Bool
+}
+
+struct CalendarMergeResponse: Codable, Equatable {
+    let ok: Bool
+    let op: String
+    let sourceID: String?
+    let targetID: String?
+    let movedEventCount: Int
+    let sourceRemoved: Bool
+    let error: SourceFailure?
+}
+
 struct SnapshotSelectors: Codable, Equatable {
     let names: [String]
     let ids: [String]
@@ -480,6 +506,12 @@ let allCalendarEvents: (EKEventStore, EKCalendar) -> [EKEvent] = { store, calend
     }.values)
 }
 
+let eventIdentity: (EKEvent) -> String = { event in
+    let title = event.title ?? ""
+    let location = event.location ?? ""
+    return "\(event.startDate.timeIntervalSince1970)|\(event.endDate.timeIntervalSince1970)|\(title)|\(location)"
+}
+
 func encodeCalendarCatalog(_ response: CalendarCatalogResponse) throws -> Data {
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .iso8601
@@ -495,6 +527,12 @@ func encodeCalendarDelete(_ response: CalendarDeleteResponse) throws -> Data {
 }
 
 func encodeCalendarRename(_ response: CalendarRenameResponse) throws -> Data {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    return try encoder.encode(response)
+}
+
+func encodeCalendarMerge(_ response: CalendarMergeResponse) throws -> Data {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
     return try encoder.encode(response)
@@ -742,6 +780,76 @@ func calendarRenameResult(
     } ?? fail("calendar rename response encoding failed")
 }
 
+func calendarMergeResult(
+    store: EKEventStore, specData: Data, status: AuthorizationState
+) -> Never {
+    guard let request = try? JSONDecoder().decode(CalendarMergeRequest.self, from: specData)
+    else { fail("bad calendar.merge spec") }
+    _ = fullAccessError(source: "events", status: status).map {
+        fail($0.message, ["code": $0.code, "status": status.raw])
+    }
+    guard request.sourceID != request.targetID else {
+        fail("calendar.merge requires distinct sourceID and targetID")
+    }
+    guard let source = store.calendars(for: .event)
+        .first(where: { $0.calendarIdentifier == request.sourceID }),
+        let target = store.calendars(for: .event)
+        .first(where: { $0.calendarIdentifier == request.targetID })
+    else { fail("calendar.merge source or target not found") }
+    let sourceEntry = calendarLedgerEntry(source, allCalendarEvents(store, source))
+    let targetEntry = calendarLedgerEntry(target, allCalendarEvents(store, target))
+    let sourceIdentity = sourceEntry.source
+    let targetIdentity = targetEntry.source
+    guard sourceEntry.name == request.expectedSourceName,
+        targetEntry.name == request.expectedTargetName,
+        sourceIdentity.id == request.expectedSourceSourceID,
+        sourceIdentity.name == request.expectedSourceSourceName,
+        sourceIdentity.type == request.expectedSourceSourceType,
+        targetIdentity.id == request.expectedTargetSourceID,
+        targetIdentity.name == request.expectedTargetSourceName,
+        targetIdentity.type == request.expectedTargetSourceType,
+        sourceEntry.eventCount == request.expectedSourceEventCount,
+        targetEntry.eventCount == request.expectedTargetEventCount
+    else { fail("calendar.merge precondition mismatch") }
+    guard source.allowsContentModifications, target.allowsContentModifications else {
+        fail("calendar.merge requires writable source and target")
+    }
+    let targetKeys = Set(allCalendarEvents(store, target).map(eventIdentity))
+    let conflicts = allCalendarEvents(store, source).filter {
+        targetKeys.contains(eventIdentity($0))
+    }
+    guard conflicts.isEmpty else {
+        fail("calendar.merge found exact event conflicts: \(conflicts.count)")
+    }
+    let sourceEvents = allCalendarEvents(store, source)
+    do {
+        _ = try sourceEvents.map { event in
+            event.calendar = target
+            try store.save(event, span: .thisEvent, commit: false)
+        }
+        try store.commit()
+    } catch {
+        fail("calendar.merge move failed: \(error)")
+    }
+    let remaining = allCalendarEvents(store, source).count
+    guard remaining == 0 else {
+        fail("calendar.merge move incomplete; source still has \(remaining) events")
+    }
+    let sourceRemoved: Bool = request.removeSource
+        ? ((try? store.removeCalendar(source, commit: true)) != nil)
+        : false
+    guard !request.removeSource || sourceRemoved else {
+        fail("calendar.merge moved events but could not remove empty source calendar")
+    }
+    let response = CalendarMergeResponse(
+        ok: true, op: "calendar.merge", sourceID: request.sourceID,
+        targetID: request.targetID, movedEventCount: sourceEvents.count,
+        sourceRemoved: sourceRemoved, error: nil)
+    return (try? encodeCalendarMerge(response)).map {
+        respondData($0, ok: true)
+    } ?? fail("calendar merge response encoding failed")
+}
+
 func snapshotResult(
     store: EKEventStore, specData: Data,
     eventStatus: AuthorizationState, reminderStatus: AuthorizationState
@@ -884,6 +992,9 @@ func runBridge() -> Never {
     if op == "calendar.rename" {
         calendarRenameResult(store: store, specData: specData, status: eventStatus)
     }
+    if op == "calendar.merge" {
+        calendarMergeResult(store: store, specData: specData, status: eventStatus)
+    }
     if op == "snapshot" {
         snapshotResult(
             store: store, specData: specData,
@@ -891,7 +1002,7 @@ func runBridge() -> Never {
     }
 
     guard let handler = handlers[op] else {
-        fail("unknown op: \(op)", ["ops": Array(handlers.keys).sorted() + ["calendar.catalog", "calendar.delete", "calendar.rename", "snapshot", "status", "seed"]])
+        fail("unknown op: \(op)", ["ops": Array(handlers.keys).sorted() + ["calendar.catalog", "calendar.delete", "calendar.rename", "calendar.merge", "snapshot", "status", "seed"]])
     }
 
     let needsEvent = op == "calendar"
