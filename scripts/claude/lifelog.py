@@ -44,10 +44,10 @@ from scrapbox_session import resolve_session, resolve_sid
 # Calendar.app で「チェック済（可視）」のカレンダーだけ取り込む allowlist（他人/別用途は除外）。
 # Calendar.app のサイドバーのチェック状態に対応。変えたい時はここを編集。
 # 本人の予定として扱うのは Calendar.app でチェックしているこの一覧だけ。
-# Intervals.icu はトレーニング計画（可動）だが、その日の行動記録には含める。
+# 練習メニュー from interval.icu はトレーニング計画（可動）だが、その日の行動記録には含める。
 CHECKED_CALENDARS = [
     "Taka の予定", "takagi@plural-reality.com", "Shunsuke Takagi (General)",
-    "Business ", "ルーティーン", "Intervals.icu", "日本の祝日",
+    "Business ", "ルーティーン", "練習メニュー from interval.icu", "日本の祝日",
 ]
 
 OK_STATE = "取得済み"
