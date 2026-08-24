@@ -4,8 +4,8 @@
 
 `evkit calendar.catalog` is the read-only calendar ledger. It returns every
 EventKit event calendar with its stable calendar ID, display name, source
-(`id`, `name`, `type`), `writable` flag, event count, observed date range, and
-up to five representative titles. It does not accept a selector and never
+(`id`, `name`, `type`), `writable` flag, current `colorHex`, event count,
+observed date range, and up to five representative titles. It does not accept a selector and never
 silently narrows the result to configured names.
 
 `evkit calendar.delete` is a typed, ID-keyed destructive operation. Its spec
