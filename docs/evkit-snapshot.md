@@ -28,9 +28,10 @@ only then calls `removeCalendar`. A mismatch fails closed. Callers must read
 the catalog again and verify the ID is absent after a successful response.
 
 `evkit calendar.rename` is likewise ID-keyed and checks the current name and
-source identity before saving. It refuses read-only calendars; a candidate
-whose ledger entry has `writable: false` is reported unchanged rather than
-being renamed through a weaker API.
+source identity before saving. Renaming a ledger entry with `writable: false`
+requires the explicit typed field `allowReadOnly: true`; no weaker API or
+name-based fallback is used. EventKit may still reject the save, in which case
+the calendar remains unchanged.
 
 ## Boundary
 

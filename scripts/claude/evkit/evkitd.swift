@@ -66,6 +66,7 @@ struct CalendarRenameRequest: Decodable {
     let expectedSourceID: String
     let expectedSourceName: String
     let expectedSourceType: Int
+    let allowReadOnly: Bool
 }
 
 struct CalendarRenameResponse: Codable, Equatable {
@@ -714,6 +715,9 @@ func calendarRenameResult(
     guard !newName.isEmpty, newName != request.expectedName else {
         fail("calendar.rename requires a distinct non-empty newName")
     }
+    guard request.allowReadOnly else {
+        fail("calendar.rename requires explicit allowReadOnly=true for a read-only calendar")
+    }
     guard let calendar = store.calendars(for: .event)
         .first(where: { $0.calendarIdentifier == request.id })
     else { fail("calendar not found: \(request.id)") }
@@ -723,9 +727,6 @@ func calendarRenameResult(
         actualSource.name == request.expectedSourceName,
         actualSource.type == request.expectedSourceType
     else { fail("calendar rename precondition mismatch") }
-    guard calendar.allowsContentModifications else {
-        fail("calendar is not writable: \(calendar.title)")
-    }
     let oldName = calendar.title
     calendar.title = newName
     do {
