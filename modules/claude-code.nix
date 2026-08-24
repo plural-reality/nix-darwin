@@ -70,7 +70,7 @@ let
   ) remoteMcpServers;
 
   codexMcpOauthCallback = userConfig.codexMcpOauthCallback or null;
-  codexRouterEnabled = userConfig.codexRouterEnabled or false;
+  codexLegacyRouterAlias = userConfig.codexLegacyRouterAlias or false;
   # The model the picker and `codex exec` start from. Codex Desktop writes the
   # picker's choice back into config.toml, so this is the value each apply
   # resets to, not a lock. Downstreams that route to a model the base does not
@@ -187,47 +187,6 @@ let
       base_instructions = "";
     };
 
-  mkCodexRoutedModel =
-    {
-      slug,
-      displayName,
-      description,
-      contextWindow,
-      defaultReasoningLevel,
-      priority,
-    }:
-    (mkCodexGpt56Model {
-      inherit
-        slug
-        description
-        priority
-        defaultReasoningLevel
-        ;
-      displayName = displayName;
-      multiAgentVersion = "v1";
-    })
-    // {
-      context_window = contextWindow;
-      max_context_window = contextWindow;
-      prefer_websockets = false;
-      use_responses_lite = false;
-      input_modalities = [ "text" ];
-      supports_image_detail_original = false;
-      additional_speed_tiers = [ ];
-      service_tiers = [ ];
-      # Everything below keeps the tool set expressible as plain `function` tools.
-      # OpenRouter's Responses translation forwards those and silently drops
-      # `type: "custom"` ones, so a model reached through the router never sees them.
-      # `code_mode_only` ships the shell as a single grammar-constrained custom tool
-      # (`exec`, a JavaScript orchestrator), which therefore arrives with no shell at
-      # all: the model then invents `exec` calls from the system prompt and every one
-      # comes back aborted. `direct` sends `exec_command` and friends as functions.
-      tool_mode = "direct";
-      # The freeform apply_patch is the one remaining custom tool. Sending it would be
-      # sending nothing, so it is dropped here and edits go through the shell instead.
-      apply_patch_tool_type = null;
-    };
-
   codexModelCatalogFile = pkgs.writeText "codex-model-catalog.json" (
     builtins.toJSON {
       models = [
@@ -254,59 +213,6 @@ let
           defaultReasoningLevel = "medium";
           multiAgentVersion = "v1";
           priority = 3;
-        })
-      ]
-      ++ lib.optionals codexRouterEnabled [
-        (mkCodexRoutedModel {
-          slug = "deepseek/deepseek-v4-pro";
-          displayName = "DeepSeek V4 Pro";
-          description = "DeepSeek V4 Pro via OpenRouter.";
-          contextWindow = 1048576;
-          defaultReasoningLevel = "medium";
-          priority = 4;
-        })
-        (mkCodexRoutedModel {
-          slug = "deepseek/deepseek-v4-flash";
-          displayName = "DeepSeek V4 Flash";
-          description = "DeepSeek V4 Flash via OpenRouter.";
-          contextWindow = 1048576;
-          defaultReasoningLevel = "low";
-          priority = 5;
-        })
-        (mkCodexRoutedModel {
-          slug = "deepseek/deepseek-v3.2";
-          displayName = "DeepSeek V3.2";
-          description = "DeepSeek V3.2 via OpenRouter.";
-          contextWindow = 163840;
-          defaultReasoningLevel = "medium";
-          priority = 6;
-        })
-        (mkCodexRoutedModel {
-          slug = "qwen/qwen3.8-max";
-          displayName = "Qwen3.8 Max";
-          description = "Qwen3.8 Max via OpenRouter.";
-          contextWindow = 1000000;
-          defaultReasoningLevel = "medium";
-          priority = 7;
-        })
-        (mkCodexRoutedModel {
-          slug = "moonshotai/kimi-k3";
-          displayName = "Kimi K3";
-          description = "MoonshotAI Kimi K3 via OpenRouter.";
-          contextWindow = 1048576;
-          defaultReasoningLevel = "medium";
-          priority = 8;
-        })
-        # Stealth model: the vendor is undisclosed and the slug lives under
-        # `stealth/`, which the router already treats as routed because the slug
-        # is vendor-namespaced. Free while the evaluation window lasts.
-        (mkCodexRoutedModel {
-          slug = "stealth/ox-alpha";
-          displayName = "Ox Alpha";
-          description = "Ox Alpha (stealth frontier coding model) via OpenRouter.";
-          contextWindow = 1048576;
-          defaultReasoningLevel = "high";
-          priority = 9;
         })
       ];
     }
@@ -563,26 +469,20 @@ let
     mcp_oauth_callback_port = codexMcpOauthCallback.port;
     mcp_oauth_callback_url = codexMcpOauthCallback.url;
   }
-  // lib.optionalAttrs codexRouterEnabled {
-    # The loopback router is a provider of its own, not OpenAI reached at a different
-    # address, so it is declared as one. Overriding `openai_base_url` instead leaves the
-    # app believing the built-in OpenAI provider is in use, and the Desktop model picker
-    # then narrows itself to OpenAI's server-side allow-list — every routed model is
-    # dropped from the menu even though the app server lists them. Naming the provider is
-    # also the honest description: auth, catalog and upstream all belong to the router.
-    # Threads and scheduled tasks created before this provider existed carry the built-in
-    # `openai` provider id, and the app honours the id recorded on the thread. Without this
-    # they resolve to api.openai.com and fail with `invalid_api_key`. The two keys address
-    # different consumers -- new threads via `codex-router`, already-recorded ones via the
-    # built-in id -- so both point at the loopback router.
-    openai_base_url = "http://127.0.0.1:21434/v1";
-    model_provider = "codex-router";
+  // lib.optionalAttrs codexLegacyRouterAlias {
+    # `codex-router` was a loopback proxy that split vendor-namespaced slugs off to
+    # OpenRouter and passed everything else through to the ChatGPT backend unchanged.
+    # The routed catalog is gone, so the proxy is gone with it -- but every thread and
+    # scheduled task created while it ran recorded `model_provider = "codex-router"` in
+    # its session_meta, and the app honours the id recorded on the thread, not the
+    # current default. An id with no definition is fatal (`Error: Model provider
+    # `codex-router` not found`), so the name outlives the proxy as an alias for the
+    # upstream it used to forward to. Drop this block once those threads are no longer
+    # resumed. Nothing new selects it: new threads take the built-in provider.
     model_providers.codex-router = {
-      name = "Codex Router";
-      base_url = "http://127.0.0.1:21434/v1";
+      name = "ChatGPT backend (legacy codex-router alias)";
+      base_url = "https://chatgpt.com/backend-api/codex";
       wire_api = "responses";
-      # Credentials still come from ~/.codex/auth.json rather than an env var; the router
-      # substitutes its own key on the requests it forwards to OpenRouter.
       requires_openai_auth = true;
     };
   };
