@@ -11,27 +11,35 @@ enum EventKitBridgeTests {
         id: "calendar-personal", name: "Personal", source: source)
     static let shared = SnapshotContainer(
         id: "calendar-shared", name: "Shared", source: source)
+    static let ledger = CalendarLedgerEntry(
+        id: "calendar-empty", name: "Business", source: source, writable: true,
+        eventCount: 0, firstEventStart: nil, lastEventEnd: nil,
+        representativeTitles: [])
 
     static let events: [SnapshotEvent] = [
         SnapshotEvent(
             id: "recurring", title: "Recurring occurrence 2",
             start: date("2026-08-07T00:00:00Z"), end: date("2026-08-07T01:00:00Z"),
             allDay: false, location: nil, timeZone: "Asia/Tokyo",
+            beeperCrmMessageId: nil,
             calendar: personal, source: source),
         SnapshotEvent(
             id: "all-day", title: "All day",
             start: date("2026-07-31T00:00:00Z"), end: date("2026-08-01T00:00:00Z"),
             allDay: true, location: nil, timeZone: "Asia/Tokyo",
+            beeperCrmMessageId: nil,
             calendar: personal, source: source),
         SnapshotEvent(
             id: "cross-midnight", title: "Cross midnight",
             start: date("2026-07-31T14:00:00Z"), end: date("2026-07-31T17:00:00Z"),
             allDay: false, location: "Tokyo", timeZone: "Asia/Tokyo",
+            beeperCrmMessageId: nil,
             calendar: personal, source: source),
         SnapshotEvent(
             id: "recurring", title: "Recurring occurrence 1",
             start: date("2026-07-31T00:00:00Z"), end: date("2026-07-31T01:00:00Z"),
             allDay: false, location: nil, timeZone: "Asia/Tokyo",
+            beeperCrmMessageId: nil,
             calendar: personal, source: source),
     ]
 
@@ -135,6 +143,34 @@ enum EventKitBridgeTests {
                 containers: SnapshotContainers(calendars: [], reminderLists: []))
             precondition(!failed.ok && !failed.partial)
             precondition(failed.events.isEmpty && failed.reminders.isEmpty)
+        },
+        {
+            let request = CalendarDeleteRequest(
+                id: "calendar-empty", expectedName: "Business",
+                expectedSourceID: "source-1", expectedSourceName: "iCloud",
+                expectedSourceType: 2, expectedEventCount: 0)
+            precondition(calendarDeletionMatches(request, ledger))
+            precondition(!calendarDeletionMatches(
+                CalendarDeleteRequest(
+                    id: "calendar-empty", expectedName: "Business",
+                    expectedSourceID: "source-1", expectedSourceName: "iCloud",
+                    expectedSourceType: 2, expectedEventCount: 1), ledger))
+        },
+        {
+            precondition(
+                beeperCrmMessageId("operator note\nbeeper-crm:msg:message-1")
+                    == "message-1")
+            precondition(beeperCrmMessageId("operator note") == nil)
+            precondition(beeperCrmMessageId("beeper-crm:msg:") == nil)
+        },
+        {
+            let data = Data("""
+            {"id":"calendar-training","expectedName":"fetch: Garmin","newName":"Garminコーチ","expectedSourceID":"source-1","expectedSourceName":"iCloud","expectedSourceType":2}
+            """.utf8)
+            let request = try! JSONDecoder().decode(CalendarRenameRequest.self, from: data)
+            precondition(request.id == "calendar-training")
+            precondition(request.expectedName == "fetch: Garmin")
+            precondition(request.newName == "Garminコーチ")
         },
         {
             let encoded = try! encodeSnapshot(makeSnapshotResponse(

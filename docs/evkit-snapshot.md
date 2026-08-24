@@ -1,5 +1,37 @@
 # `evkit snapshot` specification
 
+## Calendar ledger and deletion
+
+`evkit calendar.catalog` is the read-only calendar ledger. It returns every
+EventKit event calendar with its stable calendar ID, display name, source
+(`id`, `name`, `type`), `writable` flag, event count, observed date range, and
+up to five representative titles. It does not accept a selector and never
+silently narrows the result to configured names.
+
+`evkit calendar.delete` is a typed, ID-keyed destructive operation. Its spec
+must repeat the expected name, source identity/type, and `expectedEventCount: 0`:
+
+```json
+{
+  "id": "...",
+  "expectedName": "Business",
+  "expectedSourceID": "...",
+  "expectedSourceName": "iCloud",
+  "expectedSourceType": 2,
+  "expectedEventCount": 0
+}
+```
+
+The signed bridge reads the calendar by ID, checks every precondition and
+  writability, verifies the calendar is empty across EventKit's full date range, and
+only then calls `removeCalendar`. A mismatch fails closed. Callers must read
+the catalog again and verify the ID is absent after a successful response.
+
+`evkit calendar.rename` is likewise ID-keyed and checks the current name and
+source identity before saving. It refuses read-only calendars; a candidate
+whose ledger entry has `writable: false` is reported unchanged rather than
+being renamed through a weaker API.
+
 ## Boundary
 
 `evkit snapshot` is the single bulk-read operation for Apple Calendar and

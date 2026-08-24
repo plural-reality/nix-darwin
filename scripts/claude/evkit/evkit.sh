@@ -15,6 +15,9 @@
 # usage:
 #   evkit status                                  # 許可状態を見る
 #   evkit seed                                    # 初回の許可ダイアログを出す(Air の画面で承認)
+#   evkit calendar.catalog                        # ID付きカレンダー台帳を読む
+#   evkit calendar.delete       < spec.json       # 空の指定カレンダーをIDで削除
+#   evkit calendar.rename       < spec.json       # IDと現状を検証して改名
 #   evkit snapshot            < snapshot.json     # Calendar + Reminders を一括読取
 #   evkit calendar            < events.json  # calendarId is required
 #   evkit reminders.recurring < spec.json
@@ -32,13 +35,16 @@ case "$op" in
   status | seed)
     request="$(printf '{"op":"%s"}' "$op")"
     ;;
-  snapshot | calendar | reminders.recurring | reminders.geofence | reminders.section | reminders.complete)
+  calendar.catalog)
+    request='{"op":"calendar.catalog"}'
+    ;;
+  snapshot | calendar | calendar.delete | calendar.rename | reminders.recurring | reminders.geofence | reminders.section | reminders.complete)
     # stdin の spec をそのまま包む。spec の schema は各 skill / 各 .swift が canonical。
     request="$(jq -c --arg op "$op" '{op: $op, spec: .}')"
     ;;
   *)
     printf 'evkit: unknown op %s\n' "$op" >&2
-    printf 'ops: status seed snapshot calendar reminders.recurring reminders.geofence reminders.section reminders.complete\n' >&2
+    printf 'ops: status seed calendar.catalog calendar.delete calendar.rename snapshot calendar reminders.recurring reminders.geofence reminders.section reminders.complete\n' >&2
     exit 64
     ;;
 esac
