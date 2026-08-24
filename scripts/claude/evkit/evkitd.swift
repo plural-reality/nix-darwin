@@ -24,6 +24,41 @@ struct SnapshotContainer: Codable, Equatable {
     let source: SnapshotSource
 }
 
+struct CalendarLedgerEntry: Codable, Equatable {
+    let id: String
+    let name: String
+    let source: SnapshotSource
+    let writable: Bool
+    let eventCount: Int
+    let firstEventStart: Date?
+    let lastEventEnd: Date?
+    let representativeTitles: [String]
+}
+
+struct CalendarCatalogResponse: Codable, Equatable {
+    let ok: Bool
+    let op: String
+    let status: AuthorizationState
+    let calendars: [CalendarLedgerEntry]
+    let error: SourceFailure?
+}
+
+struct CalendarDeleteRequest: Decodable {
+    let id: String
+    let expectedName: String
+    let expectedSourceID: String
+    let expectedSourceName: String
+    let expectedSourceType: Int
+    let expectedEventCount: Int
+}
+
+struct CalendarDeleteResponse: Codable, Equatable {
+    let ok: Bool
+    let op: String
+    let removed: CalendarLedgerEntry?
+    let error: SourceFailure?
+}
+
 struct SnapshotSelectors: Codable, Equatable {
     let names: [String]
     let ids: [String]
@@ -221,6 +256,30 @@ func sortContainers(_ containers: [SnapshotContainer]) -> [SnapshotContainer] {
     }
 }
 
+let representativeTitles: ([EKEvent]) -> [String] = { events in
+    Array(Set(events.compactMap(\.title).filter { !$0.isEmpty }).sorted().prefix(5))
+}
+
+let calendarLedgerEntry: (EKCalendar, [EKEvent]) -> CalendarLedgerEntry = { calendar, events in
+    CalendarLedgerEntry(
+        id: calendar.calendarIdentifier,
+        name: calendar.title,
+        source: sourceValue(calendar.source),
+        writable: calendar.allowsContentModifications,
+        eventCount: events.count,
+        firstEventStart: events.map(\.startDate).min(),
+        lastEventEnd: events.map(\.endDate).max(),
+        representativeTitles: representativeTitles(events))
+}
+
+let calendarDeletionMatches: (CalendarDeleteRequest, CalendarLedgerEntry) -> Bool = { request, entry in
+    request.expectedEventCount == entry.eventCount
+        && request.expectedName == entry.name
+        && request.expectedSourceID == entry.source.id
+        && request.expectedSourceName == entry.source.name
+        && request.expectedSourceType == entry.source.type
+}
+
 func selectContainers(
     _ containers: [SnapshotContainer], selectors: SnapshotSelectors
 ) -> [SnapshotContainer] {
@@ -345,6 +404,58 @@ let eventValue: (EKEvent) -> SnapshotEvent = { event in
         timeZone: event.timeZone?.identifier,
         calendar: calendar,
         source: calendar.source)
+}
+
+let calendarEvents: (EKEventStore, EKCalendar) -> [EKEvent] = { store, calendar in
+    let gregorian = Calendar(identifier: .gregorian)
+    let now = Date()
+    let ranges = (-3..<3).compactMap { offset -> (Date, Date)? in
+        let rangeStart = gregorian.date(byAdding: .year, value: offset, to: now)
+        let rangeEnd = gregorian.date(byAdding: .year, value: offset + 1, to: now)
+        return rangeStart.flatMap { first in rangeEnd.map { (first, $0) } }
+    }
+    let events = ranges.flatMap { range in
+        store.events(matching: store.predicateForEvents(
+            withStart: range.0, end: range.1, calendars: [calendar]))
+    }
+    return Array(events.reduce(into: [String: EKEvent]()) { result, event in
+        let title = event.title ?? ""
+        let key = "\(event.calendarItemIdentifier)|\(event.startDate.timeIntervalSince1970)|\(event.endDate.timeIntervalSince1970)|\(title)"
+        result[key] = event
+    }.values)
+}
+
+let allCalendarEvents: (EKEventStore, EKCalendar) -> [EKEvent] = { store, calendar in
+    let gregorian = Calendar(identifier: .gregorian)
+    let base = gregorian.date(from: DateComponents(year: 2000, month: 1, day: 1))!
+    let ranges = (0..<100).compactMap { offset -> (Date, Date)? in
+        let rangeStart = gregorian.date(byAdding: .year, value: offset, to: base)
+        let rangeEnd = gregorian.date(byAdding: .year, value: offset + 1, to: base)
+        return rangeStart.flatMap { first in rangeEnd.map { (first, $0) } }
+    }
+    let events = ranges.flatMap { range in
+        store.events(matching: store.predicateForEvents(
+            withStart: range.0, end: range.1, calendars: [calendar]))
+    }
+    return Array(events.reduce(into: [String: EKEvent]()) { result, event in
+        let title = event.title ?? ""
+        let key = "\(event.calendarItemIdentifier)|\(event.startDate.timeIntervalSince1970)|\(event.endDate.timeIntervalSince1970)|\(title)"
+        result[key] = event
+    }.values)
+}
+
+func encodeCalendarCatalog(_ response: CalendarCatalogResponse) throws -> Data {
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    encoder.outputFormatting = [.sortedKeys]
+    return try encoder.encode(response)
+}
+
+func encodeCalendarDelete(_ response: CalendarDeleteResponse) throws -> Data {
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    encoder.outputFormatting = [.sortedKeys]
+    return try encoder.encode(response)
 }
 
 let recurrenceFrequency: (EKRecurrenceFrequency) -> String = {
@@ -486,6 +597,70 @@ func seedAccess(_ store: EKEventStore) -> (event: AuthorizationState, reminder: 
     return (authorizationState(.event), authorizationState(.reminder))
 }
 
+func calendarCatalogResult(store: EKEventStore, status: AuthorizationState) -> Never {
+    let failure = fullAccessError(source: "events", status: status)
+    guard failure == nil else {
+        let response = CalendarCatalogResponse(
+            ok: false, op: "calendar.catalog", status: status,
+            calendars: [], error: failure)
+        return (try? encodeCalendarCatalog(response)).map {
+            respondData($0, ok: false)
+        } ?? fail("calendar catalog response encoding failed")
+    }
+    let calendars = store.calendars(for: .event)
+    let unsortedEntries = calendars.map { calendar in
+        calendarLedgerEntry(calendar, calendarEvents(store, calendar))
+    }
+    let entries = unsortedEntries.sorted { lhs, rhs in
+            lhs.name != rhs.name ? lhs.name < rhs.name
+                : lhs.source.name != rhs.source.name ? lhs.source.name < rhs.source.name
+                : lhs.id < rhs.id
+        }
+    let response = CalendarCatalogResponse(
+        ok: true, op: "calendar.catalog", status: status,
+        calendars: entries, error: nil)
+    return (try? encodeCalendarCatalog(response)).map {
+        respondData($0, ok: true)
+    } ?? fail("calendar catalog response encoding failed")
+}
+
+func calendarDeleteResult(
+    store: EKEventStore, specData: Data, status: AuthorizationState
+) -> Never {
+    guard let request = try? JSONDecoder().decode(CalendarDeleteRequest.self, from: specData)
+    else { fail("bad calendar.delete spec") }
+    _ = fullAccessError(source: "events", status: status).map {
+        fail($0.message, ["code": $0.code, "status": status.raw])
+    }
+    guard request.expectedEventCount == 0 else {
+        fail("calendar.delete requires expectedEventCount=0")
+    }
+    guard let calendar = store.calendars(for: .event)
+        .first(where: { $0.calendarIdentifier == request.id })
+    else { fail("calendar not found: \(request.id)") }
+    let entry = calendarLedgerEntry(calendar, allCalendarEvents(store, calendar))
+    guard calendarDeletionMatches(request, entry) else {
+        fail("calendar precondition mismatch", [
+            "actual": [
+                "id": entry.id, "name": entry.name, "sourceID": entry.source.id,
+                "sourceName": entry.source.name, "sourceType": entry.source.type,
+                "eventCount": entry.eventCount,
+            ],
+        ])
+    }
+    guard entry.eventCount == 0 else { fail("calendar is not empty") }
+    guard calendar.allowsContentModifications else { fail("calendar is not writable") }
+    do {
+        try store.removeCalendar(calendar, commit: true)
+    } catch {
+        fail("calendar delete failed: \(error)")
+    }
+    let response = CalendarDeleteResponse(ok: true, op: "calendar.delete", removed: entry, error: nil)
+    return (try? encodeCalendarDelete(response)).map {
+        respondData($0, ok: true)
+    } ?? fail("calendar delete response encoding failed")
+}
+
 func snapshotResult(
     store: EKEventStore, specData: Data,
     eventStatus: AuthorizationState, reminderStatus: AuthorizationState
@@ -613,11 +788,18 @@ func runBridge() -> Never {
         ])
     }
 
+    let store = EKEventStore()
+    if op == "calendar.catalog" {
+        calendarCatalogResult(store: store, status: eventStatus)
+    }
+
     guard let spec = request["spec"], JSONSerialization.isValidJSONObject(spec),
         let specData = try? JSONSerialization.data(withJSONObject: spec)
     else { fail("op \(op) requires a JSON object in spec") }
 
-    let store = EKEventStore()
+    if op == "calendar.delete" {
+        calendarDeleteResult(store: store, specData: specData, status: eventStatus)
+    }
     if op == "snapshot" {
         snapshotResult(
             store: store, specData: specData,
@@ -625,7 +807,7 @@ func runBridge() -> Never {
     }
 
     guard let handler = handlers[op] else {
-        fail("unknown op: \(op)", ["ops": Array(handlers.keys).sorted() + ["snapshot", "status", "seed"]])
+        fail("unknown op: \(op)", ["ops": Array(handlers.keys).sorted() + ["calendar.catalog", "calendar.delete", "snapshot", "status", "seed"]])
     }
 
     let needsEvent = op == "calendar"
