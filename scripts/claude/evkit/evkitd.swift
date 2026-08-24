@@ -437,6 +437,7 @@ let handlers: [String: (script: String, args: [String])] = [
         "/Users/tkgshn/.claude/skills/apple-reminders-geofence/scripts/geofence_reminders.swift", []),
     // セクションは EventKit に無い(private ReminderKit を使う)。詳細は section.swift の冒頭。
     "reminders.section": ("/Users/tkgshn/.claude/scripts/reminders/section.swift", []),
+    "reminders.complete": ("/Users/tkgshn/.claude/scripts/reminders/complete.swift", []),
 ]
 
 let stdoutHandle = FileHandle.standardOutput
@@ -575,9 +576,12 @@ func runChild(
 
     let childOut = (try? String(contentsOf: outURL, encoding: .utf8)) ?? ""
     let childErr = (try? String(contentsOf: errURL, encoding: .utf8)) ?? ""
+    let childOK = (try? JSONSerialization.jsonObject(with: Data(childOut.utf8)))
+        .flatMap { $0 as? [String: Any] }
+        .flatMap { $0["ok"] as? Bool } ?? (task.terminationStatus == 0)
     try? FileManager.default.removeItem(at: scratch)
     respond([
-        "ok": task.terminationStatus == 0,
+        "ok": task.terminationStatus == 0 && childOK,
         "op": op,
         "exit": Int(task.terminationStatus),
         "stdout": childOut,
