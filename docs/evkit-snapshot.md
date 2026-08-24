@@ -83,7 +83,7 @@ The client accepts one JSON object on stdin:
   For this MacBook Air the caller passes: `Taka の予定`,
   `takagi@plural-reality.com`, `Shunsuke Takagi (General)`, `Business `
   (末尾空白を含む),
-  `ルーティーン`, `Intervals.icu`, `日本の祝日`. Shared calendars are not
+  `ルーティーン`, `練習メニュー from interval.icu`, `日本の祝日`. Shared calendars are not
   passed.
 - Exact duplicate names can resolve to multiple containers (currently
   `日本の祝日`). The lifelog adapter de-duplicates identical event projections

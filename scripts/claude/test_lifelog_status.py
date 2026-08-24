@@ -116,7 +116,7 @@ def test_calendar_typed_eventkit_failures() -> None:
 def test_calendar_bindings_match_calendar_app_names() -> None:
     assert ll.CHECKED_CALENDARS == [
         "Taka の予定", "takagi@plural-reality.com", "Shunsuke Takagi (General)",
-        "Business ", "ルーティーン", "Intervals.icu", "日本の祝日",
+        "Business ", "ルーティーン", "練習メニュー from interval.icu", "日本の祝日",
     ]
 
 
