@@ -920,6 +920,32 @@ in
       '') codexProfileConfigFiles
     )}
     ${pkgs.coreutils}/bin/chmod 600 "$CODEX_HOME/config.toml" "$CODEX_HOME"/*.config.toml
+
+    # The experimental remote-control daemon intentionally starts the executable
+    # at this stable path. Keep its launcher Nix-owned rather than installing a
+    # second mutable Codex distribution.
+    ${pkgs.coreutils}/bin/mkdir -p "$CODEX_HOME/packages/standalone"
+    CODEX_STANDALONE="$CODEX_HOME/packages/standalone/current"
+    CODEX_STANDALONE_EXECUTABLE="$CODEX_STANDALONE/codex"
+    if [ -L "$CODEX_STANDALONE" ] || { [ -e "$CODEX_STANDALONE" ] && [ ! -d "$CODEX_STANDALONE" ]; }; then
+      echo "Refusing to replace unmanaged Codex standalone path: $CODEX_STANDALONE" >&2
+      exit 1
+    fi
+    if [ -e "$CODEX_STANDALONE_EXECUTABLE" ] && [ ! -L "$CODEX_STANDALONE_EXECUTABLE" ]; then
+      echo "Refusing to replace unmanaged Codex executable: $CODEX_STANDALONE_EXECUTABLE" >&2
+      exit 1
+    fi
+    if [ -L "$CODEX_STANDALONE_EXECUTABLE" ]; then
+      case "$(${pkgs.coreutils}/bin/readlink "$CODEX_STANDALONE_EXECUTABLE")" in
+        ${builtins.storeDir}/*/bin/codex) ;;
+        *)
+          echo "Refusing to replace unmanaged Codex executable: $CODEX_STANDALONE_EXECUTABLE" >&2
+          exit 1
+          ;;
+      esac
+    fi
+    ${pkgs.coreutils}/bin/mkdir -p "$CODEX_STANDALONE"
+    ${pkgs.coreutils}/bin/ln -sfn ${pkgs.llm-agents.codex}/bin/codex "$CODEX_STANDALONE_EXECUTABLE"
   '';
 
   home.activation.removeLegacyCodexHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
