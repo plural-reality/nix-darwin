@@ -8,6 +8,14 @@
 # (bundle ID + 証明書) に紐づくので、install 先が固定であることに依存していない。
 set -eu
 
+# このリポジトリの devshell(direnv)は nix の apple-sdk を SDKROOT/DEVELOPER_DIR に注入する。
+# 一方 evkitd は **システムの** Swift でビルドしないといけない(TCC は署名済みバイナリに紐づき、
+# 実行も system toolchain 前提)。両者が混ざると
+#   "no such module 'SwiftShims'" / "this SDK is not supported by the compiler"
+# で必ず落ちる(SDK 14.4 を Swift 6.3.3 が読めない)。repo 直下で叩くと direnv が有効なので、
+# 実質「repo の中では常に失敗する」状態だった。ここで環境を素に戻す。
+unset SDKROOT DEVELOPER_DIR || true
+
 IDENTITY="tkgshn EventKit Bridge Signing"
 BUNDLE_ID="com.tkgshn.evkitbridge"
 BASE="$HOME/Library/Application Support/EventKitBridge"

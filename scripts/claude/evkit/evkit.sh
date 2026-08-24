@@ -19,6 +19,7 @@
 #   evkit calendar            < events.json
 #   evkit reminders.recurring < spec.json
 #   evkit reminders.geofence  < spec.json
+#   evkit reminders.section   < spec.json     # リマインダーの「セクション」(EventKit に無い)
 set -euo pipefail
 
 readonly SOCK="/Users/tkgshn/Library/Application Support/EventKitBridge/evkitd.sock"
@@ -30,13 +31,13 @@ case "$op" in
   status | seed)
     request="$(printf '{"op":"%s"}' "$op")"
     ;;
-  snapshot | calendar | reminders.recurring | reminders.geofence)
+  snapshot | calendar | reminders.recurring | reminders.geofence | reminders.section)
     # stdin の spec をそのまま包む。spec の schema は各 skill / 各 .swift が canonical。
     request="$(jq -c --arg op "$op" '{op: $op, spec: .}')"
     ;;
   *)
     printf 'evkit: unknown op %s\n' "$op" >&2
-    printf 'ops: status seed snapshot calendar reminders.recurring reminders.geofence\n' >&2
+    printf 'ops: status seed snapshot calendar reminders.recurring reminders.geofence reminders.section\n' >&2
     exit 64
     ;;
 esac

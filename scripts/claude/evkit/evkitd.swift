@@ -435,6 +435,8 @@ let handlers: [String: (script: String, args: [String])] = [
     "reminders.recurring": ("/Users/tkgshn/.claude/scripts/reminders/recurring.swift", []),
     "reminders.geofence": (
         "/Users/tkgshn/.claude/skills/apple-reminders-geofence/scripts/geofence_reminders.swift", []),
+    // セクションは EventKit に無い(private ReminderKit を使う)。詳細は section.swift の冒頭。
+    "reminders.section": ("/Users/tkgshn/.claude/scripts/reminders/section.swift", []),
 ]
 
 let stdoutHandle = FileHandle.standardOutput
