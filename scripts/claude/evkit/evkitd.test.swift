@@ -173,6 +173,15 @@ enum EventKitBridgeTests {
             precondition(request.newName == "Garminコーチ")
         },
         {
+            let data = Data("""
+            {"sourceID":"source-old","targetID":"source-new","expectedSourceName":"アポ","expectedTargetName":"Taka の予定","expectedSourceSourceID":"icloud","expectedSourceSourceName":"iCloud","expectedSourceSourceType":2,"expectedTargetSourceID":"icloud","expectedTargetSourceName":"iCloud","expectedTargetSourceType":2,"expectedSourceEventCount":2,"expectedTargetEventCount":1,"removeSource":true}
+            """.utf8)
+            let request = try! JSONDecoder().decode(CalendarMergeRequest.self, from: data)
+            precondition(request.sourceID == "source-old")
+            precondition(request.targetID == "source-new")
+            precondition(request.removeSource)
+        },
+        {
             let encoded = try! encodeSnapshot(makeSnapshotResponse(
                 eventStatus: AuthorizationState(raw: 3, name: "fullAccess"),
                 reminderStatus: AuthorizationState(raw: 3, name: "fullAccess"),

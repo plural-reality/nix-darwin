@@ -33,6 +33,11 @@ requires the explicit typed field `allowReadOnly: true`; no weaker API or
 name-based fallback is used. EventKit may still reject the save, in which case
 the calendar remains unchanged.
 
+`evkit calendar.merge` moves events from one writable calendar to another by
+stable IDs. It verifies both calendars, exact expected event counts, and exact
+event-key conflicts before committing. `removeSource: true` removes the source
+only after all events have moved and the source is empty.
+
 ## Boundary
 
 `evkit snapshot` is the single bulk-read operation for Apple Calendar and
