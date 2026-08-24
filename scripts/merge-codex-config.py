@@ -14,6 +14,11 @@ import tomlkit
 
 RUNTIME_MCP_SERVERS = frozenset({"node_repl", "openaiDeveloperDocs"})
 
+# The loopback router these two selected is retired. They are matched by exact value so a
+# deliberate override survives; only the retired wiring is dropped.
+RETIRED_ROUTER_BASE_URL = "http://127.0.0.1:21434/v1"
+RETIRED_ROUTER_PROVIDER = "codex-router"
+
 
 def merge(target: MutableMapping, source: MutableMapping) -> MutableMapping:
     """Recursively project source values into target."""
@@ -58,6 +63,13 @@ def remove_retired_policy(document: MutableMapping) -> MutableMapping:
     features = document.get("features")
     multi_agent = features.get("multi_agent_v2") if isinstance(features, MutableMapping) else None
     isinstance(multi_agent, MutableMapping) and multi_agent.pop("max_concurrent_threads_per_session", None)
+    # Dropping these from the projection is not enough: this merge preserves keys the
+    # source no longer names, so the dead loopback address would stay in the mutable file
+    # and every new thread would record `codex-router` again, keeping the compatibility
+    # alias alive forever. The provider definition itself stays -- threads created while
+    # the router ran carry that id and an unknown id is fatal.
+    document.get("openai_base_url") == RETIRED_ROUTER_BASE_URL and document.pop("openai_base_url", None)
+    document.get("model_provider") == RETIRED_ROUTER_PROVIDER and document.pop("model_provider", None)
     return document
 
 

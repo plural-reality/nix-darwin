@@ -70,7 +70,6 @@ let
   ) remoteMcpServers;
 
   codexMcpOauthCallback = userConfig.codexMcpOauthCallback or null;
-  codexLegacyRouterAlias = userConfig.codexLegacyRouterAlias or false;
   # The model the picker and `codex exec` start from. Codex Desktop writes the
   # picker's choice back into config.toml, so this is the value each apply
   # resets to, not a lock. Downstreams that route to a model the base does not
@@ -402,6 +401,26 @@ let
     };
 
     model_catalog_json = "${codexModelCatalogFile}";
+
+    # `codex-router` was a loopback proxy that split vendor-namespaced slugs off to
+    # OpenRouter and passed everything else through to the ChatGPT backend unchanged.
+    # The routed catalog is gone, so the proxy is gone with it -- but every thread and
+    # scheduled task created while it ran recorded `model_provider = "codex-router"` in
+    # its session_meta, and the app honours the id recorded on the thread, not the
+    # current default. An id with no definition is fatal (`Error: Model provider
+    # `codex-router` not found`), so the name outlives the proxy as an alias for the
+    # upstream it used to forward to. It is unconditional on purpose: gating it on a flag
+    # means a downstream still passing the old attribute silently loses the alias, which
+    # breaks exactly the threads it exists for. Nothing new selects it -- new threads take
+    # the built-in provider -- so it can be dropped once no router-era thread is resumed.
+    model_providers.codex-router = {
+      name = "ChatGPT backend (legacy codex-router alias)";
+      base_url = "https://chatgpt.com/backend-api/codex";
+      wire_api = "responses";
+      # Custom providers leave `supports_websockets` unset, so this stays on HTTP/SSE --
+      # the same transport the proxy forced by answering upgrades with 426.
+      requires_openai_auth = true;
+    };
     model = codexModel;
     model_reasoning_effort = "high";
     personality = "pragmatic";
@@ -468,23 +487,6 @@ let
   // lib.optionalAttrs (codexMcpOauthCallback != null) {
     mcp_oauth_callback_port = codexMcpOauthCallback.port;
     mcp_oauth_callback_url = codexMcpOauthCallback.url;
-  }
-  // lib.optionalAttrs codexLegacyRouterAlias {
-    # `codex-router` was a loopback proxy that split vendor-namespaced slugs off to
-    # OpenRouter and passed everything else through to the ChatGPT backend unchanged.
-    # The routed catalog is gone, so the proxy is gone with it -- but every thread and
-    # scheduled task created while it ran recorded `model_provider = "codex-router"` in
-    # its session_meta, and the app honours the id recorded on the thread, not the
-    # current default. An id with no definition is fatal (`Error: Model provider
-    # `codex-router` not found`), so the name outlives the proxy as an alias for the
-    # upstream it used to forward to. Drop this block once those threads are no longer
-    # resumed. Nothing new selects it: new threads take the built-in provider.
-    model_providers.codex-router = {
-      name = "ChatGPT backend (legacy codex-router alias)";
-      base_url = "https://chatgpt.com/backend-api/codex";
-      wire_api = "responses";
-      requires_openai_auth = true;
-    };
   };
 
   codexManagedConfigFile = pkgs.writeText "codex-managed-config.json" (
