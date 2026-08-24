@@ -165,7 +165,7 @@ enum EventKitBridgeTests {
         },
         {
             let data = Data("""
-            {"id":"calendar-training","expectedName":"fetch: Garmin","newName":"Garminコーチ","expectedSourceID":"source-1","expectedSourceName":"iCloud","expectedSourceType":2}
+            {"id":"calendar-training","expectedName":"fetch: Garmin","newName":"Garminコーチ","expectedSourceID":"source-1","expectedSourceName":"iCloud","expectedSourceType":2,"allowReadOnly":true}
             """.utf8)
             let request = try! JSONDecoder().decode(CalendarRenameRequest.self, from: data)
             precondition(request.id == "calendar-training")
