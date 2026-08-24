@@ -10,7 +10,7 @@
 // usage: swift apply.swift <events.json>   |   cat events.json | swift apply.swift -
 //
 // JSON:
-// { "calendar": "目黒区民プール",
+// { "calendarId": "EventKit calendarIdentifier",
 //   "mode": "replace-month",            // replace-month | replace-range | append
 //   "year": 2026, "month": 6,           // replace-month の削除窓
 //   "rangeStart": "2026-06-01T00:00", "rangeEnd": "2026-07-01T00:00",  // replace-range の削除窓
@@ -26,7 +26,8 @@ import CoreLocation
 struct Loc: Codable { let title: String?; let address: String?; let lat: Double?; let lon: Double? }
 struct Ev: Codable { let title: String; let start: String; let end: String; let notes: String?; let url: String?; let location: Loc?; let alarms: [Int]? }  // alarms = start からの「分前」リスト
 struct Sched: Codable {
-    let calendar: String
+    let calendarId: String?
+    let calendar: String? // legacy automation input; it resolves only an existing iCloud calendar
     let mode: String?
     let year: Int?; let month: Int?
     let rangeStart: String?; let rangeEnd: String?
@@ -75,19 +76,20 @@ guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else {
     die("DENIED calendar access; run evkit seed on the MacBook Air", 1)
 }
 
-// --- calendar (必ず iCloud) ---
-func iCloudSource() -> EKSource? {
-    store.sources.first { $0.sourceType == .calDAV && $0.title == "iCloud" }
-        ?? store.calendars(for: .event).first { $0.source.sourceType == .calDAV }?.source
-        ?? store.sources.first { $0.sourceType == .calDAV }
-}
+// --- calendar (必ず既存の iCloud ID) ---
 func resolveCalendar() -> EKCalendar {
-    if let c = store.calendars(for: .event).first(where: { $0.title == sched.calendar && $0.source.sourceType == .calDAV }) { return c }
-    if let c = store.calendars(for: .event).first(where: { $0.title == sched.calendar }) { return c }
-    guard let src = iCloudSource() else { die("no iCloud source", 2) }
-    let cal = EKCalendar(for: .event, eventStore: store)
-    cal.title = sched.calendar; cal.source = src
-    do { try store.saveCalendar(cal, commit: true) } catch { die("create calendar failed: \(error)", 3) }
+    let fromId = sched.calendarId.flatMap { store.calendar(withIdentifier: $0) }
+    let fromLegacyName = sched.calendar.flatMap { name in
+        store.calendars(for: .event).first {
+            $0.title == name && $0.source.sourceType == .calDAV && $0.source.title == "iCloud"
+        }
+    }
+    guard let cal = fromId ?? fromLegacyName else {
+        die("calendar not found: require calendarId for a known iCloud calendar", 2)
+    }
+    guard cal.source.sourceType == .calDAV && cal.source.title == "iCloud" else {
+        die("calendar is not an iCloud calendar: \(cal.calendarIdentifier)", 3)
+    }
     return cal
 }
 let cal = resolveCalendar()
@@ -147,4 +149,4 @@ for ev in sched.events {
     catch { die("save failed (\(ev.title)): \(error)", 4) }
 }
 do { try store.commit() } catch { die("commit failed: \(error)", 5) }
-print("applied \(n) / removed \(removed) / mode=\(mode) / cal='\(sched.calendar)' source=\(cal.source.title)")
+print("applied \(n) / removed \(removed) / mode=\(mode) / calendarId=\(cal.calendarIdentifier) cal='\(cal.title)' source=\(cal.source.title)")
