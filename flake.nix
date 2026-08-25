@@ -169,7 +169,7 @@
             ./modules/codex-hooks.nix
 
           ]
-          ++ lib.optionals enableHomeManager [
+          ++ nixpkgs.lib.optionals enableHomeManager [
             inputs.home-manager.darwinModules.home-manager
             {
               home-manager.useGlobalPkgs = true;
