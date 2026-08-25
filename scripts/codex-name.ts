@@ -17,8 +17,13 @@ type Args = Readonly<{
   name?: string;
   all: boolean;
   auto: boolean;
+  notify: boolean;
   noLlm: boolean;
   model: string;
+}>;
+type NotifyEvent = Readonly<{
+  readonly threadId?: string;
+  readonly lastAssistantMessage?: string;
 }>;
 type Thread = Readonly<{
   id: string;
@@ -42,6 +47,7 @@ const usage = `Usage:
   codex-name --auto
   codex-name --auto --model gpt-5.3-codex-spark
   codex-name --auto --no-llm
+  codex-name --notify --auto
   codex-name --all --auto
 
 Default target is the newest non-archived Codex thread for the current cwd.
@@ -90,6 +96,7 @@ const parseArgs = (argv: ReadonlyArray<string>): Result<Args> =>
                           name: name.length > 0 ? name : undefined,
                           all: argv.includes("--all"),
                           auto,
+                          notify: argv.includes("--notify"),
                           noLlm: argv.includes("--no-llm"),
                           model:
                             (modelIndex >= 0 ? argv[modelIndex + 1] : undefined) ??
@@ -99,7 +106,7 @@ const parseArgs = (argv: ReadonlyArray<string>): Result<Args> =>
                     argv
                       .filter(
                         (arg, index) =>
-                          !["--id", "--all", "--auto", "--no-llm", "--model"].includes(arg) &&
+                          !["--id", "--all", "--auto", "--notify", "--no-llm", "--model"].includes(arg) &&
                           !(idIndex >= 0 && index === idIndex + 1) &&
                           !(modelIndex >= 0 && index === modelIndex + 1),
                       )
@@ -143,6 +150,27 @@ const titled = (current: string | null, next: string): string =>
     72,
   );
 
+const inferredStatus = (message: string): TitleStatus | undefined =>
+  /(要確認|確認してください|判断待ち|選択してください|承認待ち|認証待ち|パスワード|入力待ち|本人の操作|human action|user action|needs? (?:your|user)|blocked|waiting for (?:you|user)|requires? (?:your|user))/iu.test(
+    message,
+  )
+    ? "🚨"
+    : /(完了|実装しました|対応しました|検証済み|確認済み|読戻し|成功|解決しました|deployed|verified|completed|finished|done|resolved)/iu.test(
+          message,
+        )
+      ? "☑️"
+      : undefined;
+
+const statusTitled = (
+  current: string | null,
+  next: string,
+  message: string,
+): string =>
+  `${statusOf(next) ?? statusOf(current) ?? inferredStatus(message) ?? "⌛️"} ${topicOf(next) || "Codex session"}`.slice(
+    0,
+    72,
+  );
+
 const titleStatusSelfCheck = (): boolean =>
   (
     [
@@ -153,6 +181,36 @@ const titleStatusSelfCheck = (): boolean =>
       [null, "☑️ 結論", "☑️ 結論"],
     ] as const
   ).every(([current, next, expected]) => titled(current, next) === expected);
+
+const statusInferenceSelfCheck = (): boolean =>
+  statusTitled(null, "調査", "完了しました。検証済みです") === "☑️ 調査" &&
+  statusTitled(null, "調査", "承認待ちです") === "🚨 調査" &&
+  statusTitled("🚨 調査", "調査", "進行中") === "🚨 調査";
+
+const notifyEvent = (value: unknown): NotifyEvent =>
+  isRecord(value)
+    ? {
+        threadId:
+          typeof value["thread-id"] === "string"
+            ? value["thread-id"]
+            : typeof value.thread_id === "string"
+              ? value.thread_id
+              : undefined,
+        lastAssistantMessage:
+          typeof value["last-assistant-message"] === "string"
+            ? value["last-assistant-message"]
+            : typeof value.last_assistant_message === "string"
+              ? value.last_assistant_message
+              : undefined,
+      }
+    : {};
+
+const readNotifyEvent = (): Result<NotifyEvent> =>
+  ((read) =>
+    read.ok
+      ? ((parsed) =>
+          parsed.ok ? ok(notifyEvent(parsed.value)) : err(parsed.error))(tryResult(() => JSON.parse(read.value)))
+      : err(read.error))(tryResult(() => readFileSync(0, "utf8")));
 
 const contentText = (value: unknown): string =>
   typeof value === "string"
@@ -238,10 +296,11 @@ const generatedName = (
   args: Args,
   thread: Thread,
   fallback: string,
+  statusMessage: string,
   callback: (name: string) => boolean,
 ): boolean =>
   args.noLlm
-    ? callback(titled(thread.name, fallback))
+    ? callback(statusTitled(thread.name, fallback, statusMessage))
     : ((dir) =>
         ((outputPath) =>
           ((finish) =>
@@ -282,7 +341,7 @@ const generatedName = (
                 { cwd: thread.cwd || process.cwd(), stdio: ["ignore", "ignore", "ignore"] },
               ),
             ))(
-            once((name: string) => (cleanup(dir), callback(titled(thread.name, name)))),
+            once((name: string) => (cleanup(dir), callback(statusTitled(thread.name, name, statusMessage)))),
           ))(join(dir, "title.txt")))(
         mkdtempSync(join(tmpdir(), "codex-name-")),
       );
@@ -359,6 +418,14 @@ const complete = (
 );
 
 const run = (args: Args): boolean => {
+  const event = args.notify
+    ? ((read) =>
+        read.ok ? read.value : fail(`invalid notify event: ${read.error}`))(readNotifyEvent())
+    : {};
+  const targetThreadId = event.threadId ?? args.threadId;
+  const statusMessage = event.lastAssistantMessage ?? "";
+  const targetError = args.notify && !targetThreadId ? "notify event did not contain thread-id" : undefined;
+  targetError ? fail(targetError) : undefined;
   const child = spawn("codex", ["app-server", "--stdio"], {
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -366,10 +433,10 @@ const run = (args: Args): boolean => {
     child.stdin.write(`${JSON.stringify(payload)}\n`);
   const setThreadName = (thread: Thread): boolean =>
     args.auto
-      ? generatedName(args, thread, autoName(titleContext(thread) || thread.preview), (name) =>
+      ? generatedName(args, thread, autoName(titleContext(thread) || thread.preview), statusMessage, (name) =>
           send(setNameRequest(thread.id, name)),
         )
-    : send(setNameRequest(thread.id, titled(thread.name, args.name ?? "Codex session")));
+    : send(setNameRequest(thread.id, statusTitled(thread.name, args.name ?? "Codex session", statusMessage)));
   const timer = setTimeout(() => fail("timed out waiting for codex app-server"), 45_000);
   const lines = createInterface({ input: child.stdout });
 
@@ -387,10 +454,10 @@ const run = (args: Args): boolean => {
         ? parsed.value.error
           ? fail(parsed.value.error.message ?? "app-server returned an error")
           : parsed.value.id === 1
-            ? args.threadId
+            ? targetThreadId
               ? args.auto
-                ? send(readRequest(args.threadId))
-                : send(setNameRequest(args.threadId, args.name ?? "Codex session"))
+                ? send(readRequest(targetThreadId))
+                : send(setNameRequest(targetThreadId, args.name ?? "Codex session"))
               : send(listRequest(args))
             : parsed.value.id === 2
               ? ((thread) =>
@@ -415,7 +482,9 @@ const run = (args: Args): boolean => {
 };
 
 process.argv.includes("--self-check")
-  ? (titleStatusSelfCheck() ? console.log("codex-name: ok") : fail("self-check failed"))
+  ? titleStatusSelfCheck() && statusInferenceSelfCheck()
+    ? console.log("codex-name: ok")
+    : fail("self-check failed")
   : ((args) =>
       args.ok
         ? run(args.value)
