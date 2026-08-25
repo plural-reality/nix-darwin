@@ -205,12 +205,28 @@ const notifyEvent = (value: unknown): NotifyEvent =>
       }
     : {};
 
-const readNotifyEvent = (): Result<NotifyEvent> =>
-  ((read) =>
-    read.ok
-      ? ((parsed) =>
-          parsed.ok ? ok(notifyEvent(parsed.value)) : err(parsed.error))(tryResult(() => JSON.parse(read.value)))
-      : err(read.error))(tryResult(() => readFileSync(0, "utf8")));
+const parseNotifyEvent = (raw: string): Result<NotifyEvent> =>
+  ((parsed) =>
+    parsed.ok ? ok(notifyEvent(parsed.value)) : err(parsed.error))(tryResult(() => JSON.parse(raw)));
+
+const notifyArgument = (argv: ReadonlyArray<string>): string | undefined =>
+  argv.at(-1)?.trim().startsWith("{") ? argv.at(-1) : undefined;
+
+const readNotifyEvent = (argv: ReadonlyArray<string>): Result<NotifyEvent> =>
+  ((argument) =>
+    argument ? parseNotifyEvent(argument) : err("notify event argument is missing"))(notifyArgument(argv));
+
+const notifyInputSelfCheck = (): boolean =>
+  ((parsed) =>
+    parsed.ok &&
+    parsed.value.threadId === "00000000-0000-4000-8000-000000000000" &&
+    parsed.value.lastAssistantMessage === "完了しました")(
+    readNotifyEvent([
+      "--notify",
+      "--auto",
+      '{"type":"agent-turn-complete","thread-id":"00000000-0000-4000-8000-000000000000","last-assistant-message":"完了しました"}',
+    ]),
+  );
 
 const contentText = (value: unknown): string =>
   typeof value === "string"
@@ -420,7 +436,7 @@ const complete = (
 const run = (args: Args): boolean => {
   const event = args.notify
     ? ((read) =>
-        read.ok ? read.value : fail(`invalid notify event: ${read.error}`))(readNotifyEvent())
+        read.ok ? read.value : fail(`invalid notify event: ${read.error}`))(readNotifyEvent(process.argv.slice(2)))
     : {};
   const targetThreadId = event.threadId ?? args.threadId;
   const statusMessage = event.lastAssistantMessage ?? "";
@@ -482,7 +498,7 @@ const run = (args: Args): boolean => {
 };
 
 process.argv.includes("--self-check")
-  ? titleStatusSelfCheck() && statusInferenceSelfCheck()
+  ? titleStatusSelfCheck() && statusInferenceSelfCheck() && notifyInputSelfCheck()
     ? console.log("codex-name: ok")
     : fail("self-check failed")
   : ((args) =>

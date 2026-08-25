@@ -489,6 +489,17 @@
                 touch "$out"
               '';
 
+          checks.codex-name =
+            pkgs.runCommand "codex-name-check"
+              {
+                nativeBuildInputs = [ pkgs.nodejs_22 ];
+              }
+              ''
+                node --disable-warning=ExperimentalWarning \
+                  --experimental-strip-types ${./scripts/codex-name.ts} --self-check
+                touch "$out"
+              '';
+
           # Migration: nix run github:plural-reality/nix-darwin#migrate
           packages.migrate = pkgs.writeShellApplication {
             name = "migrate";

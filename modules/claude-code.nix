@@ -358,14 +358,18 @@ let
   # Lifecycle hooks are independently owned by modules/codex-hooks.nix.
   codexTurnEndNameHook = pkgs.writeShellApplication {
     name = "codex-name-on-turn-end";
-    runtimeInputs = [ pkgs.coreutils pkgs.llm-agents.codex ];
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.llm-agents.codex
+    ];
     text = ''
       set -u
       CODEX_HOME="''${CODEX_HOME:-$HOME/.codex}"
       LOG_DIR="$CODEX_HOME/logs"
       LOCK="$CODEX_HOME/.codex-name-hook.lock"
       mkdir -p "$LOG_DIR"
-      EVENT="$(cat)"
+      # Codex legacy notify appends its JSON payload as the final argv; stdin is null.
+      EVENT="''${1:-}"
 
       acquired=0
       for attempt in 1 2 3 4 5; do
@@ -383,7 +387,7 @@ let
 
       attempt=1
       while [ "$attempt" -le 2 ]; do
-        if printf '%s' "$EVENT" | ${pkgs.nodejs_22}/bin/node --experimental-strip-types ${../scripts/codex-name.ts} --notify --auto >> "$LOG_DIR/codex-name-hook.log" 2>&1; then
+        if ${pkgs.nodejs_22}/bin/node --experimental-strip-types ${../scripts/codex-name.ts} --notify --auto "$EVENT" >> "$LOG_DIR/codex-name-hook.log" 2>&1; then
           exit 0
         fi
         printf '%s\tattempt=%s failed\n' "$(date -u +%FT%TZ)" "$attempt" >> "$LOG_DIR/codex-name-hook.log"
