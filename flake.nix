@@ -50,6 +50,7 @@
           modules ? [ ],
           system ? "aarch64-darwin",
           upstreamPath ? null,
+          enableHomeManager ? true,
         }:
         nix-darwin.lib.darwinSystem {
           specialArgs = {
@@ -167,6 +168,8 @@
 
             ./modules/codex-hooks.nix
 
+          ]
+          ++ lib.optionals enableHomeManager [
             inputs.home-manager.darwinModules.home-manager
             {
               home-manager.useGlobalPkgs = true;
@@ -223,6 +226,7 @@
           modules ? [ ],
           system ? "aarch64-darwin",
           upstreamPath ? null,
+          enableHomeManager ? true,
         }:
         let
           pkgs = import nixpkgs { inherit system; };
@@ -235,6 +239,7 @@
               modules
               system
               upstreamPath
+              enableHomeManager
               ;
           };
           devShells.${system}.default = pkgs.mkShell {
