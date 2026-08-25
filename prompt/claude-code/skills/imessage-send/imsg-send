@@ -131,6 +131,7 @@ fi
 
 style_context() {
   [ -n "$STYLE_CONTACT" ] || emit_err "style contact required: use --style-contact <CRMの人物名>" 2
+  [ "$IMSG_HISTORY" != "imsg-history" ] || IMSG_HISTORY="$(command -v imsg-history 2>/dev/null || printf '%s' "$HOME/.nix-profile/bin/imsg-history")"
   command -v "$IMSG_HISTORY" >/dev/null 2>&1 || emit_err "iMessage history client not found: $IMSG_HISTORY" 6
 
   STYLE_CONTACT="$STYLE_CONTACT" CRM_BASE="$CRM_BASE" IMSG_HISTORY="$IMSG_HISTORY" HANDLE="$HANDLE" CHAT_ID="$CHAT_ID" python3 - <<'PY'
