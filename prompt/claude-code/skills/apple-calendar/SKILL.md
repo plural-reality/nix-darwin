@@ -10,7 +10,7 @@ Claude / Codex が Apple カレンダーにイベントを追加・更新する�
 **`swift apply.swift` を直接叩かない。** TCC はカレンダー許可を「責任プロセスの code identity」に紐づけるため、Claude Code から直接叩くと許可が claude のバージョン付きパスに付き、更新のたびに失効する。さらに SSH/tmux は Aqua セッションでないので許可ダイアログを描画できず自動拒否される。`evkit` は MacBook Air 常駐の署名済みヘルパー `evkitd` に委譲するので、どのホスト・どのセッションからでも通る。`apply.swift` はその evkitd が exec する実装であり、呼び出し口ではない。
 
 ## 不変の契約（必ず守る）
-1. **iCloud に入れる** — 新規カレンダーは iCloud(CalDAV)ソースに作る。On My Mac は iPhone と同期しない。`apply.swift` が自動でそうする。
+1. **既存の iCloud にだけ入れる** — `calendarId` は EventKit の stable ID。`apply.swift` はそのIDで既存の iCloud(CalDAV)カレンダーだけを解決し、未発見なら失敗する。名前一致で新規カレンダーを作らない。新しいカレンダーは Calendar.app で明示作成してからIDを取得する。On My Mac は iPhone と同期しない。
 2. **位置情報を必ず入れる** — `location`(または `defaultLocation`)を付ける。`address` を書けば `apply.swift` が Apple geocoder で座標化し `EKStructuredLocation.geoLocation` に入れる＝**iPhoneでタップ→Appleマップ**。座標が分かっていれば `lat`/`lon` を直接渡す（geocode省略）。場所が本当に無いイベントのみ location 省略可。
 3. **時刻指定**（`start`/`end` を ISO で）。終日にしない。
 4. **mode** で洗い替えか追記かを選ぶ。
@@ -27,7 +27,7 @@ Air がスリープ／到達不能なら ssh が失敗する。これは正し�
 ## 汎用イベントJSON schema
 ```json
 {
-  "calendar": "カレンダー名",
+  "calendarId": "EventKit calendarIdentifier",
   "mode": "append",                         // append | replace-month | replace-range
   "year": 2026, "month": 6,                 // replace-month の削除窓
   "rangeStart": "2026-06-01T00:00",          // replace-range の削除窓
@@ -42,6 +42,8 @@ Air がスリープ／到達不能なら ssh が失敗する。これは正し�
   ]
 }
 ```
+
+新規の呼出元は必ず `calendarId` を渡す。移行中の既存自動化だけは `calendar` 名を渡せるが、**既存の iCloud カレンダーへの完全一致に限る**。存在しなければ失敗し、新規作成はしない。
 - `start`/`end` は `yyyy-MM-ddTHH:mm`（ローカル時刻、秒付きも可）。
 - `location`/`defaultLocation`: `lat`/`lon` 省略時は `address` を geocode。`title` は地図ピンの名称。
 - `alarms`: `start` からの分前(例 `60`=1時間前, `1440`=1日前, `7200`=5日前)。複数指定で複数通知。省略可。
