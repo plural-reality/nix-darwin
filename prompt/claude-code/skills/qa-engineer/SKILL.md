@@ -11,6 +11,10 @@ description: >
 
 # QA Engineer — Playwright E2E for Next.js + Supabase
 
+## 実行境界
+
+この skill の `node_modules/.bin/playwright` は、lockfile を `npm ci` で再現した GitHub Actions の使い捨て実行環境、または対象プロジェクトが宣言した Nix 開発環境だけで使う。macOS のユーザープロファイルへ Playwright やブラウザを追加するために `npx`、`playwright install`、グローバル npm/Homebrew を実行しない。ログイン済み実Chromeの対話・視覚確認は `browser-automation` の実Chrome経路を使う。
+
 ## Architecture: 3-Project Pattern
 
 Split E2E tests into three Playwright projects based on infrastructure requirements:
@@ -267,9 +271,9 @@ e2e-smoke:
     - uses: actions/setup-node@v4
       with: { node-version: 20, cache: npm }
     - run: npm ci
-    - run: npx playwright install --with-deps chromium
+    - run: ./node_modules/.bin/playwright install --with-deps chromium
     - run: npm run build
-    - run: npx playwright test --project=smoke
+    - run: ./node_modules/.bin/playwright test --project=smoke
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:
@@ -293,9 +297,9 @@ e2e-authenticated:
         ANON_KEY=$(supabase status --output json | jq -r '.ANON_KEY // .API.ANON_KEY // empty')
         echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY" >> $GITHUB_ENV
     - run: npm ci
-    - run: npx playwright install --with-deps chromium
+    - run: ./node_modules/.bin/playwright install --with-deps chromium
     - run: npm run build
-    - run: npx playwright test --project=authenticated
+    - run: ./node_modules/.bin/playwright test --project=authenticated
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:
@@ -309,7 +313,7 @@ e2e-authenticated:
 ### Playwright Report
 
 ```bash
-npx playwright show-report
+./node_modules/.bin/playwright show-report
 ```
 
 ### Trace Viewer
@@ -317,7 +321,7 @@ npx playwright show-report
 Failed tests save traces to `test-results/`. Open with:
 
 ```bash
-npx playwright show-trace test-results/<folder>/trace.zip
+./node_modules/.bin/playwright show-trace test-results/<folder>/trace.zip
 ```
 
 ### Inbucket Web UI

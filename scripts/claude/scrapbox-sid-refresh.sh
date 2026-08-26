@@ -14,7 +14,19 @@
 set -uo pipefail
 
 CHROME_DIR="$HOME/Library/Application Support/Google/Chrome"
-SETTINGS="$HOME/.claude/settings.local.json"
+SETTINGS="${SETTINGS:-$HOME/.claude/settings.local.json}"
+
+ensure_settings_mode() {
+  [ ! -e "$SETTINGS" ] && [ ! -L "$SETTINGS" ] && return 0
+  [ -f "$SETTINGS" ] && [ ! -L "$SETTINGS" ] || {
+    echo "settings.local.json は通常ファイルでなければならない" >&2
+    return 1
+  }
+  /bin/chmod 600 "$SETTINGS" || {
+    echo "settings.local.json の権限更新に失敗" >&2
+    return 1
+  }
+}
 
 # 1) scrapbox connect.sid を持つ Chrome プロファイルのうち mtime 最新のものを選ぶ(現用プロファイル)。
 #    Profile 5 固定にしない — 現用が変わっても「最新に更新された Cookie DB」で追従する。
@@ -31,20 +43,23 @@ pick_profile() {
   [ -n "$best" ] && printf '%s' "$best"
 }
 
-COOKIE_DB=$(pick_profile) || true
-[ -z "${COOKIE_DB:-}" ] && { echo "no chrome profile with scrapbox connect.sid" >&2; exit 1; }
+main() {
+  ensure_settings_mode || exit 1
 
-# Cookies DB は Chrome 稼働中ロックされるので複製してから読む。
-TMPDB=$(mktemp) || exit 1
-trap 'rm -f "$TMPDB"' EXIT
-cp "$COOKIE_DB" "$TMPDB" || exit 1
+  COOKIE_DB=$(pick_profile) || true
+  [ -z "${COOKIE_DB:-}" ] && { echo "no chrome profile with scrapbox connect.sid" >&2; exit 1; }
 
-PW=$(security find-generic-password -w -s "Chrome Safe Storage" 2>/dev/null) || {
-  echo "keychain: Chrome Safe Storage 読取失敗(GUI許可/ロック?)" >&2; exit 1; }
-ENC=$(sqlite3 "$TMPDB" "SELECT quote(encrypted_value) FROM cookies WHERE host_key LIKE '%scrapbox.io%' AND name='connect.sid' ORDER BY LENGTH(encrypted_value) DESC LIMIT 1;") || exit 1
+  # Cookies DB は Chrome 稼働中ロックされるので複製してから読む。
+  TMPDB=$(mktemp) || exit 1
+  trap 'rm -f "$TMPDB"' EXIT
+  cp "$COOKIE_DB" "$TMPDB" || exit 1
+
+  PW=$(security find-generic-password -w -s "Chrome Safe Storage" 2>/dev/null) || {
+    echo "keychain: Chrome Safe Storage 読取失敗(GUI許可/ロック?)" >&2; exit 1; }
+  ENC=$(sqlite3 "$TMPDB" "SELECT quote(encrypted_value) FROM cookies WHERE host_key LIKE '%scrapbox.io%' AND name='connect.sid' ORDER BY LENGTH(encrypted_value) DESC LIMIT 1;") || exit 1
 
 # 2) 復号(AES-128-CBC / PBKDF2-SHA1 派生鍵)。cryptography/browser_cookie3 非依存 = hashlib+openssl。
-SID=$(python3 - "$PW" "$ENC" <<'PY' || true
+  SID=$(python3 - "$PW" "$ENC" <<'PY' || true
 import sys, hashlib, subprocess, urllib.parse
 pw = sys.argv[1].encode()
 q = sys.argv[2].strip()
@@ -67,27 +82,31 @@ val = dec[32:].decode('utf-8', 'replace')
 print(urllib.parse.unquote(val))
 PY
 )
-[ -z "${SID:-}" ] && { echo "decrypt failed" >&2; exit 1; }
+  [ -z "${SID:-}" ] && { echo "decrypt failed" >&2; exit 1; }
 
-# 3) /api/users/me で検証。isGuest=true なら失効しているので注入しない。
-ME=$(curl -s --max-time 8 -H "Cookie: connect.sid=${SID}" https://scrapbox.io/api/users/me 2>/dev/null || true)
-case "$ME" in
-  *'"isGuest":true'*|'') echo "decrypted SID is guest/invalid" >&2; exit 1 ;;
-esac
-echo "$ME" | grep -q '"name"' || { echo "unexpected /me response" >&2; exit 1; }
+  # 3) /api/users/me で検証。isGuest=true なら失効しているので注入しない。
+  ME=$(curl -s --max-time 8 -H "Cookie: connect.sid=${SID}" https://scrapbox.io/api/users/me 2>/dev/null || true)
+  case "$ME" in
+    *'"isGuest":true'*|'') echo "decrypted SID is guest/invalid" >&2; exit 1 ;;
+  esac
+  echo "$ME" | grep -q '"name"' || { echo "unexpected /me response" >&2; exit 1; }
 
-# 4) settings.local.json の env.SCRAPBOX_SID を原子的に注入(有効時のみ)。JSON 妥当性を確認してから置換。
-if [ -f "$SETTINGS" ]; then
-  CUR=$(jq -r '.env.SCRAPBOX_SID // ""' "$SETTINGS" 2>/dev/null || true)
-  if [ "$CUR" != "$SID" ]; then
-    TMPJSON=$(mktemp) || exit 1
-    if jq --arg s "$SID" '.env.SCRAPBOX_SID = $s' "$SETTINGS" > "$TMPJSON" 2>/dev/null && jq -e . "$TMPJSON" >/dev/null 2>&1; then
-      mv "$TMPJSON" "$SETTINGS"
-      echo "injected fresh SID into settings.local.json" >&2
-    else
-      rm -f "$TMPJSON"; echo "settings.local.json 更新失敗(JSON壊れず維持)" >&2
+  # 4) settings.local.json の env.SCRAPBOX_SID を原子的に注入(有効時のみ)。JSON 妥当性を確認してから置換。
+  if [ -f "$SETTINGS" ]; then
+    CUR=$(jq -r '.env.SCRAPBOX_SID // ""' "$SETTINGS" 2>/dev/null || true)
+    if [ "$CUR" != "$SID" ]; then
+      TMPJSON=$(mktemp "${SETTINGS}.tmp.XXXXXX") || exit 1
+      /bin/chmod 600 "$TMPJSON"
+      if jq --arg s "$SID" '.env.SCRAPBOX_SID = $s' "$SETTINGS" > "$TMPJSON" 2>/dev/null && jq -e . "$TMPJSON" >/dev/null 2>&1; then
+        mv "$TMPJSON" "$SETTINGS"
+        echo "injected fresh SID into settings.local.json" >&2
+      else
+        rm -f "$TMPJSON"; echo "settings.local.json 更新失敗(JSON壊れず維持)" >&2
+      fi
     fi
   fi
-fi
 
-printf '%s' "$SID"
+  printf '%s' "$SID"
+}
+
+[ "${BASH_SOURCE[0]}" = "$0" ] && main "$@"

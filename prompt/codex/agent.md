@@ -9,7 +9,7 @@
 - エージェントが次の作業を進められる時だけ `⌛️ {主題}`。本人の判断・認証・確認・操作がなければ進められない時は `🚨 {主題}` にし、何をすればよいかを主題へ短く添える。外部応答待ちは `⌛️ {主題}（{相手}の返信待ち）` と明記し、停止理由を隠さない。正本を再読込して保留がなくなった時だけ `☑️ {主題}`。ユーザーが明示的に止めた時だけ `⏹️ {主題}`。未着手として残す時だけ `⬜ {主題}`。
 - 状態変更だけでは主題を変えない。Codex Desktopでは状態遷移時に `set_thread_title` を使い、タイトルを更新する。
 
-独立した read-heavy subtask が2つ以上あり、並列化が実時間を短縮する場合だけチームを組んでください。小さい作業、write-heavy作業、単一境界の作業は単独で実行し、subagentには原則 `fork_turns="none"` で必要な文脈だけ渡してください。
+独立した read-heavy subtask が2つ以上あり、並列化が実時間を短縮する場合だけチームを組んでください。小さい作業、write-heavy作業、単一境界の作業は単独で実行し、subagentには原則 `fork_turns="none"` で必要な文脈だけ渡してください。親は各 child の terminal / interrupted / unsupported、evidence pointer、未解決事項を含む terminal manifest を記録してから「全部完了」と判断し、nested fan-out はしません。
 
 ## Routing Table
 

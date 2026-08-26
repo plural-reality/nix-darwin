@@ -59,9 +59,9 @@ Resolution: env var > config file > `full`.
 
 ## Update
 
-Enable auto-update once: open `/plugin`, go to Marketplaces, pick ponytail, Enable auto-update. Claude Code then pulls new versions at startup (run `/reload-plugins` when it prompts). Manual refresh: `/plugin marketplace update ponytail` then `/reload-plugins`.
+この環境では ponytail の skill 本体と Claude Code CLI は Nix/Home Manager 管理である。`/plugin` の auto-update、`/plugin marketplace update`、`npm install -g`、Homebrew upgrade を実行しない。更新が必要なら、canonical Nix source の input をレビュー付きで更新し、両ホストに適用して live projection を読み戻す。
 
-If `/plugin` is not recognized, your Claude Code is out of date. Update it (`npm install -g @anthropic-ai/claude-code@latest`, or `brew upgrade claude-code`) and restart. Other hosts use their own update flow.
+`/plugin` が認識されないことは mutable updater を起動する理由ではない。Nixで提供する Claude Code の版と、managed skill source の投影状態を先に確認する。
 
 ## More
 
