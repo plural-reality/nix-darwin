@@ -905,41 +905,74 @@ in
     readonly claude_prefix="$HOME/.local/share/claude/versions/"
     readonly claude_archive="$archive_root/claude-updater-legacy"
     readonly codex_target="$( ${pkgs.coreutils}/bin/readlink "$codex_legacy" 2>/dev/null || true)"
+    readonly codex_archive_target="$( ${pkgs.coreutils}/bin/readlink "$codex_archive" 2>/dev/null || true)"
     readonly codex_code_mode_target="$( ${pkgs.coreutils}/bin/readlink "$codex_code_mode_legacy" 2>/dev/null || true)"
+    readonly codex_code_mode_archive_target="$( ${pkgs.coreutils}/bin/readlink "$codex_code_mode_archive" 2>/dev/null || true)"
     readonly claude_target="$( ${pkgs.coreutils}/bin/readlink "$claude_legacy" 2>/dev/null || true)"
+    readonly claude_archive_target="$( ${pkgs.coreutils}/bin/readlink "$claude_archive" 2>/dev/null || true)"
 
+    # A prior activation can archive a known updater link and then stop before
+    # Home Manager creates the managed link.  The retained exact archive is the
+    # witness that lets the next activation remove only that same known link.
     case "$codex_target" in
       "$codex_expected")
-        test ! -e "$codex_archive" && test ! -L "$codex_archive" || {
-          echo "refusing to overwrite Codex launcher archive at $codex_archive" >&2
-          exit 1
-        }
-        ${pkgs.coreutils}/bin/mkdir -p "$archive_root"
-        ${pkgs.coreutils}/bin/mv "$codex_legacy" "$codex_archive"
+        case "$codex_archive_target" in
+          "$codex_expected") ${pkgs.coreutils}/bin/rm "$codex_legacy" ;;
+          "")
+            test ! -e "$codex_archive" || {
+              echo "refusing to replace unmanaged Codex launcher archive at $codex_archive" >&2
+              exit 1
+            }
+            ${pkgs.coreutils}/bin/mkdir -p "$archive_root"
+            ${pkgs.coreutils}/bin/mv "$codex_legacy" "$codex_archive"
+            ;;
+          *)
+            echo "refusing to replace unmanaged Codex launcher archive at $codex_archive" >&2
+            exit 1
+            ;;
+        esac
         ;;
       *) ;;
     esac
 
     case "$codex_code_mode_target" in
       "$codex_code_mode_expected")
-        test ! -e "$codex_code_mode_archive" && test ! -L "$codex_code_mode_archive" || {
-          echo "refusing to overwrite Codex Code Mode launcher archive at $codex_code_mode_archive" >&2
-          exit 1
-        }
-        ${pkgs.coreutils}/bin/mkdir -p "$archive_root"
-        ${pkgs.coreutils}/bin/mv "$codex_code_mode_legacy" "$codex_code_mode_archive"
+        case "$codex_code_mode_archive_target" in
+          "$codex_code_mode_expected") ${pkgs.coreutils}/bin/rm "$codex_code_mode_legacy" ;;
+          "")
+            test ! -e "$codex_code_mode_archive" || {
+              echo "refusing to replace unmanaged Codex Code Mode launcher archive at $codex_code_mode_archive" >&2
+              exit 1
+            }
+            ${pkgs.coreutils}/bin/mkdir -p "$archive_root"
+            ${pkgs.coreutils}/bin/mv "$codex_code_mode_legacy" "$codex_code_mode_archive"
+            ;;
+          *)
+            echo "refusing to replace unmanaged Codex Code Mode launcher archive at $codex_code_mode_archive" >&2
+            exit 1
+            ;;
+        esac
         ;;
       *) ;;
     esac
 
     case "$claude_target" in
       "$claude_prefix"*)
-        test ! -e "$claude_archive" && test ! -L "$claude_archive" || {
-          echo "refusing to overwrite Claude launcher archive at $claude_archive" >&2
-          exit 1
-        }
-        ${pkgs.coreutils}/bin/mkdir -p "$archive_root"
-        ${pkgs.coreutils}/bin/mv "$claude_legacy" "$claude_archive"
+        case "$claude_archive_target" in
+          "$claude_target") ${pkgs.coreutils}/bin/rm "$claude_legacy" ;;
+          "")
+            test ! -e "$claude_archive" || {
+              echo "refusing to replace unmanaged Claude launcher archive at $claude_archive" >&2
+              exit 1
+            }
+            ${pkgs.coreutils}/bin/mkdir -p "$archive_root"
+            ${pkgs.coreutils}/bin/mv "$claude_legacy" "$claude_archive"
+            ;;
+          *)
+            echo "refusing to replace unmanaged Claude launcher archive at $claude_archive" >&2
+            exit 1
+            ;;
+        esac
         ;;
       *) ;;
     esac
