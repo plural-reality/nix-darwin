@@ -36,3 +36,4 @@
 - `dispatched`、`tool_completed`、`task_completed`、`verified`、`deployed`、`published/sent`を同義にしない。finalで完了と呼べるのはcanonical readback済みの状態だけである。
 - 画像、PDF、large JSON、巨大logをsessionへ複製しない。path/hash/metadataと必要範囲だけを返し、`cat`より`rg`/`jq`/range read、tool output limitを使う。
 - subagentは要約とevidence pointerを返し、生の巨大outputを親へ再送しない。notification、screenshot、Coast、task toastはrouting evidenceであってmutation完了証拠ではない。
+- fan-out は、独立した read-heavy 境界が2つ以上ある時だけ、親を含む小さい上限で使う。nested fan-out はしない。親は各 child の terminal / interrupted / unsupported、evidence pointer、未解決事項を terminal manifest として確認しなければ、全件完了と扱わない。

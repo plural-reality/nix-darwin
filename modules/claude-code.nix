@@ -307,12 +307,12 @@ let
       }) sharedSkillNames
     );
 
-  # Claude Code skill source. With upstreamPath (the upstream repo's real on-disk path,
-  # injected by the launcher) ~/.claude/skills/<name> becomes an out-of-store symlink into
-  # it, so editing prompt/claude-code/skills/<name>/SKILL.md takes effect immediately (no
-  # apply). Falls back to the Nix-store snapshot when null — app design must not depend on
-  # checkout layout; only the launcher knows where the repo lives. SKILL.md uses no @[…]
-  # template refs, so the store expand is a no-op and both paths carry equivalent content.
+  # Claude Code skill source. A development launcher may explicitly inject upstreamPath
+  # and opt into an out-of-store symlink. Deployed profiles set it to null and therefore use
+  # the locked Nix-store snapshot: a skill change requires commit, downstream lock update,
+  # activation, and live projection readback. The application contract does not depend on a
+  # checkout path. SKILL.md uses no @[…] template refs, so both source strategies carry
+  # equivalent content.
   claudeSkillSource =
     name:
     if upstreamPath != null then
@@ -542,6 +542,12 @@ in
   home.shellAliases.ccx = "claude --settings '{\"ultracode\":true}'";
 
   home.file = {
+    # Agent CLI entry points are Nix-owned even when ~/.local/bin precedes the user
+    # profile in an interactive shell. Legacy updater links are preserved below before
+    # Home Manager checks targets; unexpected local files remain fail-closed.
+    ".local/bin/claude".source = "${pkgs.llm-agents.claude-code}/bin/claude";
+    ".local/bin/codex".source = "${pkgs.llm-agents.codex}/bin/codex";
+
     # Gemini
     ".gemini/GEMINI.md".text = expandTemplate {
       templateScope = ../prompt;
@@ -881,6 +887,44 @@ in
     fi
     ${pkgs.coreutils}/bin/mkdir -p "$CODEX_STANDALONE"
     ${pkgs.coreutils}/bin/ln -sfn ${pkgs.llm-agents.codex}/bin/codex "$CODEX_STANDALONE_EXECUTABLE"
+  '';
+
+  # Retire only the known mutable updater links.  The links are archived rather than
+  # deleted so an unexpected launcher remains a Home Manager collision and fails closed.
+  home.activation.preserveLegacyAgentCliLinks = lib.hm.dag.entryBefore [ "checkLinkTargets" ] ''
+    readonly archive_root="$HOME/.local/state/home-manager-adoption/agent-cli-links"
+    readonly codex_legacy="$HOME/.local/bin/codex"
+    readonly codex_expected="$HOME/.codex/packages/standalone/current/bin/codex"
+    readonly codex_archive="$archive_root/codex-standalone-legacy"
+    readonly claude_legacy="$HOME/.local/bin/claude"
+    readonly claude_prefix="$HOME/.local/share/claude/versions/"
+    readonly claude_archive="$archive_root/claude-updater-legacy"
+    readonly codex_target="$( ${pkgs.coreutils}/bin/readlink "$codex_legacy" 2>/dev/null || true)"
+    readonly claude_target="$( ${pkgs.coreutils}/bin/readlink "$claude_legacy" 2>/dev/null || true)"
+
+    case "$codex_target" in
+      "$codex_expected")
+        test ! -e "$codex_archive" && test ! -L "$codex_archive" || {
+          echo "refusing to overwrite Codex launcher archive at $codex_archive" >&2
+          exit 1
+        }
+        ${pkgs.coreutils}/bin/mkdir -p "$archive_root"
+        ${pkgs.coreutils}/bin/mv "$codex_legacy" "$codex_archive"
+        ;;
+      *) ;;
+    esac
+
+    case "$claude_target" in
+      "$claude_prefix"*)
+        test ! -e "$claude_archive" && test ! -L "$claude_archive" || {
+          echo "refusing to overwrite Claude launcher archive at $claude_archive" >&2
+          exit 1
+        }
+        ${pkgs.coreutils}/bin/mkdir -p "$archive_root"
+        ${pkgs.coreutils}/bin/mv "$claude_legacy" "$claude_archive"
+        ;;
+      *) ;;
+    esac
   '';
 
   home.activation.removeLegacyCodexHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''

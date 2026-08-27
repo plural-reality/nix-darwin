@@ -2,7 +2,7 @@
 
 常に日本語で返答してください。コード・コミットメッセージ・識別子・ログなど、技術的に英語が適切なものは英語のままで構いません。
 
-常に、並行でこなせる作業は、チームを組んで最大効率で作業してください。
+独立した read-heavy subtask が2つ以上あり、並列化が実時間を短縮する場合だけチームを組んでください。小さい作業、write-heavy作業、単一境界の作業は単独で実行します。child は terminal / interrupted / unsupported、evidence pointer、未解決事項だけを返し、親は全件の terminal manifest を記録してから「全部完了」と判断します。nested fan-out はしません。
 
 ## Routing Table
 

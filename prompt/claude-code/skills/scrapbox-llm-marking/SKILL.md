@@ -67,10 +67,13 @@ import '/api/code/tkgshn-extension/llm-auto-humanize/script.js';
 bundle 再生成（`@cosense/std` が無い/更新したい時。`@cosense/std` が入った node_modules のある場所で）:
 ```bash
 # @cosense/std の browser websocket patch entry = esm/websocket/mod.js
-npx --yes esbuild "<node_modules>/@cosense/std/esm/websocket/mod.js" \
+# esbuild は事前に Nix/Home Manager から注入する。npx で取得しない。
+esbuild "<node_modules>/@cosense/std/esm/websocket/mod.js" \
   --bundle --format=esm --platform=browser --target=es2020 --outfile=/tmp/cosense-ws.mjs
 # → 外部 import 0 の自己完結 ESM（patch を export）
 ```
+
+`esbuild` が PATH に無い場合は、その場で `npx` を実行しない。対象profileのNix定義へ明示的に追加し、適用後に再開する。
 
 ### D. Scrapbox への code:ブロック書き込み（重要）
 `code:script.js` ブロックへの書き込みは **`scrapbox-write` を使わない**（下記「空行バグ」）。`@cosense/std` の `patch` を直接使い、**code: ブロック内は空行を含め全行に先頭スペース1つ**を付ける（title + 各行 verbatim で全置換）。

@@ -21,6 +21,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -46,22 +47,13 @@ SECRET_PATTERNS = [
 _compiled_patterns = [(re.compile(p), label) for p, label in SECRET_PATTERNS]
 
 
-def scan_secrets(text: str) -> list[dict]:
-    """テキスト内のクレデンシャル・シークレットを検出する"""
-    findings = []
-    for pattern, label in _compiled_patterns:
-        for match in pattern.finditer(text):
-            matched = match.group()
-            # マスク処理: 先頭8文字 + *** + 末尾4文字（短い場合は全体マスク）
-            if len(matched) > 16:
-                masked = matched[:8] + "***" + matched[-4:]
-            else:
-                masked = matched[:4] + "***"
-            findings.append({
-                "type": label,
-                "masked_value": masked,
-            })
-    return findings
+def scan_secrets(text: str) -> list[str]:
+    """本文を返さず、検出した機微情報の種別だけを返す。"""
+    return [
+        label
+        for pattern, label in _compiled_patterns
+        for _ in pattern.finditer(text)
+    ]
 
 
 def get_appdata_path() -> Path:
@@ -1079,19 +1071,86 @@ def collect_opencode(cutoff_ms: int | None, project_filter: str | None) -> dict:
     return result
 
 
+def project_stats_for(sources: list[dict]) -> dict:
+    """本文を出力せず、プロジェクト別件数と利用ツールだけを射影する。"""
+    entries = tuple(
+        (source["tool"], message.get("project", "unknown"))
+        for source in sources
+        for message in source["messages"]
+    )
+    counts = Counter(project for _, project in entries)
+    return {
+        project: {
+            "count": count,
+            "tools": sorted({tool for tool, entry_project in entries if entry_project == project}),
+        }
+        for project, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    }
+
+
+def secret_warning_counts(sources: list[dict]) -> list[dict]:
+    """値・抜粋を出力しない、ツール別の種別件数。"""
+    counts = Counter(
+        (source["tool"], finding_type)
+        for source in sources
+        for message in source["messages"]
+        for finding_type in scan_secrets(message["text"])
+    )
+    return [
+        {"tool": tool, "type": finding_type, "count": count}
+        for (tool, finding_type), count in sorted(counts.items())
+    ]
+
+
+def source_metadata(source: dict) -> dict:
+    """安全な既定出力。本文配列を取り除く。"""
+    return {
+        "tool": source["tool"],
+        "status": source["status"],
+        "message_count": len(source["messages"]),
+        "period": source["period"],
+    }
+
+
+def build_output(
+    sources: list[dict],
+    days: int,
+    project: str | None,
+    include_content: bool,
+    collected_at: str,
+) -> dict:
+    """ローカルで収集した本文を、承認済みの出力射影に変換する。"""
+    return {
+        "summary": {
+            "total_messages": sum(len(source["messages"]) for source in sources),
+            "detected_tools": [source["tool"] for source in sources if source["status"] == "検出"],
+            "filter_days": days,
+            "filter_project": project,
+            "content_included": include_content,
+            "collected_at": collected_at,
+        },
+        "sources": sources if include_content else [source_metadata(source) for source in sources],
+        "project_stats": project_stats_for(sources),
+        "secret_warnings": secret_warning_counts(sources),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description="AI対話履歴を収集・整形して出力する")
     parser.add_argument("--days", type=int, default=7, help="過去N日分に限定（デフォルト: 7日）")
     parser.add_argument("--project", type=str, default=None, help="プロジェクト名でフィルタ（部分一致）")
+    parser.add_argument(
+        "--include-content",
+        action="store_true",
+        help="本文を標準出力へ含める（対象範囲への明示承認が必要）",
+    )
     args = parser.parse_args()
 
-    # カットオフ算出
     cutoff_ms = None
     if args.days and args.days > 0:
         cutoff_dt = datetime.now(tz=timezone.utc) - timedelta(days=args.days)
         cutoff_ms = int(cutoff_dt.timestamp() * 1000)
 
-    # 各ソースから収集
     sources = [
         collect_claude_code(cutoff_ms, args.project),
         collect_copilot_chat(cutoff_ms, args.project),
@@ -1104,55 +1163,14 @@ def main():
         collect_codex(cutoff_ms, args.project),
         collect_opencode(cutoff_ms, args.project),
     ]
+    output = build_output(
+        sources=sources,
+        days=args.days,
+        project=args.project,
+        include_content=args.include_content,
+        collected_at=datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+    )
 
-    # サマリー生成
-    total_messages = sum(len(s["messages"]) for s in sources)
-    detected = [s["tool"] for s in sources if s["status"] == "検出"]
-
-    output = {
-        "summary": {
-            "total_messages": total_messages,
-            "detected_tools": detected,
-            "filter_days": args.days,
-            "filter_project": args.project,
-            "collected_at": datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-        },
-        "sources": sources,
-    }
-
-    # シークレット検出
-    secret_warnings = []
-    for source in sources:
-        for msg in source["messages"]:
-            findings = scan_secrets(msg["text"])
-            if findings:
-                for f in findings:
-                    secret_warnings.append({
-                        "tool": source["tool"],
-                        "project": msg.get("project", "unknown"),
-                        "timestamp": msg.get("timestamp", "unknown"),
-                        "type": f["type"],
-                        "masked_value": f["masked_value"],
-                        "prompt_excerpt": msg["text"][:80].replace("\n", " "),
-                    })
-    output["secret_warnings"] = secret_warnings
-
-    # プロジェクト別集計
-    project_stats = {}
-    for source in sources:
-        for msg in source["messages"]:
-            proj = msg.get("project", "unknown")
-            if proj not in project_stats:
-                project_stats[proj] = {"count": 0, "tools": set()}
-            project_stats[proj]["count"] += 1
-            project_stats[proj]["tools"].add(source["tool"])
-    # setはJSON化できないのでlistに変換
-    output["project_stats"] = {
-        k: {"count": v["count"], "tools": list(v["tools"])}
-        for k, v in sorted(project_stats.items(), key=lambda x: -x[1]["count"])
-    }
-
-    # Windows環境でのUTF-8出力を保証
     if sys.platform == "win32":
         sys.stdout.reconfigure(encoding="utf-8")
     json.dump(output, sys.stdout, ensure_ascii=False, indent=2)

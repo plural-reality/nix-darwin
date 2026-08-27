@@ -61,7 +61,7 @@ description: "倍速会議(Cartographer)の公開リリースノートを Scrapb
 ## 実スクショの埋め込み(Gyazo)
 
 プレースホルダでなく実画像を入れる。
-1. 実機 Chrome でスクショ(playwright-core + `channel:'chrome'`・`NODE_PATH=<repo>/node_modules`)。フォント待ちタイムアウト回避に `await page.evaluate(()=>document.fonts.ready)` + `screenshot({clip:{...}})`。
+1. 実機 Chrome でスクショする。対象プロジェクトが宣言した Nix 開発環境の `playwright-core` と `channel:'chrome'` を使い、依存をその場で追加しない。フォント待ちは `document.fonts.ready` を完了させてから clip 指定で撮影する。
 2. Gyazo アップロード(**`dangerouslyDisableSandbox: true`** で curl・変数名は `GID` を避け `GYID`):
    ```sh
    GYID=$(cat ~/Library/Gyazo/id)
