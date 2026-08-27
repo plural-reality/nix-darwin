@@ -10,17 +10,23 @@ case "$#" in
 esac
 
 readonly home_files="$1"
+readonly activation_script="$2"
 readonly codex_target="$(readlink -f "$home_files/.local/bin/codex")"
 readonly code_mode_host_target="$(readlink -f "$home_files/.local/bin/codex-code-mode-host")"
+readonly managed_config_paths="$(/usr/bin/grep -Eo '/nix/store/[^[:space:]]+-codex-managed-config\.json' "$activation_script" | /usr/bin/sort -u)"
+
+test "$(printf '%s\n' "$managed_config_paths" | /usr/bin/wc -l | /usr/bin/tr -d '[:space:]')" = 1
+readonly managed_config="$managed_config_paths"
 
 test -x "$codex_target"
 test -x "$code_mode_host_target"
+test -f "$managed_config"
+jq -e '.features.code_mode == false' "$managed_config" >/dev/null
 printf '%s\n' "$codex_target" | grep -Eq '^/nix/store/[^/]+-codex-[^/]+/bin/codex$'
 printf '%s\n' "$code_mode_host_target" | grep -Eq '^/nix/store/[^/]+-codex-[^/]+/bin/codex-code-mode-host$'
 
 case "$#" in
   2)
-    readonly activation_script="$2"
     readonly fixture="$(mktemp -d)"
     readonly fragment="$fixture/preserve-links.sh"
     readonly exact_home="$fixture/exact"
