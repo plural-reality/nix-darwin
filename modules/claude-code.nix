@@ -547,6 +547,8 @@ in
     # Home Manager checks targets; unexpected local files remain fail-closed.
     ".local/bin/claude".source = "${pkgs.llm-agents.claude-code}/bin/claude";
     ".local/bin/codex".source = "${pkgs.llm-agents.codex}/bin/codex";
+    # Codex resolves its Code Mode sidecar beside the invoked launcher.
+    ".local/bin/codex-code-mode-host".source = "${pkgs.llm-agents.codex}/bin/codex-code-mode-host";
 
     # Gemini
     ".gemini/GEMINI.md".text = expandTemplate {
@@ -896,10 +898,14 @@ in
     readonly codex_legacy="$HOME/.local/bin/codex"
     readonly codex_expected="$HOME/.codex/packages/standalone/current/bin/codex"
     readonly codex_archive="$archive_root/codex-standalone-legacy"
+    readonly codex_code_mode_legacy="$HOME/.local/bin/codex-code-mode-host"
+    readonly codex_code_mode_expected="$HOME/.codex/packages/standalone/current/bin/codex-code-mode-host"
+    readonly codex_code_mode_archive="$archive_root/codex-code-mode-host-standalone-legacy"
     readonly claude_legacy="$HOME/.local/bin/claude"
     readonly claude_prefix="$HOME/.local/share/claude/versions/"
     readonly claude_archive="$archive_root/claude-updater-legacy"
     readonly codex_target="$( ${pkgs.coreutils}/bin/readlink "$codex_legacy" 2>/dev/null || true)"
+    readonly codex_code_mode_target="$( ${pkgs.coreutils}/bin/readlink "$codex_code_mode_legacy" 2>/dev/null || true)"
     readonly claude_target="$( ${pkgs.coreutils}/bin/readlink "$claude_legacy" 2>/dev/null || true)"
 
     case "$codex_target" in
@@ -910,6 +916,18 @@ in
         }
         ${pkgs.coreutils}/bin/mkdir -p "$archive_root"
         ${pkgs.coreutils}/bin/mv "$codex_legacy" "$codex_archive"
+        ;;
+      *) ;;
+    esac
+
+    case "$codex_code_mode_target" in
+      "$codex_code_mode_expected")
+        test ! -e "$codex_code_mode_archive" && test ! -L "$codex_code_mode_archive" || {
+          echo "refusing to overwrite Codex Code Mode launcher archive at $codex_code_mode_archive" >&2
+          exit 1
+        }
+        ${pkgs.coreutils}/bin/mkdir -p "$archive_root"
+        ${pkgs.coreutils}/bin/mv "$codex_code_mode_legacy" "$codex_code_mode_archive"
         ;;
       *) ;;
     esac
