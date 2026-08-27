@@ -467,6 +467,10 @@ let
     };
 
     features = {
+      # Keep custom-tool Mode off globally: OpenRouter's Responses adapter
+      # mis-encodes Code Mode calls.  The managed sidecar below remains usable
+      # by the CLI without enabling this Desktop execution mode.
+      code_mode = false;
       hooks = true;
       memories = false;
     };
