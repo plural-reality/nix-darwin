@@ -902,6 +902,33 @@ in
     esac
   '';
 
+  # This exact legacy Nix wrapper shadows the profile executable in every new
+  # fish login. Archive it once rather than taking ownership of fish's function
+  # namespace or touching Codex Desktop's mutable state.
+  home.activation.retireLegacyCodexFishWrapper = lib.hm.dag.entryBefore [ "checkLinkTargets" ] ''
+    readonly legacy_codex_fish="$HOME/.config/fish/functions/codex.fish"
+    readonly legacy_codex_fish_sha256="cb7807f74e0fdf711b726ca41af549c626a8edb937bd6b9973b20b1d59b5987e"
+    readonly legacy_codex_fish_archive_root="$HOME/.local/state/home-manager-adoption/agent-cli-links"
+    readonly legacy_codex_fish_archive="$legacy_codex_fish_archive_root/codex-fish-wrapper-0.144.6"
+
+    if [ -f "$legacy_codex_fish" ] && [ ! -L "$legacy_codex_fish" ]; then
+      readonly actual_sha256="$( ${pkgs.coreutils}/bin/sha256sum "$legacy_codex_fish" | ${pkgs.coreutils}/bin/cut -d ' ' -f 1)"
+      test "$actual_sha256" = "$legacy_codex_fish_sha256" || {
+        echo "refusing to replace unmanaged Codex fish wrapper at $legacy_codex_fish" >&2
+        exit 1
+      }
+      test ! -e "$legacy_codex_fish_archive" && test ! -L "$legacy_codex_fish_archive" || {
+        echo "refusing to replace existing Codex fish wrapper archive at $legacy_codex_fish_archive" >&2
+        exit 1
+      }
+      ${pkgs.coreutils}/bin/mkdir -p "$legacy_codex_fish_archive_root"
+      ${pkgs.coreutils}/bin/mv "$legacy_codex_fish" "$legacy_codex_fish_archive"
+    elif [ -e "$legacy_codex_fish" ] || [ -L "$legacy_codex_fish" ]; then
+      echo "refusing to replace unmanaged Codex fish wrapper at $legacy_codex_fish" >&2
+      exit 1
+    fi
+  '';
+
   home.activation.removeLegacyCodexHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     LEGACY_HOOKS="$HOME/.codex/hooks.json"
     LEGACY_HOOKS_SHA256="0dd0a2d540cfbef57e7b68473298aa68b140da6408475b21a39219bcf2ca6d3c"
