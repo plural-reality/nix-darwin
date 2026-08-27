@@ -546,13 +546,10 @@ in
   home.shellAliases.ccx = "claude --settings '{\"ultracode\":true}'";
 
   home.file = {
-    # Agent CLI entry points are Nix-owned even when ~/.local/bin precedes the user
-    # profile in an interactive shell. Legacy updater links are preserved below before
-    # Home Manager checks targets; unexpected local files remain fail-closed.
+    # Claude's updater compatibility link is retired below before Home Manager
+    # checks targets. Codex's Desktop standalone namespace is deliberately not
+    # owned here: shell resolution reaches the immutable Home Manager profile first.
     ".local/bin/claude".source = "${pkgs.llm-agents.claude-code}/bin/claude";
-    ".local/bin/codex".source = "${pkgs.llm-agents.codex}/bin/codex";
-    # Codex resolves its Code Mode sidecar beside the invoked launcher.
-    ".local/bin/codex-code-mode-host".source = "${pkgs.llm-agents.codex}/bin/codex-code-mode-host";
 
     # Gemini
     ".gemini/GEMINI.md".text = expandTemplate {
@@ -868,98 +865,21 @@ in
     )}
     ${pkgs.coreutils}/bin/chmod 600 "$CODEX_HOME/config.toml" "$CODEX_HOME"/*.config.toml
 
-    # The experimental remote-control daemon intentionally starts the executable
-    # at this stable path. Keep its launcher Nix-owned rather than installing a
-    # second mutable Codex distribution.
-    ${pkgs.coreutils}/bin/mkdir -p "$CODEX_HOME/packages/standalone"
-    CODEX_STANDALONE="$CODEX_HOME/packages/standalone/current"
-    CODEX_STANDALONE_EXECUTABLE="$CODEX_STANDALONE/codex"
-    if [ -L "$CODEX_STANDALONE" ] || { [ -e "$CODEX_STANDALONE" ] && [ ! -d "$CODEX_STANDALONE" ]; }; then
-      echo "Refusing to replace unmanaged Codex standalone path: $CODEX_STANDALONE" >&2
-      exit 1
-    fi
-    if [ -e "$CODEX_STANDALONE_EXECUTABLE" ] && [ ! -L "$CODEX_STANDALONE_EXECUTABLE" ]; then
-      echo "Refusing to replace unmanaged Codex executable: $CODEX_STANDALONE_EXECUTABLE" >&2
-      exit 1
-    fi
-    if [ -L "$CODEX_STANDALONE_EXECUTABLE" ]; then
-      case "$(${pkgs.coreutils}/bin/readlink "$CODEX_STANDALONE_EXECUTABLE")" in
-        ${builtins.storeDir}/*/bin/codex) ;;
-        *)
-          echo "Refusing to replace unmanaged Codex executable: $CODEX_STANDALONE_EXECUTABLE" >&2
-          exit 1
-          ;;
-      esac
-    fi
-    ${pkgs.coreutils}/bin/mkdir -p "$CODEX_STANDALONE"
-    ${pkgs.coreutils}/bin/ln -sfn ${pkgs.llm-agents.codex}/bin/codex "$CODEX_STANDALONE_EXECUTABLE"
   '';
 
-  # Retire only the known mutable updater links.  The links are archived rather than
-  # deleted so an unexpected launcher remains a Home Manager collision and fails closed.
-  home.activation.preserveLegacyAgentCliLinks = lib.hm.dag.entryBefore [ "checkLinkTargets" ] ''
+  # Retire only Claude's known mutable updater link. Codex Desktop's standalone
+  # directory is a separate mutable runtime and must not be coupled to this profile.
+  home.activation.preserveLegacyClaudeCliLink = lib.hm.dag.entryBefore [ "checkLinkTargets" ] ''
     readonly archive_root="$HOME/.local/state/home-manager-adoption/agent-cli-links"
-    readonly codex_legacy="$HOME/.local/bin/codex"
-    readonly codex_expected="$HOME/.codex/packages/standalone/current/bin/codex"
-    readonly codex_archive="$archive_root/codex-standalone-legacy"
-    readonly codex_code_mode_legacy="$HOME/.local/bin/codex-code-mode-host"
-    readonly codex_code_mode_expected="$HOME/.codex/packages/standalone/current/bin/codex-code-mode-host"
-    readonly codex_code_mode_archive="$archive_root/codex-code-mode-host-standalone-legacy"
     readonly claude_legacy="$HOME/.local/bin/claude"
     readonly claude_prefix="$HOME/.local/share/claude/versions/"
     readonly claude_archive="$archive_root/claude-updater-legacy"
-    readonly codex_target="$( ${pkgs.coreutils}/bin/readlink "$codex_legacy" 2>/dev/null || true)"
-    readonly codex_archive_target="$( ${pkgs.coreutils}/bin/readlink "$codex_archive" 2>/dev/null || true)"
-    readonly codex_code_mode_target="$( ${pkgs.coreutils}/bin/readlink "$codex_code_mode_legacy" 2>/dev/null || true)"
-    readonly codex_code_mode_archive_target="$( ${pkgs.coreutils}/bin/readlink "$codex_code_mode_archive" 2>/dev/null || true)"
     readonly claude_target="$( ${pkgs.coreutils}/bin/readlink "$claude_legacy" 2>/dev/null || true)"
     readonly claude_archive_target="$( ${pkgs.coreutils}/bin/readlink "$claude_archive" 2>/dev/null || true)"
 
     # A prior activation can archive a known updater link and then stop before
     # Home Manager creates the managed link.  The retained exact archive is the
     # witness that lets the next activation remove only that same known link.
-    case "$codex_target" in
-      "$codex_expected")
-        case "$codex_archive_target" in
-          "$codex_expected") ${pkgs.coreutils}/bin/rm "$codex_legacy" ;;
-          "")
-            test ! -e "$codex_archive" || {
-              echo "refusing to replace unmanaged Codex launcher archive at $codex_archive" >&2
-              exit 1
-            }
-            ${pkgs.coreutils}/bin/mkdir -p "$archive_root"
-            ${pkgs.coreutils}/bin/mv "$codex_legacy" "$codex_archive"
-            ;;
-          *)
-            echo "refusing to replace unmanaged Codex launcher archive at $codex_archive" >&2
-            exit 1
-            ;;
-        esac
-        ;;
-      *) ;;
-    esac
-
-    case "$codex_code_mode_target" in
-      "$codex_code_mode_expected")
-        case "$codex_code_mode_archive_target" in
-          "$codex_code_mode_expected") ${pkgs.coreutils}/bin/rm "$codex_code_mode_legacy" ;;
-          "")
-            test ! -e "$codex_code_mode_archive" || {
-              echo "refusing to replace unmanaged Codex Code Mode launcher archive at $codex_code_mode_archive" >&2
-              exit 1
-            }
-            ${pkgs.coreutils}/bin/mkdir -p "$archive_root"
-            ${pkgs.coreutils}/bin/mv "$codex_code_mode_legacy" "$codex_code_mode_archive"
-            ;;
-          *)
-            echo "refusing to replace unmanaged Codex Code Mode launcher archive at $codex_code_mode_archive" >&2
-            exit 1
-            ;;
-        esac
-        ;;
-      *) ;;
-    esac
-
     case "$claude_target" in
       "$claude_prefix"*)
         case "$claude_archive_target" in

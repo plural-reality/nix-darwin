@@ -274,6 +274,10 @@ in
     GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND = "file";
   };
   home.sessionPath = [
+    # The Desktop standalone updater owns ~/.local/bin/codex. Put Home
+    # Manager's immutable package profile first so shell-launched Codex and
+    # its adjacent Code Mode sidecar cannot be replaced by that mutable link.
+    "${config.home.homeDirectory}/.nix-profile/bin"
     "${config.home.homeDirectory}/.local/bin"
   ];
 
