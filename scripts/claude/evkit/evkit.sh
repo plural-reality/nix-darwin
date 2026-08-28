@@ -24,9 +24,10 @@
 #   evkit reminders.geofence  < spec.json
 #   evkit reminders.section   < spec.json     # リマインダーの「セクション」(EventKit に無い)
 #   evkit reminders.complete  < spec.json     # 完了状態の変更
+#   evkit reminders.ensure    < spec.json     # marker付き1件を冪等作成
 set -euo pipefail
 
-readonly SOCK="/Users/tkgshn/Library/Application Support/EventKitBridge/evkitd.sock"
+readonly SOCK="$HOME/Library/Application Support/EventKitBridge/evkitd.sock"
 readonly AIR_HOST="tkgshn-macbook-air"
 
 op="${1:-status}"
@@ -38,21 +39,31 @@ case "$op" in
   calendar.catalog)
     request='{"op":"calendar.catalog"}'
     ;;
-  snapshot | calendar | calendar.delete | calendar.rename | reminders.recurring | reminders.geofence | reminders.section | reminders.complete)
+  snapshot | calendar | calendar.delete | calendar.rename | reminders.recurring | reminders.geofence | reminders.section | reminders.complete | reminders.ensure)
     # stdin の spec をそのまま包む。spec の schema は各 skill / 各 .swift が canonical。
     request="$(jq -c --arg op "$op" '{op: $op, spec: .}')"
     ;;
   *)
     printf 'evkit: unknown op %s\n' "$op" >&2
-    printf 'ops: status seed calendar.catalog calendar.delete calendar.rename snapshot calendar reminders.recurring reminders.geofence reminders.section reminders.complete\n' >&2
+    printf 'ops: status seed calendar.catalog calendar.delete calendar.rename snapshot calendar reminders.recurring reminders.geofence reminders.section reminders.complete reminders.ensure\n' >&2
     exit 64
     ;;
 esac
 
 # 1接続 = 改行終端の JSON 1行。macOS の nc には BSD の -N(EOF で half-close)が無いので、
 # 「stdin を閉じれば相手が読み終える」に依存せず、改行で request の終端を示す。
-if [ -S "$SOCK" ]; then
+local_call() {
   printf '%s\n' "$request" | nc -U "$SOCK"
+}
+
+if [ -S "$SOCK" ]; then
+  response="$(local_call 2>/dev/null || true)"
+  if [ -z "$response" ]; then
+    sleep 0.2
+    response="$(local_call 2>/dev/null || true)"
+  fi
+  [ -n "$response" ] || { printf 'evkit: socket activation returned no response after one retry\n' >&2; exit 75; }
+  printf '%s\n' "$response"
 elif [ "$(hostname -s)" = "tkgshn-MacBook-Air" ]; then
   printf 'evkit: ここは Air なのにソケットが無い。LaunchAgent が落ちている。\n' >&2
   printf '  launchctl print gui/%s/org.nix-community.home.evkitd\n' "$(id -u)" >&2

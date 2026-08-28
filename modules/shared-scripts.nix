@@ -334,6 +334,24 @@ let
     '';
   };
 
+  # Stable EventKit client. TCC belongs to the signed socket-activated bridge;
+  # this launcher only provides the typed JSON transport and never points into /tmp.
+  evkit = pkgs.writeShellApplication {
+    name = "evkit";
+    runtimeInputs = with pkgs; [ coreutils jq netcat openssh ];
+    text = builtins.readFile ../scripts/claude/evkit/evkit.sh;
+  };
+
+  dailyWatch = pkgs.writeShellApplication {
+    name = "daily-watch";
+    runtimeInputs = with pkgs; [
+      bash coreutils curl jq libarchive gnugrep gnused nodejs
+    ];
+    text = ''
+      exec ${pkgs.bash}/bin/bash "$HOME/.claude/scripts/daily-watch.sh" "$@"
+    '';
+  };
+
   nixApply = pkgs.writeScriptBin "nix-apply" ''
     #!${pkgs.bash}/bin/bash
     exec ${../scripts/nix-apply.sh} "$@"
@@ -417,6 +435,8 @@ in
     imsgHistory
     photoLibrary
     photoCardScan
+    evkit
+    dailyWatch
     nixApply
     appleNotesToScrapbox
 
@@ -438,6 +458,8 @@ in
   home.file.".local/bin/scrapbox-write".source = "${scrapbox-write}/bin/scrapbox-write";
   home.file.".local/bin/scrapbox-rename".source = "${scrapbox-rename}/bin/scrapbox-rename";
   home.file.".local/bin/photo-library".source = "${photoLibrary}/bin/photo-library";
+  home.file.".local/bin/evkit".source = "${evkit}/bin/evkit";
+  home.file.".local/bin/daily-watch".source = "${dailyWatch}/bin/daily-watch";
   home.file.".local/bin/gtd-canvas-serve".source = "${gtd-canvas-serve}/bin/gtd-canvas-serve";
 
   # ディレクトリ丸ごと1つの store path。ファイル単位の symlink にすると、ESM が

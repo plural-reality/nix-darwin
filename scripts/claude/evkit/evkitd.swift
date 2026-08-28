@@ -77,6 +77,27 @@ struct CalendarRenameResponse: Codable, Equatable {
     let error: SourceFailure?
 }
 
+struct ReminderEnsureRequest: Decodable, Equatable {
+    let listTitle: String
+    let title: String
+    let marker: String
+}
+
+struct ReminderEnsureItem: Codable, Equatable {
+    let id: String
+    let title: String
+    let listTitle: String
+    let marker: String
+}
+
+struct ReminderEnsureResponse: Codable, Equatable {
+    let ok: Bool
+    let op: String
+    let created: Bool
+    let reminder: ReminderEnsureItem?
+    let error: SourceFailure?
+}
+
 struct SnapshotSelectors: Codable, Equatable {
     let names: [String]
     let ids: [String]
@@ -160,12 +181,14 @@ struct SnapshotReminder: Codable, Equatable {
     let completedAt: Date?
     let list: SnapshotContainer
     let priority: Int
+    // Only automation-owned marker lines are projected. Arbitrary notes remain private.
+    let watchMarkers: [String]
     let recurrence: [SnapshotRecurrence]
     let locationAlerts: [SnapshotLocationAlert]
 
     enum CodingKeys: String, CodingKey {
         case id, title, due, dueAllDay, dueTimeZone, completed, completedAt, list, priority
-        case recurrence, locationAlerts
+        case watchMarkers, recurrence, locationAlerts
     }
 
     func encode(to encoder: Encoder) throws {
@@ -181,6 +204,7 @@ struct SnapshotReminder: Codable, Equatable {
             ?? values.encodeNil(forKey: .completedAt)
         try values.encode(list, forKey: .list)
         try values.encode(priority, forKey: .priority)
+        try values.encode(watchMarkers, forKey: .watchMarkers)
         try values.encode(recurrence, forKey: .recurrence)
         try values.encode(locationAlerts, forKey: .locationAlerts)
     }
@@ -413,6 +437,18 @@ let beeperCrmMessageId: (String?) -> String? = { notes in
         .flatMap { $0.isEmpty ? nil : $0 }
 }
 
+let normalizedWatchMarker: (String) -> String? = { value in
+    let marker = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    return marker.hasPrefix("[watch:") && marker.hasSuffix("]")
+        && marker.count <= 160 && !marker.contains("\n") && !marker.contains("\r")
+        ? marker : nil
+}
+
+let watchMarkers: (String?) -> [String] = { notes in
+    Array(Set((notes ?? "").split(separator: "\n")
+        .compactMap { normalizedWatchMarker(String($0)) })).sorted()
+}
+
 let selectedCalendars: ([EKCalendar], SnapshotSelectors) -> [EKCalendar] = {
     calendars, selectors in
     let names = Set(selectors.names)
@@ -466,6 +502,12 @@ func encodeCalendarDelete(_ response: CalendarDeleteResponse) throws -> Data {
 }
 
 func encodeCalendarRename(_ response: CalendarRenameResponse) throws -> Data {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    return try encoder.encode(response)
+}
+
+func encodeReminderEnsure(_ response: ReminderEnsureResponse) throws -> Data {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
     return try encoder.encode(response)
@@ -546,6 +588,7 @@ let reminderValue: (EKReminder) -> SnapshotReminder = { reminder in
         completedAt: reminder.completionDate,
         list: containerValue(reminder.calendar),
         priority: reminder.priority,
+        watchMarkers: watchMarkers(reminder.notes),
         recurrence: (reminder.recurrenceRules ?? []).map(recurrenceValue),
         locationAlerts: (reminder.alarms ?? []).compactMap(locationAlertValue))
 }
@@ -714,6 +757,73 @@ func calendarRenameResult(
     } ?? fail("calendar rename response encoding failed")
 }
 
+let reminderEnsureItem: (EKReminder, String) -> ReminderEnsureItem = { reminder, marker in
+    ReminderEnsureItem(
+        id: reminder.calendarItemIdentifier,
+        title: reminder.title ?? "",
+        listTitle: reminder.calendar.title,
+        marker: marker)
+}
+
+func respondReminderEnsure(_ reminder: EKReminder, marker: String, created: Bool) -> Never {
+    let response = ReminderEnsureResponse(
+        ok: true, op: "reminders.ensure", created: created,
+        reminder: reminderEnsureItem(reminder, marker), error: nil)
+    return (try? encodeReminderEnsure(response)).map {
+        respondData($0, ok: true)
+    } ?? fail("reminders.ensure response encoding failed")
+}
+
+func reminderEnsureResult(
+    store: EKEventStore, specData: Data, status: AuthorizationState
+) -> Never {
+    guard let request = try? JSONDecoder().decode(ReminderEnsureRequest.self, from: specData),
+        let marker = normalizedWatchMarker(request.marker)
+    else { fail("bad reminders.ensure spec or marker") }
+    _ = fullAccessError(source: "reminders", status: status).map {
+        fail($0.message, ["code": $0.code, "status": status.raw])
+    }
+    let listTitle = request.listTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    let title = request.title.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !listTitle.isEmpty, !title.isEmpty else {
+        fail("reminders.ensure requires non-empty listTitle and title")
+    }
+    let lists = store.calendars(for: .reminder).filter { $0.title == listTitle }
+    guard lists.count == 1, let list = lists.first else {
+        fail("reminders.ensure requires exactly one matching list", [
+            "listTitle": listTitle, "matches": lists.count,
+        ])
+    }
+    let predicate = store.predicateForIncompleteReminders(
+        withDueDateStarting: nil, ending: nil, calendars: [list])
+    _ = store.fetchReminders(matching: predicate) { reminders in
+        let existing = (reminders ?? []).first { watchMarkers($0.notes).contains(marker) }
+        _ = existing.map { respondReminderEnsure($0, marker: marker, created: false) }
+
+        let reminder = EKReminder(eventStore: store)
+        reminder.calendar = list
+        reminder.title = title
+        reminder.notes = marker
+        do {
+            try store.save(reminder, commit: true)
+        } catch {
+            fail("reminders.ensure save failed: \(error)")
+        }
+        _ = store.fetchReminders(matching: predicate) { readback in
+            let matches = (readback ?? []).filter { watchMarkers($0.notes).contains(marker) }
+            guard matches.count == 1, let saved = matches.first,
+                saved.title == title, saved.calendar.title == listTitle
+            else {
+                fail("reminders.ensure readback mismatch", [
+                    "listTitle": listTitle, "marker": marker, "matches": matches.count,
+                ])
+            }
+            respondReminderEnsure(saved, marker: marker, created: true)
+        }
+    }
+    dispatchMain()
+}
+
 func snapshotResult(
     store: EKEventStore, specData: Data,
     eventStatus: AuthorizationState, reminderStatus: AuthorizationState
@@ -864,9 +974,12 @@ func runBridge() -> Never {
             store: store, specData: specData,
             eventStatus: eventStatus, reminderStatus: reminderStatus)
     }
+    if op == "reminders.ensure" {
+        reminderEnsureResult(store: store, specData: specData, status: reminderStatus)
+    }
 
     guard let handler = handlers[op] else {
-        fail("unknown op: \(op)", ["ops": Array(handlers.keys).sorted() + ["calendar.catalog", "calendar.delete", "calendar.rename", "snapshot", "status", "seed"]])
+        fail("unknown op: \(op)", ["ops": Array(handlers.keys).sorted() + ["calendar.catalog", "calendar.delete", "calendar.rename", "reminders.ensure", "snapshot", "status", "seed"]])
     }
 
     let needsEvent = op == "calendar"

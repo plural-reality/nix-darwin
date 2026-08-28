@@ -55,15 +55,16 @@ enum EventKitBridgeTests {
         SnapshotReminder(
             id: "later", title: "Later", due: date("2026-08-02T00:00:00Z"),
             dueAllDay: false, dueTimeZone: "UTC", completed: false, completedAt: nil,
-            list: personal, priority: 0, recurrence: [], locationAlerts: []),
+            list: personal, priority: 0, watchMarkers: [], recurrence: [], locationAlerts: []),
         SnapshotReminder(
             id: "undated", title: "Undated", due: nil, dueAllDay: false,
             dueTimeZone: nil, completed: false, completedAt: nil,
-            list: personal, priority: 0, recurrence: [], locationAlerts: []),
+            list: personal, priority: 0, watchMarkers: [], recurrence: [], locationAlerts: []),
         SnapshotReminder(
             id: "overdue", title: "Overdue", due: date("2026-07-01T00:00:00Z"),
             dueAllDay: true, dueTimeZone: "Asia/Tokyo", completed: false,
             completedAt: nil, list: personal, priority: 1,
+            watchMarkers: ["[watch:test]"],
             recurrence: [recurrence],
             locationAlerts: [SnapshotLocationAlert(
                 title: "Office", latitude: 35.0, longitude: 139.0,
@@ -72,7 +73,7 @@ enum EventKitBridgeTests {
             id: "completed", title: "Completed", due: nil, dueAllDay: false,
             dueTimeZone: nil, completed: true,
             completedAt: date("2026-07-30T00:00:00Z"), list: personal,
-            priority: 0, recurrence: [], locationAlerts: []),
+            priority: 0, watchMarkers: [], recurrence: [], locationAlerts: []),
     ]
 
     static let checks: [() -> Void] = [
@@ -164,6 +165,22 @@ enum EventKitBridgeTests {
             precondition(beeperCrmMessageId("beeper-crm:msg:") == nil)
         },
         {
+            precondition(
+                watchMarkers("private note\n[watch:corp-invoice-registration]\n[watch:corp-invoice-registration]")
+                    == ["[watch:corp-invoice-registration]"])
+            precondition(watchMarkers("[not-watch:private]").isEmpty)
+            precondition(normalizedWatchMarker("[watch:ok]") == "[watch:ok]")
+            precondition(normalizedWatchMarker("watch:bad") == nil)
+        },
+        {
+            let data = Data("""
+            {"listTitle":"多元タスク","title":"登録番号を請求書・freeeへ反映する","marker":"[watch:corp-invoice-registration]"}
+            """.utf8)
+            let request = try! JSONDecoder().decode(ReminderEnsureRequest.self, from: data)
+            precondition(request.listTitle == "多元タスク")
+            precondition(request.marker == "[watch:corp-invoice-registration]")
+        },
+        {
             let data = Data("""
             {"id":"calendar-training","expectedName":"fetch: Garmin","newName":"Garminコーチ","expectedSourceID":"source-1","expectedSourceName":"iCloud","expectedSourceType":2}
             """.utf8)
@@ -183,6 +200,7 @@ enum EventKitBridgeTests {
             precondition(json.contains("2026-07-31T00:00:00Z"))
             precondition(json.contains("\"locationAlerts\""))
             precondition(json.contains("\"recurrence\""))
+            precondition(json.contains("\"watchMarkers\":[\"[watch:test]\"]"))
         },
     ]
 
