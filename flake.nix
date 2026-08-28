@@ -386,7 +386,12 @@
           checks.daily-watch-static =
             pkgs.runCommand "daily-watch-static-check"
               {
-                nativeBuildInputs = with pkgs; [ bash gnugrep gnused nodejs ];
+                nativeBuildInputs = with pkgs; [
+                  bash
+                  gnugrep
+                  gnused
+                  nodejs
+                ];
               }
               ''
                 bash -n ${./scripts/cosense-fetch}

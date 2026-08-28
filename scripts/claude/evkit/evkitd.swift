@@ -7,6 +7,7 @@
 // canonical な adapter を子プロセスとして実行する。別daemon/cache/fallbackは持たない。
 
 import CoreLocation
+import Darwin
 import EventKit
 import Foundation
 
@@ -787,6 +788,12 @@ func reminderEnsureResult(
     let title = request.title.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !listTitle.isEmpty, !title.isEmpty else {
         fail("reminders.ensure requires non-empty listTitle and title")
+    }
+    let lockPath = NSString(string: "~/Library/Application Support/EventKitBridge/reminders.ensure.lock")
+        .expandingTildeInPath
+    let lockDescriptor = open(lockPath, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+    guard lockDescriptor >= 0, flock(lockDescriptor, LOCK_EX) == 0 else {
+        fail("reminders.ensure cannot acquire the process lock")
     }
     let lists = store.calendars(for: .reminder).filter { $0.title == listTitle }
     guard lists.count == 1, let list = lists.first else {

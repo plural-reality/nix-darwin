@@ -113,12 +113,16 @@ first), list ID, title, then reminder ID. All dates are ISO 8601 instants.
   "reminders": [{
     "id": "...", "title": "...", "due": "...", "completed": false,
     "completedAt": null, "list": {"name": "...", "id": "..."},
-    "priority": 0, "recurrence": [], "locationAlerts": []
+    "priority": 0, "watchMarkers": [], "recurrence": [], "locationAlerts": []
   }],
   "containers": {"calendars": [], "reminderLists": []},
   "errors": {"events": null, "reminders": null}
 }
 ```
+
+`watchMarkers` は reminder notes 全文ではなく、`[watch:…]` 形式の自動化所有 marker
+だけを投影する。`evkit reminders.ensure` は `listTitle`、`title`、`marker` を受け取り、
+同じ marker の未完了 reminder をプロセス間ロック下で作成前後に読み戻す。
 
 If exactly one source fails, the authorized source is still returned with
 `partial: true`, `ok: false`, and a source-local object under `errors`. If both
