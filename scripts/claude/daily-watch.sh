@@ -50,16 +50,20 @@ write_state() {
       .version = 2
       | .lastRunAt = $now
       | .watches[$id] = ((.watches[$id] // {}) + {
-          status:"change", state:"変化あり", lastCheckedAt:$now,
+          status:"変化あり", state:"変化あり", lastCheckedAt:$now,
           fingerprint:$invoice.fingerprint,
           observation:{present:$invoice.present,target:$invoice.target,managerNo:$invoice.managerNo},
           marker:$marker,onChange:$title,list:$list,
           reminder:{id:$reminder.reminder.id,created:$reminder.created}
-        })
-      | .run = {
-          result:"change", changes:1, externalSideEffects:$reminder.created,
-          sideEffects:$reminder.created, completedAt:$now
-        }' "$STATE" > "$draft"
+        } | del(.blockedReason))
+      | .run = ((.run // {}) + {
+          result:"change",
+          blockedCount: ([((.run.blockedCount // 0) - 1), 0] | max),
+          successCount: ((.run.successCount // 0) + 1),
+          changes: ((.run.changes // 0) + 1),
+          externalSideEffects:$reminder.created, sideEffects:$reminder.created,
+          completedAt:$now, lastWatchAt:$now, lastChange:{id:$id,marker:$marker}
+        })' "$STATE" > "$draft"
   chmod 0600 "$draft"
   mv -f "$draft" "$STATE"
 }
