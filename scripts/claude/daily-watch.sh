@@ -37,6 +37,10 @@ ensure_invoice_reminder() {
     '{listTitle:$listTitle,title:$title,marker:$marker}' | evkit reminders.ensure
 }
 
+etax() {
+  etax-watch watch
+}
+
 write_state() {
   local now="$1" invoice_json="$2" reminder_json="$3"
   local directory draft
@@ -73,6 +77,9 @@ run() {
   [ "$(jq -r .ok <<<"$definition_json")" = true ] || { printf '%s\n' "$definition_json"; return 1; }
   invoice_json="$(invoice)"
   chrome_json="$(node "$HOME/.claude/scripts/gmo-watch.mjs" || true)"
+  etax_json="$(etax-watch watch || true)"
+  jq -e . >/dev/null 2>&1 <<<"$etax_json" || \
+    etax_json='{"ok":false,"status":"一時的に取得できません","error":{"code":"invalid_broker_output","message":"e-Tax読取専用brokerの応答を確認できませんでした。","status":"一時的に取得できません"}}'
   present="$(jq -r .present <<<"$invoice_json")"
   previous="$([ -f "$STATE" ] && jq -r --arg id "$WATCH_ID" '.watches[$id].fingerprint // ""' "$STATE" || true)"
   fingerprint="$(jq -r .fingerprint <<<"$invoice_json")"
@@ -86,16 +93,17 @@ run() {
     reminder_json='null'
   fi
   jq -cn --argjson definitions "$definition_json" --argjson invoice "$invoice_json" \
-    --argjson chrome "$chrome_json" --argjson reminder "$reminder_json" \
+    --argjson chrome "$chrome_json" --argjson etax "$etax_json" --argjson reminder "$reminder_json" \
     --argjson changed "$changed" \
     '{ok:($definitions.ok and $invoice.ok),changed:$changed,definitions:$definitions,
-      invoice:$invoice,gmo:$chrome,reminder:$reminder}'
+      invoice:$invoice,gmo:$chrome,etax:$etax,reminder:$reminder}'
 }
 
 case "${1:-run}" in
   definitions) definitions ;;
   invoice) invoice ;;
   gmo) node "$HOME/.claude/scripts/gmo-watch.mjs" ;;
+  etax) etax ;;
   run) run ;;
-  *) printf 'usage: daily-watch [definitions|invoice|gmo|run]\n' >&2; exit 64 ;;
+  *) printf 'usage: daily-watch [definitions|invoice|gmo|etax|run]\n' >&2; exit 64 ;;
 esac

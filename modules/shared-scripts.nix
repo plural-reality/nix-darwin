@@ -334,6 +334,14 @@ let
     '';
   };
 
+  # Fixed-command client for the signed e-Tax read-only broker. Credentials stay
+  # in the broker-owned Keychain item and never enter the Nix store or shell.
+  etaxWatch = pkgs.writeShellApplication {
+    name = "etax-watch";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = builtins.readFile ../scripts/claude/etax-watch/etax-watch.sh;
+  };
+
   cosenseFetch = pkgs.writeShellApplication {
     name = "cosense-fetch";
     runtimeInputs = with pkgs; [
@@ -377,6 +385,7 @@ let
       ]
       ++ [
         cosenseFetch
+        etaxWatch
         evkit
       ];
     text = ''
@@ -467,6 +476,7 @@ in
     imsgHistory
     photoLibrary
     photoCardScan
+    etaxWatch
     dailyWatch
     nixApply
     appleNotesToScrapbox
@@ -489,6 +499,7 @@ in
   home.file.".local/bin/scrapbox-write".source = "${scrapbox-write}/bin/scrapbox-write";
   home.file.".local/bin/scrapbox-rename".source = "${scrapbox-rename}/bin/scrapbox-rename";
   home.file.".local/bin/photo-library".source = "${photoLibrary}/bin/photo-library";
+  home.file.".local/bin/etax-watch".source = "${etaxWatch}/bin/etax-watch";
   home.file.".local/bin/evkit".source = "${evkit}/bin/evkit";
   home.file.".local/bin/daily-watch".source = "${dailyWatch}/bin/daily-watch";
   home.file.".local/bin/gtd-canvas-serve".source = "${gtd-canvas-serve}/bin/gtd-canvas-serve";

@@ -396,12 +396,36 @@
               ''
                 bash -n ${./scripts/cosense-fetch}
                 bash -n ${./scripts/claude/evkit/evkit.sh}
+                bash -n ${./scripts/claude/etax-watch/etax-watch.sh}
+                bash -n ${./scripts/claude/etax-watch/build.sh}
                 bash -n ${./scripts/claude/daily-watch.sh}
                 node --check ${./scripts/claude/gmo-watch.mjs}
                 ! grep -q 'mktemp' ${./scripts/cosense-fetch}
                 fixture='onclick="return doDownload('"'"'5062'"'"','"'"'01'"'"');"'
                 manager="$(printf '%s' "$fixture" | grep -Eo "doDownload\\('[0-9]+','01'\\)" | sed -E "s/.*\\('([0-9]+)'.*/\\1/")"
                 test "$manager" = 5062
+                touch "$out"
+              '';
+
+          # Pure parser/protocol check for the signed e-Tax read-only broker.
+          # Signing, Keychain enrollment, and official network readback remain
+          # explicit activation-time effects and never enter the Nix sandbox.
+          checks.etax-watch-broker =
+            pkgs.runCommand "etax-watch-broker-check"
+              {
+                nativeBuildInputs = [
+                  pkgs.clang
+                  pkgs.swift
+                ];
+              }
+              ''
+                export MACOSX_DEPLOYMENT_TARGET=14.0
+                swiftc -DTESTING -swift-version 5 -parse-as-library -Onone \
+                  ${./scripts/claude/etax-watch/etax-watchd.swift} \
+                  ${./scripts/claude/etax-watch/etax-watchd.test.swift} \
+                  -framework AppKit -framework Security -framework CryptoKit \
+                  -o etax-watchd-tests
+                ./etax-watchd-tests
                 touch "$out"
               '';
 
