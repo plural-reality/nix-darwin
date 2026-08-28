@@ -383,6 +383,28 @@
                 touch "$out"
               '';
 
+          checks.daily-watch-static =
+            pkgs.runCommand "daily-watch-static-check"
+              {
+                nativeBuildInputs = with pkgs; [
+                  bash
+                  gnugrep
+                  gnused
+                  nodejs
+                ];
+              }
+              ''
+                bash -n ${./scripts/cosense-fetch}
+                bash -n ${./scripts/claude/evkit/evkit.sh}
+                bash -n ${./scripts/claude/daily-watch.sh}
+                node --check ${./scripts/claude/gmo-watch.mjs}
+                ! grep -q 'mktemp' ${./scripts/cosense-fetch}
+                fixture='onclick="return doDownload('"'"'5062'"'"','"'"'01'"'"');"'
+                manager="$(printf '%s' "$fixture" | grep -Eo "doDownload\\('[0-9]+','01'\\)" | sed -E "s/.*\\('([0-9]+)'.*/\\1/")"
+                test "$manager" = 5062
+                touch "$out"
+              '';
+
           # Pure core check for the signed Message History bridge. Signing and
           # Full Disk Access remain explicit activation-time boundaries.
           checks.message-history-bridge =

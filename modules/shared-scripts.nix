@@ -334,6 +334,56 @@ let
     '';
   };
 
+  cosenseFetch = pkgs.writeShellApplication {
+    name = "cosense-fetch";
+    runtimeInputs = with pkgs; [
+      bash
+      coreutils
+      curl
+      jq
+      gnugrep
+      gnused
+    ];
+    text = builtins.readFile ../scripts/cosense-fetch;
+  };
+
+  # Stable EventKit client. TCC belongs to the signed socket-activated bridge;
+  # this launcher only provides the typed JSON transport and never points into /tmp.
+  evkit = pkgs.writeShellApplication {
+    name = "evkit";
+    runtimeInputs = with pkgs; [
+      coreutils
+      jq
+      netcat
+      openssh
+    ];
+    text = builtins.readFile ../scripts/claude/evkit/evkit.sh;
+  };
+
+  dailyWatch = pkgs.writeShellApplication {
+    name = "daily-watch";
+    runtimeInputs =
+      with pkgs;
+      [
+        bash
+        coreutils
+        curl
+        jq
+        libarchive
+        gnugrep
+        gnused
+        nodejs
+        ripgrep
+      ]
+      ++ [
+        cosenseFetch
+        evkit
+      ];
+    text = ''
+      exec ${pkgs.bash}/bin/bash "$HOME/.claude/scripts/daily-watch.sh" "$@"
+    '';
+  };
+
   nixApply = pkgs.writeScriptBin "nix-apply" ''
     #!${pkgs.bash}/bin/bash
     exec ${../scripts/nix-apply.sh} "$@"
@@ -417,6 +467,7 @@ in
     imsgHistory
     photoLibrary
     photoCardScan
+    dailyWatch
     nixApply
     appleNotesToScrapbox
 
@@ -438,6 +489,8 @@ in
   home.file.".local/bin/scrapbox-write".source = "${scrapbox-write}/bin/scrapbox-write";
   home.file.".local/bin/scrapbox-rename".source = "${scrapbox-rename}/bin/scrapbox-rename";
   home.file.".local/bin/photo-library".source = "${photoLibrary}/bin/photo-library";
+  home.file.".local/bin/evkit".source = "${evkit}/bin/evkit";
+  home.file.".local/bin/daily-watch".source = "${dailyWatch}/bin/daily-watch";
   home.file.".local/bin/gtd-canvas-serve".source = "${gtd-canvas-serve}/bin/gtd-canvas-serve";
 
   # ディレクトリ丸ごと1つの store path。ファイル単位の symlink にすると、ESM が
@@ -453,10 +506,7 @@ in
   # cosense-fetch: Scrapbox (Cosense) read CLI — Smart Context via proxy (-h),
   # full-text search (-s) and raw page JSON (-r) via connect.sid. Pure bash;
   # deps (curl/jq/base64) resolve from PATH. Source: scripts/cosense-fetch.
-  home.file.".local/bin/cosense-fetch" = {
-    source = ../scripts/cosense-fetch;
-    executable = true;
-  };
+  home.file.".local/bin/cosense-fetch".source = "${cosenseFetch}/bin/cosense-fetch";
 
   # wip-crawl: detects the unprocessed [claude code WIP.icon] queue across the
   # 3 Scrapbox projects (pure filter; node shebang, shells out to cosense-fetch).

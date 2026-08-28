@@ -198,21 +198,22 @@ bare_page() {
   curl -sfL "https://scrapbox.io/api/pages/${PROJECT}/$(enc "$ARG")/text" -H "Cookie: connect.sid=${SCRAPBOX_SID:-}"
 }
 
-tmp=$(mktemp); trap 'rm -f "$tmp" "$tmp.b"' EXIT
-proxy_hop "$HOP" > "$tmp" 2>/dev/null || true
-[[ -s "$tmp" ]] || { echo "cosense-fetch: fetch failed (project=$PROJECT page=$ARG)" >&2; exit 1; }
-sz=$(wc -c < "$tmp"); h="$HOP"
+response=$(proxy_hop "$HOP" 2>/dev/null || true)
+[[ -n "$response" ]] || { echo "cosense-fetch: fetch failed (project=$PROJECT page=$ARG)" >&2; exit 1; }
+sz=$(printf '%s' "$response" | wc -c | tr -d ' '); h="$HOP"
 while [[ "$MAX_BYTES" -gt 0 && "$sz" -gt "$MAX_BYTES" && "$h" -gt 1 ]]; do
   h=$((h - 1))
-  if proxy_hop "$h" > "$tmp.b" 2>/dev/null && [[ -s "$tmp.b" ]]; then
-    mv "$tmp.b" "$tmp"; sz=$(wc -c < "$tmp")
+  candidate=$(proxy_hop "$h" 2>/dev/null || true)
+  if [[ -n "$candidate" ]]; then
+    response="$candidate"; sz=$(printf '%s' "$response" | wc -c | tr -d ' ')
     echo "cosense-fetch: 長すぎ(>${MAX_BYTES}B) → hop=${h} に降格 (${sz}B)" >&2
   else break; fi
 done
 if [[ "$MAX_BYTES" -gt 0 && "$sz" -gt "$MAX_BYTES" && -n "${SCRAPBOX_SID:-}" ]]; then
-  if bare_page > "$tmp.b" 2>/dev/null && [[ -s "$tmp.b" ]]; then
-    mv "$tmp.b" "$tmp"; sz=$(wc -c < "$tmp")
+  candidate=$(bare_page 2>/dev/null || true)
+  if [[ -n "$candidate" ]]; then
+    response="$candidate"; sz=$(printf '%s' "$response" | wc -c | tr -d ' ')
     echo "cosense-fetch: h=1 でも長すぎ → 単一ページ(リンク無し)に縮退 (${sz}B)" >&2
   fi
 fi
-if [[ -n "$OUTPUT" ]]; then cp "$tmp" "$OUTPUT"; else cat "$tmp"; fi
+if [[ -n "$OUTPUT" ]]; then printf '%s\n' "$response" > "$OUTPUT"; else printf '%s\n' "$response"; fi
