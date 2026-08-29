@@ -98,7 +98,7 @@ def execute(
     try:
         cwd and os.chdir(cwd)
         os.execvpe(command, [command, *args], environment)
-    except OSError:
+    except (OSError, ValueError):
         return blocked("Desktop-owned node_repl transport could not start")
     return blocked("node_repl transport exited before exec")
 
