@@ -421,10 +421,9 @@ let
     shell_environment_policy = {
       set = codexBrowserEnv;
     };
-    # Profiles are layered after config.toml. Keep the runtime adapter's
-    # allow-list in the layer as well, including when Desktop adds node_repl
-    # after Home Manager activation.
-    mcp_servers.node_repl.env = codexBrowserEnv;
+    # Do not synthesize mcp_servers.node_repl here: Desktop owns its transport
+    # and a profile must not create an invalid env-only server. The activation
+    # merger applies this same allow-list when a runtime server already exists.
   };
 
   codexProfileConfigs = builtins.mapAttrs (_: profile: profile // codexBrowserProfileConfig) {
