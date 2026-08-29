@@ -83,11 +83,25 @@ BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
     profile_managed = {
         "shell_environment_policy": {
             "set": {"BROWSER_USE_AVAILABLE_BACKENDS": "chrome"}
-        }
+        },
+        "mcp_servers": {
+            "node_repl": {
+                "env": {"BROWSER_USE_AVAILABLE_BACKENDS": "chrome"}
+            }
+        },
     }
     projected_profile = MODULE.project(profile, profile_managed)
     assert (
         projected_profile["shell_environment_policy"]["set"][
+            "BROWSER_USE_AVAILABLE_BACKENDS"
+        ]
+        == "chrome"
+    )
+    projected_profile_without_runtime = MODULE.project(
+        tomlkit.parse(""), profile_managed
+    )
+    assert (
+        projected_profile_without_runtime["mcp_servers"]["node_repl"]["env"][
             "BROWSER_USE_AVAILABLE_BACKENDS"
         ]
         == "chrome"
