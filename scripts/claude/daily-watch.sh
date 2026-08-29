@@ -72,7 +72,17 @@ run() {
   definition_json="$(definitions)"
   [ "$(jq -r .ok <<<"$definition_json")" = true ] || { printf '%s\n' "$definition_json"; return 1; }
   invoice_json="$(invoice)"
-  chrome_json="$(node "$HOME/.claude/scripts/gmo-watch.mjs" || true)"
+  chrome_status=0
+  chrome_json="$(node "$HOME/.claude/scripts/gmo-watch.mjs")" || chrome_status=$?
+  if ! jq -e 'type == "object"' >/dev/null 2>&1 <<<"$chrome_json"; then
+    chrome_json='{"ok":false,"status":"一時的に取得できません","reason":"GMO監視adapterの応答を確認できませんでした。","source":"invalid-output"}'
+    [ "$chrome_status" -ne 0 ] || chrome_status=78
+  fi
+  gmo_ok="$(jq -r 'if .ok == true then "true" else "false" end' <<<"$chrome_json")"
+  gmo_blocked=false
+  if [ "$chrome_status" -ne 0 ] || [ "$gmo_ok" != true ]; then
+    gmo_blocked=true
+  fi
   present="$(jq -r .present <<<"$invoice_json")"
   previous="$([ -f "$STATE" ] && jq -r --arg id "$WATCH_ID" '.watches[$id].fingerprint // ""' "$STATE" || true)"
   fingerprint="$(jq -r .fingerprint <<<"$invoice_json")"
@@ -87,9 +97,13 @@ run() {
   fi
   jq -cn --argjson definitions "$definition_json" --argjson invoice "$invoice_json" \
     --argjson chrome "$chrome_json" --argjson reminder "$reminder_json" \
-    --argjson changed "$changed" \
-    '{ok:($definitions.ok and $invoice.ok),changed:$changed,definitions:$definitions,
+    --argjson changed "$changed" --argjson blocked "$gmo_blocked" \
+    '{ok:($definitions.ok and $invoice.ok and $chrome.ok and ($blocked|not)),blocked:$blocked,changed:$changed,definitions:$definitions,
       invoice:$invoice,gmo:$chrome,reminder:$reminder}'
+  if [ "$gmo_blocked" = true ]; then
+    [ "$chrome_status" -ne 0 ] || chrome_status=78
+    return "$chrome_status"
+  fi
 }
 
 case "${1:-run}" in

@@ -30,6 +30,8 @@ command = "npx"
 token = "secret"
 [mcp_servers.node_repl]
 command = "runtime"
+[mcp_servers.node_repl.env]
+BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
 [mcp_servers.Mori]
 stale_token = "secret"
 [plugins."gmail@openai-curated"]
@@ -48,6 +50,9 @@ trust_level = "trusted"
         "model_providers": {"codex-router": {"base_url": BACKEND}},
         "mcp_servers": {"Mori": {"url": "https://mcp.mori.to", "enabled": True}},
         "plugins": {"gmail@openai-curated": {"enabled": False}},
+        "shell_environment_policy": {
+            "set": {"BROWSER_USE_AVAILABLE_BACKENDS": "chrome"}
+        },
     }
     projected = MODULE.project(current, managed)
     assert set(projected["mcp_servers"]) == {"node_repl", "Mori"}
@@ -62,7 +67,56 @@ trust_level = "trusted"
     assert projected["model_providers"]["codex-router"]["base_url"] == BACKEND
     assert projected["features"]["multi_agent_v2"] == {"enabled": True}
     assert "SCRAPBOX_SID" not in projected["shell_environment_policy"]["set"]
-    assert projected["shell_environment_policy"]["set"]["BROWSER_USE_AVAILABLE_BACKENDS"] == "chrome,iab"
+    assert projected["shell_environment_policy"]["set"]["BROWSER_USE_AVAILABLE_BACKENDS"] == "chrome"
+    assert projected["mcp_servers"]["node_repl"]["env"]["BROWSER_USE_AVAILABLE_BACKENDS"] == "chrome"
+    no_runtime = MODULE.project(tomlkit.parse(""), managed)
+    assert "node_repl" not in no_runtime["mcp_servers"]
+
+    profile = tomlkit.parse(
+        """
+[shell_environment_policy.set]
+BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
+[mcp_servers.node_repl.env]
+BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
+"""
+    )
+    profile_managed = {
+        "shell_environment_policy": {
+            "set": {"BROWSER_USE_AVAILABLE_BACKENDS": "chrome"}
+        },
+        "mcp_servers": {
+            "node_repl": {
+                "command": "/nix/store/codex-node-repl-profile-guard/bin/codex-node-repl-profile-guard",
+                "env": {"BROWSER_USE_AVAILABLE_BACKENDS": "chrome"},
+            }
+        },
+    }
+    projected_profile = MODULE.project(profile, profile_managed)
+    assert (
+        projected_profile["shell_environment_policy"]["set"][
+            "BROWSER_USE_AVAILABLE_BACKENDS"
+        ]
+        == "chrome"
+    )
+    projected_profile_without_runtime = MODULE.project(
+        tomlkit.parse(""), profile_managed
+    )
+    assert (
+        projected_profile_without_runtime["mcp_servers"]["node_repl"]["command"]
+        == "/nix/store/codex-node-repl-profile-guard/bin/codex-node-repl-profile-guard"
+    )
+    assert (
+        projected_profile_without_runtime["mcp_servers"]["node_repl"]["env"][
+            "BROWSER_USE_AVAILABLE_BACKENDS"
+        ]
+        == "chrome"
+    )
+    assert (
+        projected_profile["mcp_servers"]["node_repl"]["env"][
+            "BROWSER_USE_AVAILABLE_BACKENDS"
+        ]
+        == "chrome"
+    )
 
 
 def test_deliberate_override_survives_retirement() -> None:

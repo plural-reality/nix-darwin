@@ -98,6 +98,15 @@ let
   # the working terminal. Opt into teams only from a one-off launch environment.
   sharedAgentEnv = inheritedAgentEnv;
 
+  # Browser selection is a capability boundary, not a convenience fallback. Keep
+  # the in-app browser backend out of the runtime discovery set so an implicit
+  # backend choice cannot create a second browser surface beside the user's Chrome.
+  # The value is projected into Codex's runtime node_repl environment by the merge
+  # adapter; this is the single declarative source for the backend allow-list.
+  codexBrowserEnv = {
+    BROWSER_USE_AVAILABLE_BACKENDS = "chrome";
+  };
+
   codexReasoningLevels = [
     {
       effort = "low";
@@ -222,6 +231,15 @@ let
   codexConfigMergeScript = pkgs.writeText "merge-codex-config.py" (
     builtins.readFile ../scripts/merge-codex-config.py
   );
+
+  codexNodeReplProfileGuard = pkgs.writeTextFile {
+    name = "codex-node-repl-profile-guard";
+    executable = true;
+    destination = "/bin/codex-node-repl-profile-guard";
+    text =
+      builtins.replaceStrings [ "#!/usr/bin/env python3" ] [ "#!${codexConfigPython}/bin/python" ]
+        (builtins.readFile ../scripts/codex-node-repl-profile-guard.py);
+  };
 
   # Xcode Agent runs in a sandboxed environment without PATH inheritance.
   # All commands must use absolute Nix store paths.
@@ -408,7 +426,20 @@ let
     '';
   };
 
-  codexProfileConfigs = {
+  codexBrowserProfileConfig = {
+    shell_environment_policy = {
+      set = codexBrowserEnv;
+    };
+    # Keep the profile transport valid even before Desktop writes node_repl. The
+    # guard resolves Desktop's current command/args from the base config and
+    # owns only the browser-backend environment boundary.
+    mcp_servers.node_repl = {
+      command = "${codexNodeReplProfileGuard}/bin/codex-node-repl-profile-guard";
+      env = codexBrowserEnv;
+    };
+  };
+
+  codexProfileConfigs = builtins.mapAttrs (_: profile: profile // codexBrowserProfileConfig) {
     safe = {
       approval_policy = "on-request";
       sandbox_mode = "workspace-write";
@@ -502,7 +533,7 @@ let
 
     shell_environment_policy = {
       "inherit" = "core";
-      set = sharedAgentEnv;
+      set = sharedAgentEnv // codexBrowserEnv;
     };
 
     mcp_servers = {
@@ -519,8 +550,12 @@ let
     // codexRemoteMcpServers;
 
     plugins = {
+      # Pixel Computer Use posts global mouse/keyboard/focus events. It is not a
+      # safe ambient capability on a desktop that the owner is actively using.
+      # Enable it only through an explicit downstream override for a dedicated
+      # VM/display or a separately acquired desktop lease.
       "computer-use@openai-bundled" = {
-        enabled = true;
+        enabled = false;
       };
       "browser@openai-bundled" = {
         enabled = false;

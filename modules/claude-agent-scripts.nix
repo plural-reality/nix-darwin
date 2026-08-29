@@ -12,7 +12,7 @@
 #   ~/.config/beeper-to-scb/threads.json (watched-group map)
 #
 # Runtime deps several scripts assume on PATH (document/provide separately; see
-# docs/nix-agent-tooling-runbook.md): python3 (stdlib only), node (pw.mjs), and the
+# docs/nix-agent-tooling-runbook.md): python3 (stdlib only), node (small helpers), and the
 # himalaya / cosense-fetch / scrapbox-write CLIs.
 { lib, ... }:
 let

@@ -13,6 +13,7 @@ import tomlkit
 
 
 RUNTIME_MCP_SERVERS = frozenset({"node_repl", "openaiDeveloperDocs"})
+BROWSER_BACKEND_ENV = "BROWSER_USE_AVAILABLE_BACKENDS"
 
 # The loopback router these two selected is retired. They are matched by exact value so a
 # deliberate override survives; only the retired wiring is dropped.
@@ -34,7 +35,42 @@ def merge(target: MutableMapping, source: MutableMapping) -> MutableMapping:
     return target
 
 
-def replace_mcp_servers(document: MutableMapping) -> MutableMapping:
+def project_runtime_browser_backend(
+    document: MutableMapping, managed: MutableMapping
+) -> MutableMapping:
+    """Carry the declarative backend allow-list into the runtime browser adapter."""
+    managed_shell_policy = managed.get("shell_environment_policy")
+    managed_environment = (
+        managed_shell_policy.get("set")
+        if isinstance(managed_shell_policy, MutableMapping)
+        else None
+    )
+    backend = (
+        managed_environment.get(BROWSER_BACKEND_ENV)
+        if isinstance(managed_environment, MutableMapping)
+        else None
+    )
+    servers = document.get("mcp_servers")
+    node_repl = (
+        servers.get("node_repl")
+        if isinstance(servers, MutableMapping)
+        else None
+    )
+    if not isinstance(node_repl, MutableMapping) or backend is None:
+        return document
+    runtime_environment = node_repl.get("env")
+    node_repl["env"] = (
+        runtime_environment
+        if isinstance(runtime_environment, MutableMapping)
+        else tomlkit.table()
+    )
+    node_repl["env"][BROWSER_BACKEND_ENV] = backend
+    return document
+
+
+def replace_mcp_servers(
+    document: MutableMapping, managed: MutableMapping
+) -> MutableMapping:
     """Reset the table to Codex Desktop runtime adapters before projection."""
     servers = document.get("mcp_servers")
     runtime_servers = (
@@ -43,7 +79,9 @@ def replace_mcp_servers(document: MutableMapping) -> MutableMapping:
         else {}
     )
     document["mcp_servers"] = tomlkit.table()
-    return merge(document, {"mcp_servers": runtime_servers})
+    return project_runtime_browser_backend(
+        merge(document, {"mcp_servers": runtime_servers}), managed
+    )
 
 
 def replace_plugins(document: MutableMapping, managed: MutableMapping) -> MutableMapping:
@@ -75,7 +113,12 @@ def remove_retired_policy(document: MutableMapping) -> MutableMapping:
 
 def project(document: MutableMapping, managed: MutableMapping) -> MutableMapping:
     """Pure policy projection over a parsed TOML document."""
-    return merge(remove_retired_policy(replace_plugins(replace_mcp_servers(document), managed)), managed)
+    return merge(
+        remove_retired_policy(
+            replace_plugins(replace_mcp_servers(document, managed), managed)
+        ),
+        managed,
+    )
 
 
 def load_document(config_path: Path) -> MutableMapping:

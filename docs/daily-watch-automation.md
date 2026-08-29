@@ -10,12 +10,13 @@
 - 実行状態: `$CODEX_HOME/automations/automation-2/state/watch-state.json`
 - Apple Calendar / Reminders: 署名済み `evkitd` を介した `evkit`
 - 国税庁インボイス: 適格請求書発行事業者公表サイトの公式差分データ
-- GMO: `$HOME/.chrome-automation-profile` で起動した専用 Chrome の、当該実行が作った CDP target
+- GMO: 共有デスクトップ上では停止する fail-closed adapter。再有効化には専用 VM/display または run-scoped browser lease が必要
 
 ## 非目的
 
 - 日報本文の収集・Scrapbox本文の更新
 - 通常 Chrome のタブ、Cookie、保存済み秘密値の読取り
+- 共有デスクトップ上での headless Chrome、固定 CDP port、永続 profile の起動
 - 認証、OTP、パスキー、CAPTCHA の自動突破
 - 外部送信、申告、申込み、支払、購入、既存 Reminders の削除
 
@@ -29,6 +30,11 @@
 
 1. `cosense-fetch` が書込み不能な一時ディレクトリでも取得できる。
 2. `evkit status` と `evkit snapshot` が socket activation を含めて成功し、監視 marker だけを安全に投影する。
-3. 専用 Chrome が通常 Chrome を前面化せず CDP 応答を返す。認証画面なら型付き停止になる。
+3. GMO adapter が共有デスクトップ上でブラウザを起動せず、`安全のため停止` を型付き結果として返す。専用 VM/display へ移行した場合だけ、run-scoped browser lease と canonical readback を追加する。
 4. 最新の公式インボイス差分から `T4011503006669` の有無を決定できる。
 5. 差分 TODO は marker で重複せず、EventKit の再読込で確認できる。
+
+GMO adapter が停止しても、ブラウザを使わない国税庁インボイス差分の読取りと
+その冪等な Reminders/state 更新は独立して継続する。実行結果は
+`blocked:true`、`ok:false`、非 0 終了コードで GMO の停止を明示し、GMO由来の
+TODO やベースラインだけを作成しない。

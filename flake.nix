@@ -399,6 +399,11 @@
                 bash -n ${./scripts/claude/daily-watch.sh}
                 node --check ${./scripts/claude/gmo-watch.mjs}
                 ! grep -q 'mktemp' ${./scripts/cosense-fetch}
+                ! grep -Eq 'gmo-watch\.mjs"[[:space:]]*\|\|[[:space:]]*true' ${./scripts/claude/daily-watch.sh}
+                grep -F -- '--argjson blocked "$gmo_blocked"' ${./scripts/claude/daily-watch.sh} >/dev/null
+                grep -F -- 'and $chrome.ok' ${./scripts/claude/daily-watch.sh} >/dev/null
+                grep -F -- 'return "$chrome_status"' ${./scripts/claude/daily-watch.sh} >/dev/null
+                grep -F -- 'if [ "$present" = true ]' ${./scripts/claude/daily-watch.sh} >/dev/null
                 fixture='onclick="return doDownload('"'"'5062'"'"','"'"'01'"'"');"'
                 manager="$(printf '%s' "$fixture" | grep -Eo "doDownload\\('[0-9]+','01'\\)" | sed -E "s/.*\\('([0-9]+)'.*/\\1/")"
                 test "$manager" = 5062
@@ -519,6 +524,88 @@
               ''
                 node --disable-warning=ExperimentalWarning \
                   --experimental-strip-types ${./scripts/codex-name.ts} --self-check
+                touch "$out"
+              '';
+
+          checks.codex-config-projection =
+            pkgs.runCommand "codex-config-projection-check"
+              {
+                nativeBuildInputs = [
+                  (pkgs.python313.withPackages (ps: [ ps.tomlkit ]))
+                ];
+              }
+              ''
+                mkdir -p tests scripts
+                cp ${./tests/merge-codex-config-test.py} tests/merge-codex-config-test.py
+                cp ${./scripts/merge-codex-config.py} scripts/merge-codex-config.py
+                python tests/merge-codex-config-test.py
+                touch "$out"
+              '';
+
+          checks.codex-node-repl-profile-guard =
+            pkgs.runCommand "codex-node-repl-profile-guard-check"
+              {
+                nativeBuildInputs = [ pkgs.python313 ];
+              }
+              ''
+                mkdir -p "$TMPDIR/codex"
+                cat >"$TMPDIR/codex/config.toml" <<'EOF'
+                [mcp_servers.node_repl]
+                command = "${pkgs.coreutils}/bin/env"
+                args = []
+                [mcp_servers.node_repl.env]
+                BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
+                PROFILE_GUARD_FIXTURE = "present"
+                EOF
+                CODEX_HOME="$TMPDIR/codex" \
+                  python ${./scripts/codex-node-repl-profile-guard.py} >child-env
+                grep -F -- 'BROWSER_USE_AVAILABLE_BACKENDS=chrome' child-env >/dev/null
+                grep -F -- 'PROFILE_GUARD_FIXTURE=present' child-env >/dev/null
+                cat >"$TMPDIR/codex/config.toml" <<'EOF'
+                [mcp_servers.node_repl]
+                command = "/does/not/exist"
+                args = []
+                EOF
+                missing_status=0
+                CODEX_HOME="$TMPDIR/codex" \
+                  python ${./scripts/codex-node-repl-profile-guard.py} >missing.out 2>missing.err \
+                  || missing_status=$?
+                test "$missing_status" -eq 78
+                test ! -s missing.out
+                grep -F -- 'Desktop-owned node_repl transport could not start' missing.err >/dev/null
+                mkdir -p "$TMPDIR/empty"
+                blocked_status=0
+                CODEX_HOME="$TMPDIR/empty" \
+                  python ${./scripts/codex-node-repl-profile-guard.py} >empty.out 2>empty.err \
+                  || blocked_status=$?
+                test "$blocked_status" -eq 78
+                test ! -s empty.out
+                grep -F -- 'Desktop-owned node_repl transport is not available' empty.err >/dev/null
+                touch "$out"
+              '';
+
+          checks.browser-use-isolation =
+            pkgs.runCommand "browser-use-isolation-check"
+              {
+                nativeBuildInputs = [
+                  pkgs.gnugrep
+                  pkgs.nodejs_22
+                ];
+              }
+              ''
+                node --check ${./scripts/claude/gmo-watch.mjs}
+                node --check ${./scripts/claude/pw.mjs}
+                ! grep -F -- '--remote-debugging-port=9222' ${./scripts/claude/gmo-watch.mjs}
+                ! grep -F -- 'detached: true' ${./scripts/claude/gmo-watch.mjs}
+                grep -F -- 'disabled-shared-desktop' ${./scripts/claude/gmo-watch.mjs} >/dev/null
+                gmo_status=0
+                node ${./scripts/claude/gmo-watch.mjs} >gmo.json 2>gmo.stderr || gmo_status=$?
+                test "$gmo_status" -eq 78
+                grep -F -- '"status":"安全のため停止"' gmo.json >/dev/null
+                pw_status=0
+                node ${./scripts/claude/pw.mjs} >pw.out 2>pw.stderr || pw_status=$?
+                test "$pw_status" -eq 64
+                grep -F -- 'retired' pw.stderr >/dev/null
                 touch "$out"
               '';
 
