@@ -131,7 +131,7 @@ const autoName = (preview: string): string =>
   );
 
 const isPromptFragment = (value: string): boolean =>
-  /codex-annotation|architectural decision rules|you are a helpful assistant|generate a concise ui title|^assistant:|^user:/iu.test(
+  /codex-annotation|architectural decision rules|you are a helpful assistant|generate a concise ui title|^(?:developer|system|assistant|user)\s*:/iu.test(
     value,
   );
 
@@ -349,8 +349,11 @@ const cleanName = (raw: string, fallback: string): string =>
 
 const titleSanitizationSelfCheck = (): boolean =>
   autoName("You are a helpful assistant. Generate a concise UI title") === "Codex session" &&
+  autoName("developer: internal instructions") === "Codex session" &&
+  autoName("system: internal instructions") === "Codex session" &&
   autoName("iMessageの連絡先を整理") === "iMessageの連絡先を整理" &&
   cleanName('{"text":"prompt fragment"}', "復旧") === "復旧" &&
+  cleanName("assistant: leaked context", "復旧") === "復旧" &&
   cleanName("Nix - Codex title hook", "復旧") === "Nix - Codex title hook" &&
   cleanName("レトルトカレー・ご飯 - ガスボンベ ただし、在庫は変動", "復旧") === "復旧";
 
