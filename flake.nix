@@ -403,6 +403,7 @@
                 grep -F -- '--argjson blocked "$gmo_blocked"' ${./scripts/claude/daily-watch.sh} >/dev/null
                 grep -F -- 'and $chrome.ok' ${./scripts/claude/daily-watch.sh} >/dev/null
                 grep -F -- 'return "$chrome_status"' ${./scripts/claude/daily-watch.sh} >/dev/null
+                grep -F -- 'if [ "$present" = true ]' ${./scripts/claude/daily-watch.sh} >/dev/null
                 fixture='onclick="return doDownload('"'"'5062'"'"','"'"'01'"'"');"'
                 manager="$(printf '%s' "$fixture" | grep -Eo "doDownload\\('[0-9]+','01'\\)" | sed -E "s/.*\\('([0-9]+)'.*/\\1/")"
                 test "$manager" = 5062

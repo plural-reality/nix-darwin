@@ -33,3 +33,8 @@
 3. GMO adapter が共有デスクトップ上でブラウザを起動せず、`安全のため停止` を型付き結果として返す。専用 VM/display へ移行した場合だけ、run-scoped browser lease と canonical readback を追加する。
 4. 最新の公式インボイス差分から `T4011503006669` の有無を決定できる。
 5. 差分 TODO は marker で重複せず、EventKit の再読込で確認できる。
+
+GMO adapter が停止しても、ブラウザを使わない国税庁インボイス差分の読取りと
+その冪等な Reminders/state 更新は独立して継続する。実行結果は
+`blocked:true`、`ok:false`、非 0 終了コードで GMO の停止を明示し、GMO由来の
+TODO やベースラインだけを作成しない。

@@ -87,7 +87,7 @@ run() {
   previous="$([ -f "$STATE" ] && jq -r --arg id "$WATCH_ID" '.watches[$id].fingerprint // ""' "$STATE" || true)"
   fingerprint="$(jq -r .fingerprint <<<"$invoice_json")"
   changed=false
-  if [ "$gmo_blocked" = false ] && [ "$present" = true ] && [ "$fingerprint" != "$previous" ]; then
+  if [ "$present" = true ] && [ "$fingerprint" != "$previous" ]; then
     reminder_json="$(ensure_invoice_reminder)"
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     write_state "$now" "$invoice_json" "$reminder_json"
