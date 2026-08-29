@@ -522,6 +522,46 @@
                 touch "$out"
               '';
 
+          checks.codex-config-projection =
+            pkgs.runCommand "codex-config-projection-check"
+              {
+                nativeBuildInputs = [
+                  (pkgs.python313.withPackages (ps: [ ps.tomlkit ]))
+                ];
+              }
+              ''
+                mkdir -p tests scripts
+                cp ${./tests/merge-codex-config-test.py} tests/merge-codex-config-test.py
+                cp ${./scripts/merge-codex-config.py} scripts/merge-codex-config.py
+                python tests/merge-codex-config-test.py
+                touch "$out"
+              '';
+
+          checks.browser-use-isolation =
+            pkgs.runCommand "browser-use-isolation-check"
+              {
+                nativeBuildInputs = [
+                  pkgs.gnugrep
+                  pkgs.nodejs_22
+                ];
+              }
+              ''
+                node --check ${./scripts/claude/gmo-watch.mjs}
+                node --check ${./scripts/claude/pw.mjs}
+                ! grep -F -- '--remote-debugging-port=9222' ${./scripts/claude/gmo-watch.mjs}
+                ! grep -F -- 'detached: true' ${./scripts/claude/gmo-watch.mjs}
+                grep -F -- 'disabled-shared-desktop' ${./scripts/claude/gmo-watch.mjs} >/dev/null
+                gmo_status=0
+                node ${./scripts/claude/gmo-watch.mjs} >gmo.json 2>gmo.stderr || gmo_status=$?
+                test "$gmo_status" -eq 78
+                grep -F -- '"status":"安全のため停止"' gmo.json >/dev/null
+                pw_status=0
+                node ${./scripts/claude/pw.mjs} >pw.out 2>pw.stderr || pw_status=$?
+                test "$pw_status" -eq 64
+                grep -F -- 'retired' pw.stderr >/dev/null
+                touch "$out"
+              '';
+
           # Migration: nix run github:plural-reality/nix-darwin#migrate
           packages.migrate = pkgs.writeShellApplication {
             name = "migrate";

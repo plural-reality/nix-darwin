@@ -6,15 +6,17 @@ This document is the design record for agent execution on a Mac that is also in
 active use by its owner. It covers command routing, MCP boundaries, Chrome
 workspace ownership, focus safety, and protected local application data.
 
-The canonical runtime instruction is `prompt/agent-policy.md`. This document
+The canonical runtime instruction is `prompt/agent-operations.md`. This document
 explains the decisions; it does not duplicate the instruction text verbatim.
 
 ## Observed baseline
 
 - Shared Claude Code and Codex instructions already have one source:
-  `prompt/agent-policy.md`.
-- Codex already disables generic Computer Use and the in-app browser, and keeps
-  the installed-Chrome plugin enabled.
+  `prompt/agent-operations.md`.
+- The managed Codex projection exposes only the Chrome backend, disables the
+  in-app browser and generic Computer Use, and keeps the installed-Chrome
+  plugin enabled. A downstream may opt into Computer Use only for an explicit
+  isolated VM/display or separately acquired desktop lease.
 - The default Codex sandbox was `danger-full-access` even for work that only
   needs the current checkout.
 - OneTab 2.18 is already installed in the relevant Chrome profiles. OneTab has
@@ -78,6 +80,29 @@ Use the first boundary that can express and verify the operation:
 This is a pipeline, not a list of equivalent adapters. Moving downward is
 allowed only when the preceding boundary cannot express the operation or its
 readback.
+
+### Browser backend decision (2026-08-29)
+
+The shared Mac is not an automation sandbox. The default route is the existing
+Chrome extension/native host, whose tab IDs and turn-scoped cleanup are managed
+by the Chrome plugin. The in-app browser is not a fallback: its backend is
+removed from the runtime discovery allow-list, so an implicit default selection
+cannot open a second browser surface. Generic Computer Use is also disabled by
+default because its mouse, keyboard, and focus events are global to the desktop.
+
+Only an explicitly isolated Playwright/Chrome for Testing run may create its own
+profile, and that profile is run-scoped and disposable. A shared persistent
+profile, fixed CDP port, copied user profile, or ad-hoc headless process is not
+an isolation boundary. Existing user tabs and processes are never cleaned up by
+the policy; ownership must come from the current connection and run, not from a
+URL, PID, title, tab index, or last-focused window.
+
+The scheduled GMO monitor is a concrete example of this boundary. Its former
+`gmo-watch.mjs` path launched detached Google Chrome on a fixed CDP port and is
+now fail-closed. It remains a status adapter for `daily-watch`, but it does not
+start a browser until the monitor is moved to a dedicated VM/display or a
+run-scoped lease broker. This deliberately trades one unattended check for
+preventing a background job from hijacking the owner's Chrome session.
 
 ### Offline-first staging
 
@@ -207,3 +232,23 @@ tool is a mechanical projection of that schema.
 An operation is complete only after the canonical surface is reread. Browser
 tabs, notifications, screenshots, Coast history, task toasts, and process exit
 alone are not proof of an external mutation.
+
+## Change boundary and proof
+
+The canonical policy and backend selection live in `modules/claude-code.nix`;
+the runtime projection adapter is `scripts/merge-codex-config.py`; generated
+`~/.codex`/`~/.claude` files are outputs and must not be edited directly. The
+projection test must show that a stale `chrome,iab` runtime value becomes
+`chrome` without inventing a `node_repl` server when no runtime server exists.
+The narrow Nix proof is the `desktop-skills` build plus the Codex projection,
+browser-isolation, and daily-watch static checks. Stopping the currently
+orphaned headless processes is a separate human-approved cleanup operation,
+not part of this source change.
+
+The mutable `~/.claude/settings.local.json` override and physical helper files
+are deliberately outside this projection. A raw CDP allow rule, an ad-hoc
+headless helper, or the legacy profile-mtime SID refresh can therefore still
+exist until an explicitly approved migration removes or replaces it. Nix
+activation must not silently rewrite that user-owned state; live safety is
+proven only after those paths have been audited and the generated links have
+been reread.
