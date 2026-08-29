@@ -319,8 +319,47 @@ def _client() -> MoriMCP:
     return MoriMCP().initialize()
 
 
+def _session_uri(value: str) -> str:
+    return value if value.startswith("mori://session/") else f"mori://session/{value.removeprefix('mori://transcript/session/')}"
+
+
+def _within_dates(value: str, from_date: str | None, to_date: str | None) -> bool:
+    day = value[:10]
+    return (not from_date or from_date <= day) and (not to_date or day <= to_date)
+
+
+def _archive_sessions(
+    directory: Path, from_date: str | None, to_date: str | None
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": record["id"],
+            "title": record.get("title", ""),
+            "started_at": record.get("start_time", ""),
+            "ended_at": record.get("end_time", ""),
+            "location": record.get("geolocation"),
+            "is_favorited": bool(record.get("is_starred", False)),
+        }
+        for record in read_archive(directory).values()
+        if _within_dates(str(record.get("start_time", "")), from_date, to_date)
+    ]
+
+
+def _merged_sessions(
+    archived: list[dict[str, Any]], remote: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    by_id = {
+        **{_session_uri(str(item.get("id", ""))): item for item in archived},
+        **{_session_uri(str(item.get("id", ""))): item for item in remote},
+    }
+    return sorted(by_id.values(), key=lambda item: (item.get("started_at", ""), item.get("id", "")))
+
+
 def list_sessions(
-    client: MoriMCP, from_date: str | None = None, to_date: str | None = None
+    client: MoriMCP,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    directory: Path = DEFAULT_ARCHIVE,
 ) -> list[dict[str, Any]]:
     def page(offset: int = 0) -> list[dict[str, Any]]:
         arguments = {
@@ -332,7 +371,9 @@ def list_sessions(
         batch = client.tool("list_sessions", arguments).get("sessions") or []
         return batch + (page(offset + len(batch)) if len(batch) == 50 else [])
 
-    return sorted(page(), key=lambda item: (item.get("started_at", ""), item.get("id", "")))
+    # ponytail: the official MCP currently omits older Sessions; merge its live
+    # list with the immutable local transcript archive instead of adding a proxy.
+    return _merged_sessions(_archive_sessions(directory, from_date, to_date), page())
 
 
 def _transcript_uri(value: str) -> str:
@@ -345,6 +386,34 @@ def fetch_transcript(client: MoriMCP, session_or_uri: str) -> dict[str, Any]:
     if not isinstance(transcript, dict):
         raise MoriError(f"Transcript not found: {session_or_uri}")
     return transcript
+
+
+def _archive_transcript(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": record.get("id", ""),
+        "title": record.get("title", ""),
+        "utterances": [
+            {
+                "speaker_name": item.get("speaker", "Unknown"),
+                "text": item.get("text", ""),
+                "started_at": item.get("start_time"),
+                "ended_at": item.get("end_time"),
+            }
+            for item in record.get("utterances", [])
+        ],
+    }
+
+
+def fetch_transcript_or_archive(
+    client: MoriMCP, session_or_uri: str, directory: Path = DEFAULT_ARCHIVE
+) -> dict[str, Any]:
+    try:
+        return fetch_transcript(client, session_or_uri)
+    except MoriError:
+        record = read_archive(directory).get(_session_uri(session_or_uri))
+        if record:
+            return _archive_transcript(record)
+        raise
 
 
 def _markdown(utterances: list[dict[str, Any]]) -> str:
@@ -388,11 +457,15 @@ def _rate_limited(error: Exception) -> bool:
 def fetch_conversations(
     client: MoriMCP,
     sessions: list[dict[str, Any]],
+    archive: dict[str, dict[str, Any]] | None = None,
     interval: float = TRANSCRIPT_INTERVAL,
     on_record: Callable[[dict[str, Any]], None] = lambda _: None,
     attempts: int = RATE_LIMIT_ATTEMPTS,
 ) -> list[dict[str, Any]]:
     def fetch_one(session: dict[str, Any], remaining: int) -> dict[str, Any]:
+        cached = (archive or {}).get(_session_uri(str(session.get("id", ""))))
+        if cached:
+            return cached
         try:
             return normalize(session, fetch_transcript(client, str(session.get("id", ""))))
         except MoriError as error:
@@ -404,10 +477,13 @@ def fetch_conversations(
     def fetch_tail(items: list[dict[str, Any]], last_started: float | None = None) -> list[dict[str, Any]]:
         if not items:
             return []
+        head, *tail = items
+        cached = (archive or {}).get(_session_uri(str(head.get("id", ""))))
+        if cached:
+            return [cached] + fetch_tail(tail, last_started)
         wait = max(0.0, interval - (time.monotonic() - last_started)) if last_started is not None else 0.0
         time.sleep(wait)
         started = time.monotonic()
-        head, *tail = items
         record = fetch_one(head, attempts)
         on_record(record)
         return [record] + fetch_tail(tail, started)
@@ -422,9 +498,9 @@ def sync(
     interval: float = TRANSCRIPT_INTERVAL,
 ) -> dict[str, Any]:
     client = _client()
-    sessions = list_sessions(client, from_date, to_date)
     existing = read_archive(directory)
-    missing = [item for item in sessions if str(item.get("id", "")) not in existing]
+    sessions = list_sessions(client, from_date, to_date, directory)
+    missing = [item for item in sessions if _session_uri(str(item.get("id", ""))) not in existing]
     merged = dict(existing)
     written: list[Path] = []
 
@@ -435,7 +511,7 @@ def sync(
         # ~6s inter-request wait; batch per day if the archive ever outgrows it.
         written.extend(write_archive(directory, merged))
 
-    fetched = fetch_conversations(client, missing, interval, persist)
+    fetched = fetch_conversations(client, missing, existing, interval, persist)
     paths = sorted({str(path) for path in written})
     state = {
         "source": "mori",
@@ -474,8 +550,12 @@ def main() -> int:
         result = (
             {"status": "ok"} if args.command == "login" and login(not args.no_browser)
             else list_sessions(_client(), args.from_date, args.to_date) if args.command == "sessions"
-            else fetch_transcript(_client(), args.session_or_uri) if args.command == "transcript"
-            else fetch_conversations(_client(), list_sessions(_client(), args.date, args.date)) if args.command == "date"
+            else fetch_transcript_or_archive(_client(), args.session_or_uri) if args.command == "transcript"
+            else fetch_conversations(
+                _client(),
+                list_sessions(_client(), args.date, args.date),
+                read_archive(DEFAULT_ARCHIVE),
+            ) if args.command == "date"
             else sync(args.from_date, args.to_date, args.output_dir) if args.command == "sync"
             else {}
         )

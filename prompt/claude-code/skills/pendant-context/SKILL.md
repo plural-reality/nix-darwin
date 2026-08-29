@@ -74,6 +74,11 @@ transcript-sync
 - `plaud/YYYY-MM-DD.jsonl`: Plaud公式CLIから取得した全文Transcript。
 - `limitless/YYYY-MM-DD.jsonl`: Limitless APIから取得した全文Transcript。
 
+数時間の一続きの会話や、過去日を特定して原文を確認する用途では、Limitlessの0件だけで
+会話が無かったとは判定しない。まず `mori sessions --from <日付> --to <日付>` でMoriの
+Sessionを確認し、必要なら `mori transcript <session-id>` を使う。`mori` は公式Remote MCPを
+優先し、そこに見えない同期済みの過去TranscriptだけをMori archiveから読み取り専用で補う。
+
 ## 出力フォーマット
 
 | フラグ | 用途 |
