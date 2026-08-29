@@ -417,23 +417,36 @@ let
     '';
   };
 
-  codexProfileConfigs = {
-    safe = {
-      approval_policy = "on-request";
-      sandbox_mode = "workspace-write";
-      model_reasoning_effort = "medium";
-    };
-    fast-local = {
-      approval_policy = "never";
-      sandbox_mode = "danger-full-access";
-      model_reasoning_effort = "low";
-    };
-    maximum-local = {
-      approval_policy = "never";
-      sandbox_mode = "danger-full-access";
-      model_reasoning_effort = "ultra";
-    };
-  };
+  codexProfileConfigs =
+    builtins.mapAttrs
+      (
+        _: profile:
+        profile
+        // {
+          # A profile layers on top of config.toml. Repeat the capability boundary
+          # here so `codex -p <name>` cannot re-enable the retired IAB backend.
+          shell_environment_policy = {
+            set = codexBrowserEnv;
+          };
+        }
+      )
+      {
+        safe = {
+          approval_policy = "on-request";
+          sandbox_mode = "workspace-write";
+          model_reasoning_effort = "medium";
+        };
+        fast-local = {
+          approval_policy = "never";
+          sandbox_mode = "danger-full-access";
+          model_reasoning_effort = "low";
+        };
+        maximum-local = {
+          approval_policy = "never";
+          sandbox_mode = "danger-full-access";
+          model_reasoning_effort = "ultra";
+        };
+      };
 
   codexProfileConfigFiles = lib.mapAttrs (
     name: profile: pkgs.writeText "codex-${name}-profile.json" (builtins.toJSON profile)

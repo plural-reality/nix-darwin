@@ -72,6 +72,33 @@ trust_level = "trusted"
     no_runtime = MODULE.project(tomlkit.parse(""), managed)
     assert "node_repl" not in no_runtime["mcp_servers"]
 
+    profile = tomlkit.parse(
+        """
+[shell_environment_policy.set]
+BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
+[mcp_servers.node_repl.env]
+BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
+"""
+    )
+    profile_managed = {
+        "shell_environment_policy": {
+            "set": {"BROWSER_USE_AVAILABLE_BACKENDS": "chrome"}
+        }
+    }
+    projected_profile = MODULE.project(profile, profile_managed)
+    assert (
+        projected_profile["shell_environment_policy"]["set"][
+            "BROWSER_USE_AVAILABLE_BACKENDS"
+        ]
+        == "chrome"
+    )
+    assert (
+        projected_profile["mcp_servers"]["node_repl"]["env"][
+            "BROWSER_USE_AVAILABLE_BACKENDS"
+        ]
+        == "chrome"
+    )
+
 
 def test_deliberate_override_survives_retirement() -> None:
     """Only the retired router wiring is dropped, not any value under the same keys."""
