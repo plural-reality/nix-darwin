@@ -243,7 +243,9 @@ The canonical policy and backend selection live in `modules/claude-code.nix`;
 the runtime projection adapter is `scripts/merge-codex-config.py`; generated
 `~/.codex`/`~/.claude` files are outputs and must not be edited directly. The
 projection test must show that a stale `chrome,iab` runtime value becomes
-`chrome` without inventing a `node_repl` server when no runtime server exists.
+`chrome`. Profiles use a complete fail-closed `node_repl` guard transport rather
+than an env-only table, so selecting a profile cannot produce an invalid Codex
+configuration before Desktop has written its runtime transport.
 The narrow Nix proof is the `desktop-skills` build plus the Codex projection,
 browser-isolation, and daily-watch static checks. Stopping the currently
 orphaned headless processes is a separate human-approved cleanup operation,
