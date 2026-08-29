@@ -542,6 +542,36 @@
                 touch "$out"
               '';
 
+          checks.codex-node-repl-profile-guard =
+            pkgs.runCommand "codex-node-repl-profile-guard-check"
+              {
+                nativeBuildInputs = [ pkgs.python313 ];
+              }
+              ''
+                mkdir -p "$TMPDIR/codex"
+                cat >"$TMPDIR/codex/config.toml" <<'EOF'
+                [mcp_servers.node_repl]
+                command = "${pkgs.coreutils}/bin/env"
+                args = []
+                [mcp_servers.node_repl.env]
+                BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
+                PROFILE_GUARD_FIXTURE = "present"
+                EOF
+                CODEX_HOME="$TMPDIR/codex" \
+                  python ${./scripts/codex-node-repl-profile-guard.py} >child-env
+                grep -F -- 'BROWSER_USE_AVAILABLE_BACKENDS=chrome' child-env >/dev/null
+                grep -F -- 'PROFILE_GUARD_FIXTURE=present' child-env >/dev/null
+                mkdir -p "$TMPDIR/empty"
+                blocked_status=0
+                CODEX_HOME="$TMPDIR/empty" \
+                  python ${./scripts/codex-node-repl-profile-guard.py} >empty.out 2>empty.err \
+                  || blocked_status=$?
+                test "$blocked_status" -eq 78
+                test ! -s empty.out
+                grep -F -- 'Desktop-owned node_repl transport is not available' empty.err >/dev/null
+                touch "$out"
+              '';
+
           checks.browser-use-isolation =
             pkgs.runCommand "browser-use-isolation-check"
               {

@@ -83,7 +83,13 @@ BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
     profile_managed = {
         "shell_environment_policy": {
             "set": {"BROWSER_USE_AVAILABLE_BACKENDS": "chrome"}
-        }
+        },
+        "mcp_servers": {
+            "node_repl": {
+                "command": "/nix/store/codex-node-repl-profile-guard/bin/codex-node-repl-profile-guard",
+                "env": {"BROWSER_USE_AVAILABLE_BACKENDS": "chrome"},
+            }
+        },
     }
     projected_profile = MODULE.project(profile, profile_managed)
     assert (
@@ -95,7 +101,16 @@ BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
     projected_profile_without_runtime = MODULE.project(
         tomlkit.parse(""), profile_managed
     )
-    assert "node_repl" not in projected_profile_without_runtime["mcp_servers"]
+    assert (
+        projected_profile_without_runtime["mcp_servers"]["node_repl"]["command"]
+        == "/nix/store/codex-node-repl-profile-guard/bin/codex-node-repl-profile-guard"
+    )
+    assert (
+        projected_profile_without_runtime["mcp_servers"]["node_repl"]["env"][
+            "BROWSER_USE_AVAILABLE_BACKENDS"
+        ]
+        == "chrome"
+    )
     assert (
         projected_profile["mcp_servers"]["node_repl"]["env"][
             "BROWSER_USE_AVAILABLE_BACKENDS"

@@ -232,6 +232,15 @@ let
     builtins.readFile ../scripts/merge-codex-config.py
   );
 
+  codexNodeReplProfileGuard = pkgs.writeTextFile {
+    name = "codex-node-repl-profile-guard";
+    executable = true;
+    destination = "/bin/codex-node-repl-profile-guard";
+    text =
+      builtins.replaceStrings [ "#!/usr/bin/env python3" ] [ "#!${codexConfigPython}/bin/python" ]
+        (builtins.readFile ../scripts/codex-node-repl-profile-guard.py);
+  };
+
   # Xcode Agent runs in a sandboxed environment without PATH inheritance.
   # All commands must use absolute Nix store paths.
   xcodeAgentConfigDir = "Library/Developer/Xcode/CodingAssistant/ClaudeAgentConfig";
@@ -421,9 +430,13 @@ let
     shell_environment_policy = {
       set = codexBrowserEnv;
     };
-    # Do not synthesize mcp_servers.node_repl here: Desktop owns its transport
-    # and a profile must not create an invalid env-only server. The activation
-    # merger applies this same allow-list when a runtime server already exists.
+    # Keep the profile transport valid even before Desktop writes node_repl. The
+    # guard resolves Desktop's current command/args from the base config and
+    # owns only the browser-backend environment boundary.
+    mcp_servers.node_repl = {
+      command = "${codexNodeReplProfileGuard}/bin/codex-node-repl-profile-guard";
+      env = codexBrowserEnv;
+    };
   };
 
   codexProfileConfigs = builtins.mapAttrs (_: profile: profile // codexBrowserProfileConfig) {
