@@ -32,7 +32,9 @@ def blocked(reason: str) -> int:
     return EXIT_BLOCKED
 
 
-def runtime_server(config_path: Path) -> tuple[str, list[str], dict[str, str]] | None:
+def runtime_server(
+    config_path: Path,
+) -> tuple[str, list[str], dict[str, str], str | None] | None:
     try:
         with config_path.open("rb") as stream:
             document = tomllib.load(stream)
@@ -44,17 +46,20 @@ def runtime_server(config_path: Path) -> tuple[str, list[str], dict[str, str]] |
     command = server.get("command") if isinstance(server, dict) else None
     args = server.get("args", []) if isinstance(server, dict) else None
     environment = server.get("env", {}) if isinstance(server, dict) else None
+    cwd = server.get("cwd") if isinstance(server, dict) else None
     valid_args = isinstance(args, list) and all(isinstance(item, str) for item in args)
     valid_environment = isinstance(environment, dict) and all(
         isinstance(key, str) and isinstance(value, str)
         for key, value in environment.items()
     )
+    valid_cwd = cwd is None or isinstance(cwd, str)
     return (
-        (command, args, environment)
+        (command, args, environment, cwd)
         if isinstance(command, str)
         and command
         and valid_args
         and valid_environment
+        and valid_cwd
         else None
     )
 
@@ -70,8 +75,8 @@ def main() -> int:
     )
 
 
-def launch(server: tuple[str, list[str], dict[str, str]]) -> int:
-    command, args, runtime_environment = server
+def launch(server: tuple[str, list[str], dict[str, str], str | None]) -> int:
+    command, args, runtime_environment, cwd = server
     child_environment = {
         **os.environ,
         **runtime_environment,
@@ -80,12 +85,21 @@ def launch(server: tuple[str, list[str], dict[str, str]]) -> int:
     return (
         blocked("profile guard cannot execute itself")
         if Path(command).resolve() == Path(sys.argv[0]).resolve()
-        else execute(command, args, child_environment)
+        else execute(command, args, child_environment, cwd)
     )
 
 
-def execute(command: str, args: list[str], environment: dict[str, str]) -> int:
-    os.execvpe(command, [command, *args], environment)
+def execute(
+    command: str,
+    args: list[str],
+    environment: dict[str, str],
+    cwd: str | None,
+) -> int:
+    try:
+        cwd and os.chdir(cwd)
+        os.execvpe(command, [command, *args], environment)
+    except OSError:
+        return blocked("Desktop-owned node_repl transport could not start")
     return blocked("node_repl transport exited before exec")
 
 

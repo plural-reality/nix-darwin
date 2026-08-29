@@ -561,6 +561,18 @@
                   python ${./scripts/codex-node-repl-profile-guard.py} >child-env
                 grep -F -- 'BROWSER_USE_AVAILABLE_BACKENDS=chrome' child-env >/dev/null
                 grep -F -- 'PROFILE_GUARD_FIXTURE=present' child-env >/dev/null
+                cat >"$TMPDIR/codex/config.toml" <<'EOF'
+                [mcp_servers.node_repl]
+                command = "/does/not/exist"
+                args = []
+                EOF
+                missing_status=0
+                CODEX_HOME="$TMPDIR/codex" \
+                  python ${./scripts/codex-node-repl-profile-guard.py} >missing.out 2>missing.err \
+                  || missing_status=$?
+                test "$missing_status" -eq 78
+                test ! -s missing.out
+                grep -F -- 'Desktop-owned node_repl transport could not start' missing.err >/dev/null
                 mkdir -p "$TMPDIR/empty"
                 blocked_status=0
                 CODEX_HOME="$TMPDIR/empty" \
