@@ -55,6 +55,38 @@ def test_sse_decode() -> None:
     assert MORI._decode_rpc(body, "text/event-stream") == {"ok": True}
 
 
+def test_archive_fills_an_official_session_gap() -> None:
+    record = {
+        "id": "mori://session/s1",
+        "title": "過去の会話",
+        "start_time": "2026-08-07T17:14:13+09:00",
+        "end_time": "2026-08-07T19:18:13+09:00",
+        "utterances": [
+            {"speaker": "Speaker 0", "text": "全文", "start_time": "2026-08-07T17:14:13+09:00", "end_time": "2026-08-07T17:14:14+09:00"}
+        ],
+    }
+
+    class EmptyMori:
+        def tool(self, _name: str, _arguments: dict) -> dict:
+            return {"sessions": []}
+
+    with tempfile.TemporaryDirectory() as root:
+        directory = Path(root)
+        MORI.write_archive(directory, {"mori://session/s1": record})
+        sessions = MORI.list_sessions(EmptyMori(), "2026-08-07", "2026-08-07", directory)
+        sleeps: list[float] = []
+        original_sleep, MORI.time.sleep = MORI.time.sleep, sleeps.append
+        try:
+            rows = MORI.fetch_conversations(EmptyMori(), sessions, MORI.read_archive(directory), interval=60.0)
+        finally:
+            MORI.time.sleep = original_sleep
+        transcript = MORI.fetch_transcript_or_archive(EmptyMori(), "s1", directory)
+        assert [session["id"] for session in sessions] == ["mori://session/s1"]
+        assert rows == [record]
+        assert sleeps == []
+        assert transcript["utterances"][0]["text"] == "全文"
+
+
 def test_rate_limit_retries_and_persists_each_record() -> None:
     """A rate-limited transcript is retried, and every record that lands is already on disk."""
     session = {"id": "s1", "started_at": "2026-08-03T09:00:00+09:00", "ended_at": "2026-08-03T09:02:00+09:00"}
@@ -98,6 +130,7 @@ def test_non_rate_limit_error_is_not_retried() -> None:
 
 test_normalize_and_archive()
 test_sse_decode()
+test_archive_fills_an_official_session_gap()
 test_rate_limit_retries_and_persists_each_record()
 test_non_rate_limit_error_is_not_retried()
 print("ok")
