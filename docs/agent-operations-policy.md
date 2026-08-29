@@ -177,6 +177,10 @@ set; stale identifiers are never used for cleanup.
 - Never call window/tab activation unless the user explicitly asks to see it.
 - Close every agent-owned tab at the end of the operation. Close an agent-owned
   window when its ownership set becomes empty.
+- Before cleanup, take a read-only snapshot of concurrent Codex/Claude sessions
+  and their leases/owned sets. Do not close a tab, window, app, or process that
+  another session or the user may own; clean only IDs created by this run in the
+  same connection epoch.
 - Relinquish ownership when the user activates or edits a tab, explicitly asks
   to see it, or accepts a handoff. Relinquished tabs are never auto-closed.
 - Preserve all pre-existing tabs, groups, windows, downloads, form state, and
