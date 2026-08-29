@@ -1,6 +1,8 @@
 ---
 name: apple-calendar
-description: Apple カレンダーにイベントを「正しく」追加・更新するための唯一の窓口。必ず iCloud(=iPhone同期)・位置情報つき(タップでAppleマップ)・時刻指定で入れる。トリガー: 「カレンダーに追加」「予定を入れて」「カレンダー登録」「add to calendar」、および他スキルからのカレンダー書込み委譲。
+description: >
+  Apple Calendarの本人予定を正しく読み、イベントをiCloudへ追加・更新する唯一の窓口。
+  トリガー: 「いつ空いてる」「予定確認」「カレンダーに追加」「予定を入れて」「カレンダー登録」「add to calendar」。
 ---
 
 # apple-calendar — Apple カレンダー書込みの唯一の窓口
@@ -8,6 +10,14 @@ description: Apple カレンダーにイベントを「正しく」追加・更�
 Claude / Codex が Apple カレンダーにイベントを追加・更新するときは **必ずこのスキル(＝下の `evkit calendar`)を通す**。直接 osascript でイベントを作らない（位置情報の座標ピンを付けられず、新規カレンダーが On My Mac に落ちて iPhone 同期しないため）。
 
 **`swift apply.swift` を直接叩かない。** TCC はカレンダー許可を「責任プロセスの code identity」に紐づけるため、Claude Code から直接叩くと許可が claude のバージョン付きパスに付き、更新のたびに失効する。さらに SSH/tmux は Aqua セッションでないので許可ダイアログを描画できず自動拒否される。`evkit` は MacBook Air 常駐の署名済みヘルパー `evkitd` に委譲するので、どのホスト・どのセッションからでも通る。`apply.swift` はその evkitd が exec する実装であり、呼び出し口ではない。
+
+## 本人の予定・空き時間を読む
+
+本人の空き時間を判断する時は、Google Calendarだけで判定せず、**Apple Calendarを先に読む**。読取りは `evkit snapshot` を使い、次の本人カレンダーだけを対象にする。
+
+`Taka の予定` / `takagi@plural-reality.com` / `Shunsuke Takagi (General)` / `Business` / `ルーティーン` / `練習メニュー from interval.icu`（トレーニング計画は可動） / `日本の祝日`
+
+`Univ` / `勤務先` / `Personal` / `Exercise` / `惟の居住地` / `目黒区民プール` / `Yui` / `Ryu` など、チェックのない共有カレンダーは他人の予定なので空き判定から除外する。書込みは下記の `evkit calendar` だけを使い、直接osascriptで作成しない。
 
 ## 不変の契約（必ず守る）
 1. **iCloud に入れる** — 新規カレンダーは iCloud(CalDAV)ソースに作る。On My Mac は iPhone と同期しない。`apply.swift` が自動でそうする。
