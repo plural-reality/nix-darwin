@@ -307,14 +307,17 @@ const rolloutMessages = (path: string | null): string =>
           : "")(tryResult(() => readFileSync(path, "utf8")))
     : "";
 
-const titleContext = (thread: Thread, supplemental: ReadonlyArray<string> = []): string =>
-  (supplemental.length > 0 ? supplemental : [thread.preview, rolloutMessages(thread.path)])
+const titleContext = (thread: Thread): string =>
+  [
+    `Primary task (trusted thread preview): ${thread.preview}`,
+    `Recent user-only context: ${rolloutMessages(thread.path).slice(-4_000)}`,
+  ]
     .map((text) => text.replace(/[ \t\r\n]+/g, " ").trim())
     .filter(Boolean)
     .join("\n")
-    .slice(-8_000);
+    .slice(0, 8_000);
 
-const titlePrompt = (thread: Thread, supplemental: ReadonlyArray<string> = []): string => `Name this Codex CLI session.
+const titlePrompt = (thread: Thread): string => `Name this Codex CLI session.
 
 Return exactly one short title and nothing else.
 Rules:
@@ -324,7 +327,7 @@ Rules:
 - Name the actual task, not the tooling used to name it.
 
 Session excerpt:
-${titleContext(thread, supplemental)}`;
+${titleContext(thread)}`;
 
 const cleanName = (raw: string, fallback: string): string =>
   ((name) =>
@@ -367,7 +370,6 @@ const generatedName = (
   thread: Thread,
   fallback: string,
   statusMessage: string,
-  supplemental: ReadonlyArray<string>,
   callback: (name: string) => boolean,
 ): boolean =>
   args.noLlm
@@ -407,7 +409,7 @@ const generatedName = (
                   "notify=[]",
                   "-o",
                   outputPath,
-                  titlePrompt(thread, supplemental),
+                  titlePrompt(thread),
                 ],
                 { cwd: thread.cwd || process.cwd(), stdio: ["ignore", "ignore", "ignore"] },
               ),
@@ -528,9 +530,8 @@ const run = (args: Args): boolean => {
         ? generatedName(
             args,
             thread,
-            autoName(event.inputMessages.join(" ") || thread.preview),
+            autoName(thread.preview || rolloutMessages(thread.path)),
             statusMessage,
-            event.inputMessages,
             (name) => sendName(thread.id, name),
           )
         : sendName(
