@@ -24,6 +24,7 @@ type Args = Readonly<{
 type NotifyEvent = Readonly<{
   readonly threadId?: string;
   readonly lastAssistantMessage?: string;
+  readonly inputMessages: ReadonlyArray<string>;
 }>;
 type Thread = Readonly<{
   id: string;
@@ -119,12 +120,23 @@ const parseArgs = (argv: ReadonlyArray<string>): Result<Args> =>
       );
 
 const autoName = (preview: string): string =>
-  preview
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/https?:\/\/\S+/g, " ")
-    .replace(/[ \t\r\n]+/g, " ")
-    .trim()
-    .slice(0, 72) || "Codex session";
+  ((name) =>
+    name.length > 0 && !isPromptFragment(name) ? name : "Codex session")(
+    preview
+      .replace(/```[\s\S]*?```/g, " ")
+      .replace(/https?:\/\/\S+/g, " ")
+      .replace(/[ \t\r\n]+/g, " ")
+      .trim()
+      .slice(0, 72),
+  );
+
+const isPromptFragment = (value: string): boolean =>
+  /codex-annotation|architectural decision rules|you are a helpful assistant|generate a concise ui title|^assistant:|^user:/iu.test(
+    value,
+  );
+
+const isAnswerFragment = (value: string): boolean =>
+  /\*\*|^[-•]\s|(?:ただし|なお)[、,]/u.test(value);
 
 const statusOf = (title: string | null | undefined): TitleStatus | undefined =>
   /^⬜️?\s*/u.test(title ?? "")
@@ -202,29 +214,58 @@ const notifyEvent = (value: unknown): NotifyEvent =>
             : typeof value.last_assistant_message === "string"
               ? value.last_assistant_message
               : undefined,
+        inputMessages: Array.isArray(value["input-messages"])
+          ? value["input-messages"].filter((message): message is string => typeof message === "string")
+          : Array.isArray(value.input_messages)
+            ? value.input_messages.filter((message): message is string => typeof message === "string")
+            : [],
       }
-    : {};
+    : { inputMessages: [] };
 
 const parseNotifyEvent = (raw: string): Result<NotifyEvent> =>
   ((parsed) =>
-    parsed.ok ? ok(notifyEvent(parsed.value)) : err(parsed.error))(tryResult(() => JSON.parse(raw)));
+    parsed.ok
+      ? isRecord(parsed.value)
+        ? ok(notifyEvent(parsed.value))
+        : err("notify event must be a JSON object")
+      : err(parsed.error))(tryResult(() => JSON.parse(raw)));
 
 const notifyArgument = (argv: ReadonlyArray<string>): string | undefined =>
-  argv.at(-1)?.trim().startsWith("{") ? argv.at(-1) : undefined;
+  argv
+    .slice()
+    .reverse()
+    .find((argument) => argument.trim().startsWith("{"));
 
-const readNotifyEvent = (argv: ReadonlyArray<string>): Result<NotifyEvent> =>
+const notifyStdin = (): Result<string> =>
+  process.stdin.isTTY ? ok("") : tryResult(() => readFileSync(0, "utf8"));
+
+const readNotifyEvent = (argv: ReadonlyArray<string>): Result<NotifyEvent | undefined> =>
   ((argument) =>
-    argument ? parseNotifyEvent(argument) : err("notify event argument is missing"))(notifyArgument(argv));
+    argument
+      ? parseNotifyEvent(argument)
+      : ((stdin) =>
+          stdin.ok && stdin.value.trim().length > 0
+            ? parseNotifyEvent(stdin.value)
+            : ok(undefined))(notifyStdin()))(notifyArgument(argv));
+
+const isInternalTitleEvent = (event: NotifyEvent): boolean =>
+  event.inputMessages.some((message) =>
+    /Generate a concise UI title of at most 36 characters|You will be presented with a user prompt/iu.test(
+      message,
+    ),
+  );
 
 const notifyInputSelfCheck = (): boolean =>
   ((parsed) =>
     parsed.ok &&
-    parsed.value.threadId === "00000000-0000-4000-8000-000000000000" &&
-    parsed.value.lastAssistantMessage === "完了しました")(
+    parsed.value?.threadId === "00000000-0000-4000-8000-000000000000" &&
+    parsed.value.lastAssistantMessage === "完了しました" &&
+    parsed.value.inputMessages[0] === "タイトルを付けて" &&
+    !isInternalTitleEvent(parsed.value))(
     readNotifyEvent([
       "--notify",
       "--auto",
-      '{"type":"agent-turn-complete","thread-id":"00000000-0000-4000-8000-000000000000","last-assistant-message":"完了しました"}',
+      '{"type":"agent-turn-complete","thread-id":"00000000-0000-4000-8000-000000000000","input-messages":["タイトルを付けて"],"last-assistant-message":"完了しました"}',
     ]),
   );
 
@@ -244,7 +285,7 @@ const rolloutMessage = (value: unknown): ReadonlyArray<string> =>
   value.type === "response_item" &&
   isRecord(value.payload) &&
   value.payload.type === "message" &&
-  (value.payload.role === "user" || value.payload.role === "assistant")
+  value.payload.role === "user"
     ? [`${value.payload.role}: ${contentText(value.payload.content)}`]
     : [];
 
@@ -266,14 +307,14 @@ const rolloutMessages = (path: string | null): string =>
           : "")(tryResult(() => readFileSync(path, "utf8")))
     : "";
 
-const titleContext = (thread: Thread): string =>
-  [thread.preview, rolloutMessages(thread.path)]
+const titleContext = (thread: Thread, supplemental: ReadonlyArray<string> = []): string =>
+  (supplemental.length > 0 ? supplemental : [thread.preview, rolloutMessages(thread.path)])
     .map((text) => text.replace(/[ \t\r\n]+/g, " ").trim())
     .filter(Boolean)
     .join("\n")
     .slice(-8_000);
 
-const titlePrompt = (thread: Thread): string => `Name this Codex CLI session.
+const titlePrompt = (thread: Thread, supplemental: ReadonlyArray<string> = []): string => `Name this Codex CLI session.
 
 Return exactly one short title and nothing else.
 Rules:
@@ -283,10 +324,16 @@ Rules:
 - Name the actual task, not the tooling used to name it.
 
 Session excerpt:
-${titleContext(thread)}`;
+${titleContext(thread, supplemental)}`;
 
 const cleanName = (raw: string, fallback: string): string =>
-  ((name) => (name.length > 0 ? name.slice(0, 72) : fallback))(
+  ((name) =>
+    name.length > 0 &&
+    !isPromptFragment(name) &&
+    !isAnswerFragment(name) &&
+    !/^(?:[\[{]|.*(?:["'](?:text|annotation|content)["']\s*:))/u.test(name)
+      ? name.slice(0, 72)
+      : fallback)(
     raw
       .replace(/```[\s\S]*?```/g, " ")
       .split(/\r?\n/)
@@ -296,6 +343,13 @@ const cleanName = (raw: string, fallback: string): string =>
       .replace(/[ \t\r\n]+/g, " ")
       .trim() ?? "",
   );
+
+const titleSanitizationSelfCheck = (): boolean =>
+  autoName("You are a helpful assistant. Generate a concise UI title") === "Codex session" &&
+  autoName("iMessageの連絡先を整理") === "iMessageの連絡先を整理" &&
+  cleanName('{"text":"prompt fragment"}', "復旧") === "復旧" &&
+  cleanName("Nix - Codex title hook", "復旧") === "Nix - Codex title hook" &&
+  cleanName("レトルトカレー・ご飯 - ガスボンベ ただし、在庫は変動", "復旧") === "復旧";
 
 const cleanup = (path: string): boolean => (
   tryResult(() => rmSync(path, { recursive: true, force: true })),
@@ -313,6 +367,7 @@ const generatedName = (
   thread: Thread,
   fallback: string,
   statusMessage: string,
+  supplemental: ReadonlyArray<string>,
   callback: (name: string) => boolean,
 ): boolean =>
   args.noLlm
@@ -352,7 +407,7 @@ const generatedName = (
                   "notify=[]",
                   "-o",
                   outputPath,
-                  titlePrompt(thread),
+                  titlePrompt(thread, supplemental),
                 ],
                 { cwd: thread.cwd || process.cwd(), stdio: ["ignore", "ignore", "ignore"] },
               ),
@@ -393,6 +448,8 @@ const readRequest = (threadId: string): JsonValue =>
 const setNameRequest = (threadId: string, name: string): JsonValue =>
   request(4, "thread/name/set", { threadId, name });
 
+const initializedNotification: JsonValue = { method: "initialized", params: {} };
+
 const firstThread = (response: Response): Thread | undefined =>
   isRecord(response.result) &&
   Array.isArray(response.result.data) &&
@@ -418,87 +475,131 @@ const updatedName = (
     ? { threadId: response.params.threadId, name: response.params.threadName }
     : undefined;
 
+const isIgnorableNotifyError = (message: string): boolean =>
+  /thread\s+(?:not\s+loaded|not\s+found)|no\s+such\s+thread|unknown\s+thread/iu.test(message);
+
 const fail = (message: string): never => (
   console.error(`codex-name: ${message}`),
   process.exit(1)
 );
 
-const complete = (
-  child: ReturnType<typeof spawn>,
-  timer: NodeJS.Timeout,
-  update: Readonly<{ readonly threadId: string; readonly name: string }>,
-): boolean => (
-  clearTimeout(timer),
-  console.log(`${update.threadId}\t${update.name}`),
-  child.stdin.end()
-);
-
 const run = (args: Args): boolean => {
-  const event = args.notify
-    ? ((read) =>
-        read.ok ? read.value : fail(`invalid notify event: ${read.error}`))(readNotifyEvent(process.argv.slice(2)))
-    : {};
+  const eventResult = args.notify
+    ? readNotifyEvent(process.argv.slice(2))
+    : ok<NotifyEvent>({ inputMessages: [] });
+  const event = eventResult.ok
+    ? eventResult.value ?? { inputMessages: [] }
+    : fail(`invalid notify event: ${eventResult.error}`);
   const targetThreadId = event.threadId ?? args.threadId;
   const statusMessage = event.lastAssistantMessage ?? "";
-  const targetError = args.notify && !targetThreadId ? "notify event did not contain thread-id" : undefined;
-  targetError ? fail(targetError) : undefined;
-  const child = spawn("codex", ["app-server", "--stdio"], {
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  const send = (payload: JsonValue): boolean =>
-    child.stdin.write(`${JSON.stringify(payload)}\n`);
-  const setThreadName = (thread: Thread): boolean =>
-    args.auto
-      ? generatedName(args, thread, autoName(titleContext(thread) || thread.preview), statusMessage, (name) =>
-          send(setNameRequest(thread.id, name)),
-        )
-    : send(setNameRequest(thread.id, statusTitled(thread.name, args.name ?? "Codex session", statusMessage)));
-  const timer = setTimeout(() => fail("timed out waiting for codex app-server"), 45_000);
-  const lines = createInterface({ input: child.stdout });
+  const start = (): boolean => {
+    const child = spawn("codex", ["app-server", "--stdio"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const state: {
+      done: boolean;
+      requestedUpdate?: Readonly<{ readonly threadId: string; readonly name: string }>;
+    } = { done: false };
+    const send = (payload: JsonValue): boolean =>
+      child.stdin.write(`${JSON.stringify(payload)}\n`);
+    const timer = setTimeout(() => fail("timed out waiting for codex app-server"), 45_000);
+    const finish = (
+      update?: Readonly<{ readonly threadId: string; readonly name: string }>,
+      reason?: string,
+    ): boolean =>
+      state.done
+        ? false
+        : ((state.done = true),
+          clearTimeout(timer),
+          update
+            ? console.log(`${update.threadId}\t${update.name}`)
+            : reason
+              ? console.error(`codex-name: ${reason}`)
+              : undefined,
+          child.stdin.end(),
+          true);
+    const sendName = (threadId: string, name: string): boolean =>
+      ((update) => ((state.requestedUpdate = update), send(setNameRequest(threadId, name))))({
+        threadId,
+        name,
+      });
+    const setThreadName = (thread: Thread): boolean =>
+      args.auto
+        ? generatedName(
+            args,
+            thread,
+            autoName(event.inputMessages.join(" ") || thread.preview),
+            statusMessage,
+            event.inputMessages,
+            (name) => sendName(thread.id, name),
+          )
+        : sendName(
+            thread.id,
+            statusTitled(thread.name, args.name ?? "Codex session", statusMessage),
+          );
+    const lines = createInterface({ input: child.stdout });
 
-  child.stderr.setEncoding("utf8");
-  child.stderr.on("data", (chunk) => process.stderr.write(chunk));
-  child.on("error", (error) => fail(messageOf(error)));
-  child.on("exit", (code) =>
-    code === 0 || process.exitCode === 0
-      ? undefined
-      : fail(`codex app-server exited with code ${String(code)}`),
-  );
-  lines.on("line", (line) =>
-    ((parsed) =>
-      parsed.ok
-        ? parsed.value.error
-          ? fail(parsed.value.error.message ?? "app-server returned an error")
-          : parsed.value.id === 1
-            ? targetThreadId
-              ? args.auto
-                ? send(readRequest(targetThreadId))
-                : send(setNameRequest(targetThreadId, args.name ?? "Codex session"))
-              : send(listRequest(args))
-            : parsed.value.id === 2
-              ? ((thread) =>
-                  thread
-                    ? setThreadName(thread)
-                    : fail(
-                        args.all
-                          ? "no Codex threads found"
-                          : `no Codex threads found for cwd: ${process.cwd()}`,
-                      ))(firstThread(parsed.value))
-              : parsed.value.id === 3
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => process.stderr.write(chunk));
+    child.on("error", (error) => (state.done ? undefined : fail(messageOf(error))));
+    child.on("exit", (code) =>
+      state.done || code === 0 || process.exitCode === 0
+        ? undefined
+        : fail(`codex app-server exited with code ${String(code)}`),
+    );
+    lines.on("line", (line) =>
+      ((parsed) =>
+        parsed.ok
+          ? parsed.value.error
+            ? ((message) =>
+                args.notify && isIgnorableNotifyError(message)
+                  ? finish(undefined, `skipped notify event: ${message}`)
+                  : fail(message))(parsed.value.error.message ?? "app-server returned an error")
+            : parsed.value.id === 1
+              ? (send(initializedNotification),
+                targetThreadId ? send(readRequest(targetThreadId)) : send(listRequest(args)))
+              : parsed.value.id === 2
                 ? ((thread) =>
-                    thread ? setThreadName(thread) : fail("thread/read did not return a thread"))(
-                    readThread(parsed.value),
-                  )
-                : updatedName(parsed.value)
-                  ? complete(child, timer, updatedName(parsed.value))
-                  : undefined
-        : fail(parsed.error))(parseJson(line)),
-  );
-  return send(initializeRequest);
+                    thread
+                      ? setThreadName(thread)
+                      : args.notify
+                        ? finish(undefined, "skipped notify event: thread/list returned no thread")
+                        : fail(
+                            args.all
+                              ? "no Codex threads found"
+                              : `no Codex threads found for cwd: ${process.cwd()}`,
+                          ))(firstThread(parsed.value))
+                : parsed.value.id === 3
+                  ? ((thread) =>
+                      thread
+                        ? setThreadName(thread)
+                        : args.notify
+                          ? finish(undefined, "skipped notify event: thread/read returned no thread")
+                          : fail("thread/read did not return a thread"))(readThread(parsed.value))
+                  : parsed.value.id === 4 && state.requestedUpdate
+                    ? finish(state.requestedUpdate)
+                    : updatedName(parsed.value)
+                      ? finish(updatedName(parsed.value))
+                      : undefined
+          : fail(parsed.error))(parseJson(line)),
+    );
+    return send(initializeRequest);
+  };
+  return args.notify && !targetThreadId
+    ? finishNotifySkip("notify event did not contain thread-id")
+    : args.notify && isInternalTitleEvent(event)
+      ? finishNotifySkip("internal title-generator event")
+      : start();
 };
 
+const finishNotifySkip = (reason: string): boolean =>
+  (console.error(`codex-name: skipped notify event: ${reason}`), true);
+
 process.argv.includes("--self-check")
-  ? titleStatusSelfCheck() && statusInferenceSelfCheck() && notifyInputSelfCheck()
+  ? titleStatusSelfCheck() &&
+      statusInferenceSelfCheck() &&
+      notifyInputSelfCheck() &&
+      titleSanitizationSelfCheck()
     ? console.log("codex-name: ok")
     : fail("self-check failed")
   : ((args) =>
