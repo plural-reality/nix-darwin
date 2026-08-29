@@ -367,15 +367,25 @@ let
       CODEX_HOME="''${CODEX_HOME:-$HOME/.codex}"
       LOG_DIR="$CODEX_HOME/logs"
       LOCK="$CODEX_HOME/.codex-name-hook.lock"
+      LOCK_STALE_SECONDS=300
       mkdir -p "$LOG_DIR"
       # Codex legacy notify appends its JSON payload as the final argv; stdin is null.
-      EVENT="''${1:-}"
+      # Keep every argument so the Sky turn-ended adapter can prepend its own marker.
 
       acquired=0
       for attempt in 1 2 3 4 5; do
         if mkdir "$LOCK" 2>/dev/null; then
+          printf '%s\n' "$$" > "$LOCK/pid"
           acquired=1
           break
+        fi
+        lock_mtime="$(stat -c %Y "$LOCK" 2>/dev/null || printf '0')"
+        now="$(date +%s)"
+        owner_pid="$(cat "$LOCK/pid" 2>/dev/null || true)"
+        if [ "$lock_mtime" -gt 0 ] && [ "$((now - lock_mtime))" -ge "$LOCK_STALE_SECONDS" ] && { [ -z "$owner_pid" ] || ! kill -0 "$owner_pid" 2>/dev/null; }; then
+          rm -f "$LOCK/pid"
+          rmdir "$LOCK" 2>/dev/null || true
+          printf '%s\tstale-lock-recovered\n' "$(date -u +%FT%TZ)" >> "$LOG_DIR/codex-name-hook.log"
         fi
         sleep 1
       done
@@ -383,11 +393,11 @@ let
         printf '%s\tlock-timeout\n' "$(date -u +%FT%TZ)" >> "$LOG_DIR/codex-name-hook.log"
         exit 0
       fi
-      trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
+      trap '[ -f "$LOCK/pid" ] && [ "$(cat "$LOCK/pid" 2>/dev/null || true)" = "$$" ] && rm -f "$LOCK/pid" && rmdir "$LOCK" 2>/dev/null || true' EXIT
 
       attempt=1
       while [ "$attempt" -le 2 ]; do
-        if ${pkgs.nodejs_22}/bin/node --experimental-strip-types ${../scripts/codex-name.ts} --notify --auto "$EVENT" >> "$LOG_DIR/codex-name-hook.log" 2>&1; then
+        if ${pkgs.nodejs_22}/bin/node --experimental-strip-types ${../scripts/codex-name.ts} --notify --auto "$@" >> "$LOG_DIR/codex-name-hook.log" 2>&1; then
           exit 0
         fi
         printf '%s\tattempt=%s failed\n' "$(date -u +%FT%TZ)" "$attempt" >> "$LOG_DIR/codex-name-hook.log"
