@@ -228,16 +228,21 @@ let originalFilename: (PHAsset) -> String? = {
     PHAssetResource.assetResources(for: $0).first?.originalFilename
 }
 
-let assetRecord: (PHAsset) -> AssetRecord = {
+// The global snapshot is the hot path for the weekly diff.  Resolving
+// PHAssetResource for every asset turns a metadata-only read into a synchronous
+// Photos database lookup per item (thousands of round trips on a large iCloud
+// library).  Keep filename enrichment for the exact-name album read, where the
+// caller explicitly asks for it, and leave it absent in the global snapshot.
+let assetRecord: (PHAsset, Bool) -> AssetRecord = { asset, includeFilename in
     AssetRecord(
-        id: $0.localIdentifier,
-        filename: originalFilename($0),
-        mediaType: mediaTypeName($0.mediaType),
-        creationDate: $0.creationDate.map(iso8601.string(from:)),
-        modificationDate: $0.modificationDate.map(iso8601.string(from:)),
-        pixelWidth: $0.pixelWidth,
-        pixelHeight: $0.pixelHeight,
-        durationSeconds: $0.mediaType == .video ? $0.duration : nil)
+        id: asset.localIdentifier,
+        filename: includeFilename ? originalFilename(asset) : nil,
+        mediaType: mediaTypeName(asset.mediaType),
+        creationDate: asset.creationDate.map(iso8601.string(from:)),
+        modificationDate: asset.modificationDate.map(iso8601.string(from:)),
+        pixelWidth: asset.pixelWidth,
+        pixelHeight: asset.pixelHeight,
+        durationSeconds: asset.mediaType == .video ? asset.duration : nil)
 }
 
 let requestedImage: (PHAsset, CGFloat) -> NSImage? = { asset, maximumDimension in
@@ -485,13 +490,13 @@ let execute: (BridgeRequest) throws -> [BridgeOutput] = { request in
         return [.authorization(value), .success(1)]
     case "snapshot":
         try requireFullAuthorization()
-        let records = allAssets().map(assetRecord).sorted { $0.id < $1.id }
+        let records = allAssets().map { assetRecord($0, false) }.sorted { $0.id < $1.id }
         return records.map(BridgeOutput.asset) + [.success(records.count)]
     case "albumSnapshot":
         try requireFullAuthorization()
         let name = try requiredAlbumName(request.spec)
         let album = try albumNamed(name)
-        let records = assetsInAlbum(album).map(assetRecord).sorted { $0.id < $1.id }
+        let records = assetsInAlbum(album).map { assetRecord($0, true) }.sorted { $0.id < $1.id }
         let albumRecord = AlbumRecord(id: album.localIdentifier, name: name, count: records.count)
         return [.album(albumRecord)] + records.map(BridgeOutput.asset) + [.success(records.count)]
     case "classify":
