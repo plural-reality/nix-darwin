@@ -77,6 +77,38 @@ Idempotency is the caller's job (keep `freee-call` a pure transport): GET existi
 records, diff by natural key, pipe only the new requests. See
 `references/user_matchers.md` for the full bulk + idempotent + reconcile recipe.
 
+### Receipt attachment: `freee-receipt-attach`
+
+For one existing expense deal and one local receipt image/PDF, prefer the narrow
+`freee-receipt-attach` capability over generic `freee-call` PUTs. It has two
+modes: `preview` is read-only and reports the exact company, deal, source-file
+SHA-256, metadata, and planned effect; `apply` uploads to the file box, merges
+rather than replaces `receipt_ids`, preserves deal details, and reads the deal
+back. It permits receipt files only below the approved task/workspace receipt
+roots and records an uploaded file-box ID before attachment so a retry does not
+blindly re-upload a file after a partial failure.
+
+Use `mode: "apply"` only after the caller has presented the preview and obtained
+explicit approval for the named deal and file. `apply` additionally requires the
+64-character `approval_token` returned by that exact preview; the command
+re-reads the deal and rejects the mutation if a material field changed. Do not
+use it to change payments, amounts, account items, or arbitrary API paths.
+
+```bash
+printf '%s\n' '{
+  "mode":"preview",
+  "company_id":12669261,
+  "deal_id":3757958566,
+  "file_path":"/tmp/codex-remote-attachments/.../receipt.jpg",
+  "receipt":{
+    "issue_date":"2026-09-02",
+    "amount":3828,
+    "partner_name":"オカモトセルフ名寄徳田店",
+    "description":"音威子府出張のガソリン代"
+  }
+}' | freee-receipt-attach
+```
+
 ### Reconciliation: `freee-reconcile`
 
 Bank balance vs registered deals in one call (no manual jq + mental arithmetic).
