@@ -311,6 +311,13 @@
           # freee MCP: published ESM plus runtime npm closure, fully Nix-pinned.
           packages.freee-mcp = import ./packages/freee-mcp { inherit pkgs; };
 
+          # A narrow upload+attachment capability, backed by the official local
+          # MCP. This is deliberately distinct from the generic freee API tools.
+          packages.freee-receipt-attach = import ./packages/freee-receipt-attach {
+            inherit pkgs;
+            freeeMcp = self'.packages.freee-mcp;
+          };
+
           # Official Plaud CLI, pinned for personal lifelog adapters.
           packages.plaud-cli = import ./packages/plaud-cli { inherit pkgs; };
 
@@ -479,6 +486,27 @@
                 }
                 test ! -s stdout
                 grep -F '"version":"0.26.7"' stderr >/dev/null
+                touch "$out"
+              '';
+
+          # The receipt attachment capability is pure to build and test: it must
+          # not attempt OAuth or any freee mutation in an offline check.
+          checks.freee-receipt-attach =
+            pkgs.runCommand "freee-receipt-attach-check"
+              {
+                nativeBuildInputs = [
+                  pkgs.nodejs_22
+                  self'.packages.freee-receipt-attach
+                ];
+              }
+              ''
+                mkdir test-src
+                cp ${./scripts/freee-receipt-attach.ts} test-src/freee-receipt-attach.ts
+                cp ${./scripts/freee-receipt-attach.test.ts} test-src/freee-receipt-attach.test.ts
+                ${pkgs.nodejs_22}/bin/node --experimental-strip-types --test \
+                  test-src/freee-receipt-attach.test.ts
+                freee-receipt-attach --self-test > result.json
+                grep -F '"self_test":"passed"' result.json >/dev/null
                 touch "$out"
               '';
 

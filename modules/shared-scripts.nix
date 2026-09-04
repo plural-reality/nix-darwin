@@ -219,6 +219,14 @@ let
     text = builtins.readFile ../scripts/claude-history.sh;
   };
 
+  # The official local freee MCP is the only component that reads the OAuth
+  # runtime state. The receipt command below exposes a much narrower mutation.
+  freeeMcp = import ../packages/freee-mcp { inherit pkgs; };
+  freeeReceiptAttach = import ../packages/freee-receipt-attach {
+    inherit pkgs;
+    inherit freeeMcp;
+  };
+
   # freee REST filter: stdin JSON -> freee API -> stdout JSON.
   # Auth state stays in ~/.config/freee-mcp, owned by freee-mcp's OAuth flow.
   freeeCall = pkgs.writeShellApplication {
@@ -459,6 +467,7 @@ in
     ch
     freeeCall
     freeeReconcile
+    freeeReceiptAttach
     fableConsult
     codexName
     codexTaskAudit
@@ -491,6 +500,8 @@ in
   home.file.".local/bin/photo-library".source = "${photoLibrary}/bin/photo-library";
   home.file.".local/bin/evkit".source = "${evkit}/bin/evkit";
   home.file.".local/bin/daily-watch".source = "${dailyWatch}/bin/daily-watch";
+  home.file.".local/bin/freee-receipt-attach".source =
+    "${freeeReceiptAttach}/bin/freee-receipt-attach";
   home.file.".local/bin/gtd-canvas-serve".source = "${gtd-canvas-serve}/bin/gtd-canvas-serve";
 
   # ディレクトリ丸ごと1つの store path。ファイル単位の symlink にすると、ESM が
