@@ -41,14 +41,19 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(SCRIPT_DIR, "lib"))
 from scrapbox_session import resolve_session, resolve_sid
 
-# Calendar.app で「チェック済（可視）」のカレンダーだけ取り込む allowlist（他人/別用途は除外）。
-# Calendar.app のサイドバーのチェック状態に対応。変えたい時はここを編集。
-# 本人の予定として扱うのは Calendar.app でチェックしているこの一覧だけ。
-# Intervals.icu はトレーニング計画（可動）だが、その日の行動記録には含める。
-CHECKED_CALENDARS = [
-    "Taka の予定", "takagi@plural-reality.com", "Shunsuke Takagi (General)",
-    "Business ", "ルーティーン", "Intervals.icu", "日本の祝日",
+# Calendar.app で本人がチェックしているカレンダーだけを、EventKit の stable ID で束縛する。
+# 表示名は利用者向けの診断専用。Calendar.app での rename を収集障害にしない。
+# 日本の祝日は個人/法人 Google の2本を選び、同一予定は projection 後にdeduplicateする。
+CHECKED_CALENDAR_BINDINGS = [
+    ("EAA06BCB-8CF7-4951-B78B-FBC5090ED677", "Taka の予定"),
+    ("6311824E-C3CA-4ADA-A9AF-95748D846259", "takagi@plural-reality.com"),
+    ("47C28220-8418-4E73-A544-8B0C0AAC39B8", "Shunsuke Takagi (General)"),
+    ("6A6DD1BE-AD4C-4ADF-9BE9-32F5101F4F96", "タイムボクシング"),
+    ("055A2BA9-DC8F-43C1-883E-352C1C900235", "統合: interval.icu"),
+    ("3E54C2EE-C87A-438D-9561-AF1E14B039BC", "日本の祝日"),
+    ("FB9E2A65-0424-41A1-88AF-D26193EA26B9", "日本の祝日"),
 ]
+CHECKED_CALENDAR_IDS = [calendar_id for calendar_id, _name in CHECKED_CALENDAR_BINDINGS]
 
 OK_STATE = "取得済み"
 EMPTY_STATE = "記録なし"
@@ -90,7 +95,7 @@ def _calendar_snapshot_spec(d: str) -> dict[str, Any]:
     return {
         "rangeStart": start.isoformat(),
         "rangeEnd": end.isoformat(),
-        "calendars": {"names": CHECKED_CALENDARS, "ids": []},
+        "calendars": {"names": [], "ids": CHECKED_CALENDAR_IDS},
         "reminderLists": {"names": [], "ids": []},
         "includeCompleted": False,
     }
@@ -148,9 +153,12 @@ def fetch_calendar(d: str) -> SourceResult:
                   else "EventKitの予定読取に失敗しました")
         return _failed(state, detail[:200])
     resolved = {
-        str(item.get("name", "")) for item in containers if isinstance(item, dict)
+        str(item.get("id", "")) for item in containers if isinstance(item, dict)
     }
-    missing = [name for name in CHECKED_CALENDARS if name not in resolved]
+    missing = [
+        name for calendar_id, name in CHECKED_CALENDAR_BINDINGS
+        if calendar_id not in resolved
+    ]
     if missing:
         return _failed(
             TRANSIENT_STATE,

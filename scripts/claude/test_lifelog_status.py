@@ -41,8 +41,8 @@ def test_collection() -> None:
 
 
 def _calendar_containers() -> list[dict[str, object]]:
-    return [{"name": name, "id": f"id-{index}", "source": {"name": "test"}}
-            for index, name in enumerate(ll.CHECKED_CALENDARS)]
+    return [{"name": name, "id": calendar_id, "source": {"name": "test"}}
+            for calendar_id, name in ll.CHECKED_CALENDAR_BINDINGS]
 
 
 def test_calendar_uses_eventkit_snapshot() -> None:
@@ -78,7 +78,7 @@ def test_calendar_uses_eventkit_snapshot() -> None:
         assert calls == [([ll.EVKIT_BIN, "snapshot"], {
             "rangeStart": "2026-08-02T00:00:00+09:00",
             "rangeEnd": "2026-08-03T00:00:00+09:00",
-            "calendars": {"names": ll.CHECKED_CALENDARS, "ids": []},
+            "calendars": {"names": [], "ids": ll.CHECKED_CALENDAR_IDS},
             "reminderLists": {"names": [], "ids": []},
             "includeCompleted": False,
         })]
@@ -113,11 +113,17 @@ def test_calendar_typed_eventkit_failures() -> None:
         ll.subprocess.run = original_run
 
 
-def test_calendar_bindings_match_calendar_app_names() -> None:
-    assert ll.CHECKED_CALENDARS == [
-        "Taka の予定", "takagi@plural-reality.com", "Shunsuke Takagi (General)",
-        "Business ", "ルーティーン", "Intervals.icu", "日本の祝日",
+def test_calendar_bindings_use_stable_eventkit_ids() -> None:
+    assert ll.CHECKED_CALENDAR_BINDINGS == [
+        ("EAA06BCB-8CF7-4951-B78B-FBC5090ED677", "Taka の予定"),
+        ("6311824E-C3CA-4ADA-A9AF-95748D846259", "takagi@plural-reality.com"),
+        ("47C28220-8418-4E73-A544-8B0C0AAC39B8", "Shunsuke Takagi (General)"),
+        ("6A6DD1BE-AD4C-4ADF-9BE9-32F5101F4F96", "タイムボクシング"),
+        ("055A2BA9-DC8F-43C1-883E-352C1C900235", "統合: interval.icu"),
+        ("3E54C2EE-C87A-438D-9561-AF1E14B039BC", "日本の祝日"),
+        ("FB9E2A65-0424-41A1-88AF-D26193EA26B9", "日本の祝日"),
     ]
+    assert ll.CHECKED_CALENDAR_IDS == [item[0] for item in ll.CHECKED_CALENDAR_BINDINGS]
 
 
 def test_archived_codex() -> None:
@@ -208,7 +214,7 @@ def test_gmail_uses_gws_metadata_without_himalaya() -> None:
 test_collection()
 test_calendar_uses_eventkit_snapshot()
 test_calendar_typed_eventkit_failures()
-test_calendar_bindings_match_calendar_app_names()
+test_calendar_bindings_use_stable_eventkit_ids()
 test_archived_codex()
 test_transcript_archive_source()
 test_gmail_uses_gws_metadata_without_himalaya()
