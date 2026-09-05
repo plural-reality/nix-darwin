@@ -159,6 +159,14 @@ let
   sharedSkillNames = builtins.filter (name: sharedSkillEntries.${name} == "directory") (
     builtins.attrNames sharedSkillEntries
   );
+  # Codex Desktop can import the same Claude skill set into ~/.agents/skills.
+  # Prefer the Nix-managed ~/.codex/skills projection for matching names while
+  # leaving genuinely unique external skills available. This avoids duplicate,
+  # sometimes stale descriptions competing during implicit skill selection.
+  codexImportedSkillShadows = map (name: {
+    path = "${config.home.homeDirectory}/.agents/skills/${name}/SKILL.md";
+    enabled = false;
+  }) sharedSkillNames;
   expandedSkillSources = builtins.listToAttrs (
     map (name: {
       inherit name;
@@ -334,7 +342,9 @@ let
     maximum-local = {
       approval_policy = "never";
       sandbox_mode = "danger-full-access";
-      model_reasoning_effort = "ultra";
+      # High-depth single-agent work. Ultra remains an explicit UI choice only
+      # when the task actually benefits from independent parallel execution.
+      model_reasoning_effort = "xhigh";
     };
   };
 
@@ -375,7 +385,11 @@ let
       requires_openai_auth = true;
     };
     model = codexModel;
-    model_reasoning_effort = "high";
+    # Everyday default. Select high/xhigh per task for multi-source comparison,
+    # architecture, or other genuinely complex work.
+    model_reasoning_effort = "medium";
+    model_reasoning_summary = "auto";
+    model_verbosity = "medium";
     personality = "pragmatic";
     notify = [
       "${codexTurnEndNameHook}/bin/codex-name-on-turn-end"
@@ -385,6 +399,8 @@ let
       generate_memories = false;
       use_memories = false;
     };
+
+    skills.config = codexImportedSkillShadows;
 
     features = {
       # Keep custom-tool Mode off globally: OpenRouter's Responses adapter
@@ -865,15 +881,30 @@ in
   home.activation.removeLegacyAgentShadows = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     LEGACY_MEMORY="$HOME/.claude/memories"
     LEGACY_AGENTS="$HOME/AGENTS.md"
-    LEGACY_AGENTS_SHA256="d673e46c7c9790b83d17425f736599421809df1d593a3c883c5c6232d8dd34f7"
+    LEGACY_AGENTS_ARCHIVE_ROOT="$HOME/.local/state/home-manager-adoption/agent-instructions"
 
     if [ -L "$LEGACY_MEMORY" ] && [ "$(${pkgs.coreutils}/bin/readlink "$LEGACY_MEMORY")" = "$HOME/.codex/memories" ]; then
       ${pkgs.coreutils}/bin/unlink "$LEGACY_MEMORY"
     fi
 
-    if [ -f "$LEGACY_AGENTS" ] && [ ! -L "$LEGACY_AGENTS" ] \
-      && [ "$(${pkgs.coreutils}/bin/sha256sum "$LEGACY_AGENTS" | ${pkgs.coreutils}/bin/cut -d ' ' -f 1)" = "$LEGACY_AGENTS_SHA256" ]; then
-      ${pkgs.coreutils}/bin/rm "$LEGACY_AGENTS"
+    if [ -f "$LEGACY_AGENTS" ] && [ ! -L "$LEGACY_AGENTS" ]; then
+      readonly actual_sha256="$(${pkgs.coreutils}/bin/sha256sum "$LEGACY_AGENTS" | ${pkgs.coreutils}/bin/cut -d ' ' -f 1)"
+      case "$actual_sha256" in
+        d673e46c7c9790b83d17425f736599421809df1d593a3c883c5c6232d8dd34f7|bca362f53ba57bf1ecd9b67f5329106fdbe66ebdad22477ef7b7d243feba8d4c)
+          readonly archive="$LEGACY_AGENTS_ARCHIVE_ROOT/AGENTS.md.$actual_sha256"
+          ${pkgs.coreutils}/bin/mkdir -p "$LEGACY_AGENTS_ARCHIVE_ROOT"
+          if [ -f "$archive" ] && [ ! -L "$archive" ] \
+            && [ "$(${pkgs.coreutils}/bin/sha256sum "$archive" | ${pkgs.coreutils}/bin/cut -d ' ' -f 1)" = "$actual_sha256" ]; then
+            ${pkgs.coreutils}/bin/rm "$LEGACY_AGENTS"
+          elif [ ! -e "$archive" ] && [ ! -L "$archive" ]; then
+            ${pkgs.coreutils}/bin/mv "$LEGACY_AGENTS" "$archive"
+          else
+            echo "refusing to replace unmanaged AGENTS.md archive at $archive" >&2
+            exit 1
+          fi
+          ;;
+        *) ;;
+      esac
     fi
   '';
 

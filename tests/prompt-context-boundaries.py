@@ -22,7 +22,7 @@ REQUIRED = (
     "agent-tooling-safety",
     "browser-automation",
     "apple-calendar",
-    "clarify-and-build",
+    "repo固有",
 )
 
 assert all("@[" not in prompt for prompt in RENDERED.values())
@@ -32,5 +32,6 @@ assert all(
     for requirement in REQUIRED
     for prompt in RENDERED.values()
 )
+assert "clarify-and-build" not in RENDERED["codex"]
 assert "~/.claude/scripts/pw.mjs" in (PROMPT_ROOT / "claude-code" / "skills" / "browser-automation" / "SKILL.md").read_text()
 assert "実行しない" in (PROMPT_ROOT / "claude-code" / "skills" / "browser-automation" / "SKILL.md").read_text()

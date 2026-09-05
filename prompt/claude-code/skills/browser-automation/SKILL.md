@@ -30,6 +30,8 @@ Managed Codexのbackend allow-listは`chrome`だけである。in-app browser (`
 
 - agentが作成したwindow/tabの返却IDだけを、`connection_epoch + run_id`ごとのowned setとして保持する。URL、title、tab順、直近focusから所有権を推測しない。
 - 作成は`focused:false` / `active:false`。background作成とstable IDを保証できない手段しかなければ、最後の視覚検証までブラウザ操作を遅らせる。
+- OneTabへ退避できるのはagent-owned tabだけ。ユーザー所有tabは対象をpreviewし、明示承認なしにOneTab移動やcloseをしない。
+- focusを戻す時はcompare-and-swapとし、まだagentの対象にfocusがある場合だけ復元する。ユーザーが別画面へ移った後は奪い返さない。
 - tabを作成・再利用・handoffした最初の時点で、当該runの**タブ台帳**に最小限を記録する。必須項目は`tab_ref`（stable ID優先）、`origin`（`agent_created` / `user_reused_task_scoped` / `handoff`）、`purpose`、`terminal_disposition`（`close` / `retain` / `no_task_tabs`）である。機微なquery、入力値、認証情報は台帳に書かない。
 - ユーザー既存tabは原則として所有権を持たない。ただし、本人が「完了した作業のtabを閉じる」というtask-scoped又は継続方針を示し、当該tabをこの作業だけに再利用した場合に限り、`user_reused_task_scoped`として台帳へ登録できる。この例外でもURLの部分一致、title、tab順から対象を推測して閉じてはいけない。
 - ユーザーが表示・編集・handoffしたtab、下書き・未保存入力があるtab、他sessionの可能性があるtab、状態が不明なtabは`retain`にする。これらを閉じるために確認状態を崩さない。

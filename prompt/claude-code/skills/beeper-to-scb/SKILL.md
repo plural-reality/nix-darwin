@@ -5,9 +5,9 @@ description: >
   グループ会話を要約し、Scrapbox の「日付ページ（日報）」に『Beeperグループからのまとめ』として書く skill。
   整理はトピック単位（時系列の羅列でなく、論点ごとに "情報がどう増えたか" を畳み込む）。
   関連する既存トピックページへはリンクで繋ぐ（分配）。
-  アクセスは Beeper Desktop 内蔵 MCP（mcp__beeper__*）、書込は canonical な scrapbox-write。返信/送信も可(確認必須)。
+  アクセスは Beeper Desktop 内蔵 MCP（mcp__beeper__*）、書込は canonical な scrapbox-write。
   トリガー:「beeper to scb」「beeper-to-scb」「zos をまとめて」「zos を日報に」「Beeper のグループまとめて」
-  「○○グループの話をまとめて」「headless beeper」「Beeper で検索/返信」
+  「○○グループの話を日報へまとめて」。検索だけ、返信、送信、下書き作成には使わない。
 ---
 
 # beeper-to-scb — Beeper グループ会話を日付ページにまとめる
@@ -34,7 +34,7 @@ Beeper グループ会話 (MCP/API)
 - ウォーターマーク: `~/.claude/.cache/beeper-to-scb/<localChatID>.json` = `{"lastSortKey","lastSyncedAt"}`。冪等性の鍵。
 
 ## Beeper MCP ツール
-`search_chats`(chatId 解決) / `get_chat` / `list_messages`(`cursor` ページング, `sortKey` 単調増加) / `search_messages` / `send_message`(確認必須)。`text` は Matrix HTML → タグを外す。`isSender:true` は自分の発言。
+`search_chats`(chatId 解決) / `get_chat` / `list_messages`(`cursor` ページング, `sortKey` 単調増加) / `search_messages`。`text` は Matrix HTML → タグを外す。`isSender:true` は自分の発言。
 
 ---
 
@@ -66,11 +66,8 @@ Beeper グループ会話 (MCP/API)
 - **原文は省略せず全文**。各発言を `>>` で始め**末尾に話者アイコン `[名前.icon]`**。**返信は元発言の1段下**(引用3段→返信4段)でスレッドを示す。`>>` 行は `[(` を付けない（本人の実発言＝最初から濃い）。
 - **関連ページ** = `[( 関連ページ:]`(2段) の下に、言及された既存ページを `[( [ページ名]]`(3段) で1行1リンク網羅（＝分配）。
 
-## Workflow 2: オンデマンド要約 / 検索
-「最近の○○の話」→ `search_chats`/`search_messages` で読み回答。必要なら Workflow 1 で日付ページに反映。
-
-## Workflow 3: 返信/送信（確認必須）
-`mcp__beeper__send_message`(`chatID`,`text`,任意 `replyToMessageID`)。**宛先(chat title)と本文を提示し明示承認を得てから送信**（durable 許可が無い限り）。
+## Workflow 2: 転記対象の検索
+Scrapbox転記を依頼された会話が未特定の時だけ、`search_chats`/`search_messages` で対象を絞ってから Workflow 1へ進む。検索・要約だけの依頼は `mac-local-data` のread-only経路へ委譲する。
 
 ## 定期実行
 `~/.claude/scripts/beeper-to-scb-sync.sh`（launchd `com.tkgshn.beeper-to-scb`）が定期的に各監視グループへ Workflow 1 を回し、該当日付ページの『Beeperグループからのまとめ』を更新する。
@@ -82,7 +79,6 @@ Beeper グループ会話 (MCP/API)
 TOKEN=$(cat ~/.config/beeper/token); B=http://127.0.0.1:23373
 CID=$(python3 -c 'import json,urllib.parse,sys; ts=json.load(open(sys.argv[2]))["threads"]; print(urllib.parse.quote(next(x for x in ts if x["name"]==sys.argv[1])["chatId"],safe=""))' zos ~/.config/beeper-to-scb/threads.json)
 curl -s -H "Authorization: Bearer $TOKEN" "$B/v1/chats/$CID/messages?limit=80"          # 読取(newest 順, sortKey 付)
-# 送信は確認後のみ: curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"text":"…"}' "$B/v1/chats/$CID/messages"
 ```
 
 ## セキュリティ
@@ -91,5 +87,5 @@ token は `~/.config/beeper/token` 平文＋MCP ヘッダにも複製。git に�
 ## 関連
 - [[daily-report]] — 同じ日付ページの管理セクションを書く skill（住み分け: 上記の共存ノート）。
 - [[save-to-scrapbox]] / [[scrapbox-llm-marking]] — Scrapbox 書込と `[(` の canonical。
-- [[mac-local-data]] — ローカルアプリのデータ取得（Beeper は本 skill が canonical）。
+- [[mac-local-data]] — Beeper履歴のread-only検索・要約を含む、ローカルアプリデータ取得のcanonical。
 - `~/Developer/beeper-scrapbox-crm` — 同じ API を使う既存 CRM（gateway :18787）。

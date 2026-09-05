@@ -1,140 +1,28 @@
 ---
 name: verify-completion
 description: >
-  作業完了を主張する前、コミットやPR作成の前に使用する。
-  検証コマンドを実行し出力を確認してから完了を主張する。
-  Evidence before assertions, always.
-  トリガー: 「完了」「できた」「直った」「通った」の前、コミット前、PR作成前
+  ユーザーが $verify-completion と明示した時だけ、完了主張と証拠を厳密に対応付ける。
+  通常の検証や完了確認という文言だけでは発動せず、共通指示の比例的検証を重複させない。
 ---
 
 # Verification Before Completion
 
-## Overview
+完了主張ごとに、その主張を直接支える新しい証拠を一つ以上対応させる。
 
-検証なしに完了を主張するのは、効率ではなく不誠実。
+## 検証強度
 
-**Core principle:** 主張の前に証拠。常に。
+- 文書・設定の局所編集: 内容、構文、差分を確認する。
+- コード変更: 変更箇所に近いテストを先に実行し、必要なら型検査・lintを加える。
+- build・配布物: build結果と生成物を確認する。
+- runtime変更: 対象プロセスや実UIから実効値を読み戻す。
+- 外部送信・公開・デプロイ: 外部のcanonical stateを読み戻す。
 
-## The Iron Law
+## 手順
 
-```
-NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
-```
+1. 完了条件を箇条書きにする。
+2. 各条件に最小で直接的な検証を割り当てる。
+3. freshな状態で実行し、exit codeだけでなく重要な出力を確認する。
+4. 不足があれば「未確認」とし、推測で成功へ変換しない。
+5. 無関係なfull-suiteや同じ証拠の反復は、追加リスクを減らす場合だけ行う。
 
-このメッセージ内で検証コマンドを実行していないなら、通ったと主張できない。
-
-## The Gate Function
-
-```
-完了/成功を主張する前に:
-
-1. IDENTIFY: この主張を証明するコマンドは何？
-2. RUN: 完全なコマンドを実行（新しく、完全に）
-3. READ: 全出力を読み、終了コードを確認、失敗数を数える
-4. VERIFY: 出力が主張を裏付けるか？
-   - NO → 証拠付きで実際の状態を報告
-   - YES → 証拠付きで主張
-5. ONLY THEN: 主張する
-
-どのステップでもスキップ = 検証ではなく嘘
-```
-
-## Verification Matrix
-
-| 主張 | 必要な証拠 | 不十分 |
-|------|-----------|--------|
-| テスト通過 | テストコマンド出力: 0 failures | 前回の実行、「通るはず」 |
-| リンターがクリーン | リンター出力: 0 errors | 部分チェック、推測 |
-| ビルド成功 | ビルドコマンド: exit 0 | リンターが通った、ログが良さそう |
-| バグ修正 | 元の症状のテスト: 通過 | コード変更した、直ったはず |
-| 回帰テスト動作 | Red-Green サイクル検証 | テストが1回通った |
-| エージェント完了 | VCS diff で変更確認 | エージェントの「成功」報告 |
-| 要件充足 | 行ごとのチェックリスト | テストが通った |
-| Scrapbox task完了 | canonical task pageとToDoカンバンの両方をlive再取得。`☑️`、`status:: done`、`completed::`、evidence、旧title 0件を確認 | open titleへの完了ログ追記、task pageだけの再読込 |
-
-## Scrapbox task closure gate
-
-実作業の証拠とtask trackerの整合は別の主張である。送金・提出・公開などの実体を確認しても、task pageとindexをreconcileするまでは「作業は完了、記録更新は未完了」と報告する。
-
-task完了を主張する直前に、`save-to-scrapbox` の closure transactionを実行し、次を同じturnのfresh readbackで証明する。
-
-1. 既存page identityを保ったin-place rename後のcanonical titleが `☑️`。
-2. `ToDoカンバン` のexact task objectが新titleを1件だけ参照。
-3. 直下のmetadataが `status:: done`、`completed::`、検証済みevidenceを持つ。
-4. 旧status title、古い `next_action`、未実行境界が残っていない。
-
-どれか1つでも未確認なら、Scrapboxの更新完了を主張しない。
-
-## Red Flags - STOP
-
-以下を使おうとしていたら停止:
-- 「〜はず」「おそらく」「〜のようだ」
-- 検証前の満足表現（「完了！」「OK！」「直った！」）
-- 検証なしでコミット/プッシュ/PR
-- エージェントの成功報告を信頼
-- 部分的な検証に依存
-- 疲れて作業を終わらせたい
-
-## Key Patterns
-
-**テスト:**
-```
-OK:  [テストコマンド実行] [出力: 34/34 pass] "全テスト通過"
-NG:  "通るはず" / "正しく見える"
-```
-
-**回帰テスト (TDD Red-Green):**
-```
-OK:  テスト作成 → 実行(pass) → 修正をrevert → 実行(MUST FAIL) → restore → 実行(pass)
-NG:  "回帰テストを書いた"（red-green検証なし）
-```
-
-**ビルド:**
-```
-OK:  [ビルド実行] [出力: exit 0] "ビルド通過"
-NG:  "リンターが通った"（リンター ≠ コンパイル）
-```
-
-**要件:**
-```
-OK:  計画を再読 → チェックリスト作成 → 各項目検証 → ギャップまたは完了を報告
-NG:  "テストが通った、フェーズ完了"
-```
-
-**エージェント委譲:**
-```
-OK:  エージェント成功報告 → VCS diff確認 → 変更検証 → 実際の状態を報告
-NG:  エージェント報告を信頼
-```
-
-## Rationalization Prevention
-
-| 言い訳 | 現実 |
-|--------|------|
-| 「動くはず」 | 検証を実行せよ |
-| 「自信がある」 | 自信 ≠ 証拠 |
-| 「今回だけ」 | 例外なし |
-| 「リンター通った」 | リンター ≠ コンパイラ |
-| 「エージェントが成功と言った」 | 独立して検証 |
-| 「疲れた」 | 疲労 ≠ 免除 |
-| 「部分チェックで十分」 | 部分は何も証明しない |
-
-## When To Apply
-
-**常に以下の前に:**
-- 完了/成功のあらゆる主張
-- 満足のあらゆる表現
-- 作業状態についてのあらゆるポジティブな声明
-- コミット、PR作成、タスク完了
-- 次のタスクへの移行
-
-## The Bottom Line
-
-**検証にショートカットはない。**
-
-コマンドを実行する。出力を読む。**それから**結果を主張する。
-
-これは交渉の余地がない。
-
----
-*Based on [obra/superpowers](https://github.com/obra/superpowers) verification-before-completion skill, adapted for this environment.*
+`dispatched`、クリック、draft、commit、CI開始、build成功、外部反映を同義にしない。
