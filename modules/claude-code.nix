@@ -54,6 +54,7 @@ let
   # runtime state and are never copied into the Nix store.
   remoteMcpServers = userConfig.remoteMcpServers or { };
   codexPlugins = userConfig.codexPlugins or { };
+  codexSkillOverrides = userConfig.codexSkillOverrides or { };
 
   claudeCodeRemoteMcpServers = builtins.mapAttrs (_: server: {
     type = "http";
@@ -167,6 +168,19 @@ let
     path = "${config.home.homeDirectory}/.agents/skills/${name}/SKILL.md";
     enabled = false;
   }) sharedSkillNames;
+  mkCodexSkillSelectors =
+    root: overrides:
+    lib.mapAttrsToList (name: enabled: {
+      path = "${config.home.homeDirectory}/${root}/${name}/SKILL.md";
+      inherit enabled;
+    }) overrides;
+  # Downstreams can hide obsolete or conflicting user skills from Codex without
+  # deleting their files or changing Claude's catalog. Restore a skill by
+  # changing its value from false to true; omitting a previously managed selector
+  # would preserve its last value as an intentional user choice.
+  codexSkillSelectors =
+    (mkCodexSkillSelectors ".codex/skills" (codexSkillOverrides.codex or { }))
+    ++ (mkCodexSkillSelectors ".agents/skills" (codexSkillOverrides.agents or { }));
   expandedSkillSources = builtins.listToAttrs (
     map (name: {
       inherit name;
@@ -400,7 +414,7 @@ let
       use_memories = false;
     };
 
-    skills.config = codexImportedSkillShadows;
+    skills.config = codexImportedSkillShadows ++ codexSkillSelectors;
 
     features = {
       # Keep custom-tool Mode off globally: OpenRouter's Responses adapter
