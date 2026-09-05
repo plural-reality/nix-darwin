@@ -54,7 +54,7 @@ let
   # runtime state and are never copied into the Nix store.
   remoteMcpServers = userConfig.remoteMcpServers or { };
   codexPlugins = userConfig.codexPlugins or { };
-  codexDisabledSkills = userConfig.codexDisabledSkills or { };
+  codexSkillOverrides = userConfig.codexSkillOverrides or { };
 
   claudeCodeRemoteMcpServers = builtins.mapAttrs (_: server: {
     type = "http";
@@ -168,18 +168,19 @@ let
     path = "${config.home.homeDirectory}/.agents/skills/${name}/SKILL.md";
     enabled = false;
   }) sharedSkillNames;
-  mkCodexDisabledSkillSelectors =
-    root: names:
-    map (name: {
+  mkCodexSkillSelectors =
+    root: overrides:
+    lib.mapAttrsToList (name: enabled: {
       path = "${config.home.homeDirectory}/${root}/${name}/SKILL.md";
-      enabled = false;
-    }) names;
-  # Downstreams can remove obsolete or conflicting user skills from Codex's
-  # implicit catalog without deleting their files or changing Claude's catalog.
-  # Removing a name from either list restores the skill on the next activation.
-  codexDisabledSkillSelectors =
-    (mkCodexDisabledSkillSelectors ".codex/skills" (codexDisabledSkills.codex or [ ]))
-    ++ (mkCodexDisabledSkillSelectors ".agents/skills" (codexDisabledSkills.agents or [ ]));
+      inherit enabled;
+    }) overrides;
+  # Downstreams can hide obsolete or conflicting user skills from Codex without
+  # deleting their files or changing Claude's catalog. Restore a skill by
+  # changing its value from false to true; omitting a previously managed selector
+  # would preserve its last value as an intentional user choice.
+  codexSkillSelectors =
+    (mkCodexSkillSelectors ".codex/skills" (codexSkillOverrides.codex or { }))
+    ++ (mkCodexSkillSelectors ".agents/skills" (codexSkillOverrides.agents or { }));
   expandedSkillSources = builtins.listToAttrs (
     map (name: {
       inherit name;
@@ -413,7 +414,7 @@ let
       use_memories = false;
     };
 
-    skills.config = codexImportedSkillShadows ++ codexDisabledSkillSelectors;
+    skills.config = codexImportedSkillShadows ++ codexSkillSelectors;
 
     features = {
       # Keep custom-tool Mode off globally: OpenRouter's Responses adapter

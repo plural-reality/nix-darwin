@@ -164,6 +164,23 @@ def test_deliberate_override_survives_retirement() -> None:
     assert projected["model_catalog_json"] == "/Users/example/custom-model-catalog.json"
 
 
+def test_skill_override_can_be_restored_explicitly() -> None:
+    """A managed true value replaces the false value from an earlier activation."""
+    skill_path = "/Users/example/.codex/skills/pdf/SKILL.md"
+    disabled = MODULE.project(
+        tomlkit.parse(""),
+        {"skills": {"config": [{"path": skill_path, "enabled": False}]}},
+    )
+    restored = MODULE.project(
+        disabled,
+        {"skills": {"config": [{"path": skill_path, "enabled": True}]}},
+    )
+    assert restored["skills"]["config"] == [
+        {"path": skill_path, "enabled": True}
+    ]
+
+
 if __name__ == "__main__":
     main()
     test_deliberate_override_survives_retirement()
+    test_skill_override_can_be_restored_explicitly()
