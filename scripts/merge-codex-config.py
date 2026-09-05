@@ -19,6 +19,7 @@ BROWSER_BACKEND_ENV = "BROWSER_USE_AVAILABLE_BACKENDS"
 # deliberate override survives; only the retired wiring is dropped.
 RETIRED_ROUTER_BASE_URL = "http://127.0.0.1:21434/v1"
 RETIRED_ROUTER_PROVIDER = "codex-router"
+RETIRED_MODEL_CATALOG_SUFFIX = "-codex-model-catalog.json"
 
 
 def merge(target: MutableMapping, source: MutableMapping) -> MutableMapping:
@@ -108,6 +109,13 @@ def remove_retired_policy(document: MutableMapping) -> MutableMapping:
     # the router ran carry that id and an unknown id is fatal.
     document.get("openai_base_url") == RETIRED_ROUTER_BASE_URL and document.pop("openai_base_url", None)
     document.get("model_provider") == RETIRED_ROUTER_PROVIDER and document.pop("model_provider", None)
+    model_catalog = document.get("model_catalog_json")
+    (
+        isinstance(model_catalog, str)
+        and model_catalog.startswith("/nix/store/")
+        and model_catalog.endswith(RETIRED_MODEL_CATALOG_SUFFIX)
+        and document.pop("model_catalog_json", None)
+    )
     return document
 
 

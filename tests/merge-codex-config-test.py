@@ -25,6 +25,7 @@ def main() -> None:
 service_tier = "priority"
 openai_base_url = "http://127.0.0.1:21434/v1"
 model_provider = "codex-router"
+model_catalog_json = "/nix/store/old-codex-model-catalog.json"
 [mcp_servers.scrapbox]
 command = "npx"
 token = "secret"
@@ -63,6 +64,7 @@ trust_level = "trusted"
     # The retired router wiring is gone, so new threads stop recording its provider id...
     assert "openai_base_url" not in projected
     assert "model_provider" not in projected
+    assert "model_catalog_json" not in projected
     # ...while the definition threads already recorded still resolves.
     assert projected["model_providers"]["codex-router"]["base_url"] == BACKEND
     assert projected["features"]["multi_agent_v2"] == {"enabled": True}
@@ -120,13 +122,18 @@ BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
 
 
 def test_deliberate_override_survives_retirement() -> None:
-    """Only the retired router wiring is dropped, not any value under the same keys."""
+    """Only known retired managed values are dropped, not deliberate overrides."""
     projected = MODULE.project(
-        tomlkit.parse('openai_base_url = "https://proxy.example/v1"\nmodel_provider = "mine"\n'),
+        tomlkit.parse(
+            'openai_base_url = "https://proxy.example/v1"\n'
+            'model_provider = "mine"\n'
+            'model_catalog_json = "/Users/example/custom-model-catalog.json"\n'
+        ),
         {},
     )
     assert projected["openai_base_url"] == "https://proxy.example/v1"
     assert projected["model_provider"] == "mine"
+    assert projected["model_catalog_json"] == "/Users/example/custom-model-catalog.json"
 
 
 if __name__ == "__main__":
