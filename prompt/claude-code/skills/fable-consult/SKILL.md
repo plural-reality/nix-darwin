@@ -78,5 +78,5 @@ fable-consult < "$BRIEF_FILE"
 
 ## 関連
 
-- 通常実装: Codex の既定(Terra/high)
+- 通常実装: Codex の現在の既定model／reasoning設定を使う。
 - 明示的な最大ローカル実行: `codex -p maximum-local`
