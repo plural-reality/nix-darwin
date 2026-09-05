@@ -13,6 +13,11 @@ description: >
 
 This skill provides reference material from authoritative Haskell textbooks covering the language from beginner to advanced topics. The collection spans introductory guides, real-world application patterns, and parallel/concurrent programming techniques.
 
+## User-specific build rules
+
+- Build and check Haskell projects through their Nix/haskell-flake interface, not an ad-hoc bare `cabal build`.
+- Declare GHC language extensions in the package `.cabal` file rather than per-module `{-# LANGUAGE #-}` pragmas.
+
 Key topics across the library:
 - **Fundamentals**: Types, typeclasses, monads, functors, applicatives, IO
 - **Practical Application**: Real-world patterns, libraries, testing, profiling

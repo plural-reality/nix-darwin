@@ -5,7 +5,7 @@ description: >
   2つの形式に対応: (1) SQLite — 署名済みread-only bridge経由でiMessage履歴を検索・取得（送信は別途 imessage-send）。
   (2) Chromium/Electron LevelDB — Claude Desktop / Slack / Notion / Signal / VS Code 等の
   Local Storage・IndexedDB を snappy/zstd 解凍して中身を取り出す（生 grep が効かない圧縮を越える）。
-  Beeper のメッセージ取得は beeper-to-scb が canonical なのでそちらへ委譲する。
+  Beeper の読み取りは対象を狭く指定した typed API/CLI を使う。送信やScrapbox転記のskillは、依頼にその操作が含まれる時だけ使う。
   トリガー:「iMessage の履歴」「過去のメッセージ取得」「メッセージ検索」「誰と何を話したか」「chat.db」
   「ローカルアプリの中身」「Claude Desktop の会話/キャッシュ」「Electron アプリのデータ」
   「Slack/Notion のローカルデータ」「LevelDB を読んで」「アプリが保存してるデータ覗いて」
@@ -81,7 +81,7 @@ PATH はアプリの Application Support フォルダでもよい（再帰的に
 
 ## 3. その他のローカルストア
 
-- **Beeper**（Slack/iMessage/Twitter/Telegram/Matrix 集約）の取得は **[[beeper-to-scb]] が canonical**（Beeper Desktop MCP / localhost API）。SQLite を直接叩かずそちらを使う。
+- **Beeper**（Slack/iMessage/Twitter/Telegram/Matrix 集約）の履歴検索・要約は、対象を限定したBeeper Desktop typed API/CLIでread-onlyに行う。SQLiteを直接叩かない。送信用下書き・送信は [[beeper-send]]、Scrapbox転記は [[beeper-to-scb]] へ委譲する。
 - **Safari/Chrome 履歴・メモ・写真・カレンダー・連絡先**等も大半は SQLite（`~/Library/...`）。`sqlite3 'file:PATH?mode=ro'` で同様に読める。新しい形式が出たら本 skill にレシピを足す（single source of truth）。
 
 ---
@@ -89,12 +89,12 @@ PATH はアプリの Application Support フォルダでもよい（再帰的に
 ## セキュリティ（必ず意識する）
 
 - これは Claude 固有ではなく、**ユーザ権限 + Full Disk Access で動く任意プロセスが同じことをできる**という事実。chat.db 等が丸見えである前提で扱う。
-- 抽出した他者の私的内容は**話題だけ要約**し、逐語転記やページ書き込みは最小限に（[[beeper-to-scb]] と同じ規律）。
+- 抽出した他者の私的内容は依頼に必要な範囲だけ要約し、逐語転記やページ書き込みを広げない。
 - 全て **read-only**。短いqueryはlive DBの短いread transaction、全文検索はSQLite Online Backup APIで作るmode `0600` ephemeral snapshotを読む。`immutable=1`や手動`cp`は使わない。送信・書込は別 skill の責務。
 - bridge socketは他ユーザーを排除するが、同一UIDの任意processは呼べる。この限定的なread capabilityを許容する代わりに、Codex等へMail/Safari/Homeまで含むblanket Full Disk Accessを与えない。
 - 添付は件数だけを返し、file pathや実体を開かない。本文decoderはbounded parserであり、`unsupported`を完全な復号と偽らない。
 
 ## 関連
 - [[imessage-send]] — iMessage **送信**（本 skill は読み取り専用）。連絡先解決も canonical。
-- [[beeper-to-scb]] — Beeper 経由のメッセージ取得（マルチプラットフォーム）の canonical。
+- [[beeper-to-scb]] — Beeper会話をScrapboxへ転記するcanonical（履歴のread-only検索・要約は本skill）。
 - [[pendant-context]] — Limitless/Omi の音声ライフログ（別系統のローカル横断コンテキスト）。

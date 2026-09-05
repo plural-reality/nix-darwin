@@ -45,6 +45,15 @@ SCRAPBOX_SID = "stale-secret"
 BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
 [projects."/tmp/example"]
 trust_level = "trusted"
+[[skills.config]]
+path = "/Users/example/.agents/skills/shared/SKILL.md"
+enabled = true
+[[skills.config]]
+path = "/Users/example/.agents/skills/personal-only/SKILL.md"
+enabled = false
+[[skills.config]]
+name = "explicit-only"
+enabled = false
 """
     )
     managed = {
@@ -53,6 +62,14 @@ trust_level = "trusted"
         "plugins": {"gmail@openai-curated": {"enabled": False}},
         "shell_environment_policy": {
             "set": {"BROWSER_USE_AVAILABLE_BACKENDS": "chrome"}
+        },
+        "skills": {
+            "config": [
+                {
+                    "path": "/Users/example/.agents/skills/shared/SKILL.md",
+                    "enabled": False,
+                }
+            ]
         },
     }
     projected = MODULE.project(current, managed)
@@ -71,6 +88,17 @@ trust_level = "trusted"
     assert "SCRAPBOX_SID" not in projected["shell_environment_policy"]["set"]
     assert projected["shell_environment_policy"]["set"]["BROWSER_USE_AVAILABLE_BACKENDS"] == "chrome"
     assert projected["mcp_servers"]["node_repl"]["env"]["BROWSER_USE_AVAILABLE_BACKENDS"] == "chrome"
+    assert projected["skills"]["config"] == [
+        {
+            "path": "/Users/example/.agents/skills/personal-only/SKILL.md",
+            "enabled": False,
+        },
+        {"name": "explicit-only", "enabled": False},
+        {
+            "path": "/Users/example/.agents/skills/shared/SKILL.md",
+            "enabled": False,
+        },
+    ]
     no_runtime = MODULE.project(tomlkit.parse(""), managed)
     assert "node_repl" not in no_runtime["mcp_servers"]
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import MutableMapping
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 import json
@@ -91,6 +92,52 @@ def replace_plugins(document: MutableMapping, managed: MutableMapping) -> Mutabl
     return merge(document, {"plugins": managed.get("plugins", {})})
 
 
+def skill_selector(entry: object) -> tuple[str, str] | None:
+    """Return the stable selector used by one skills.config entry."""
+    if not isinstance(entry, MutableMapping):
+        return None
+    for key in ("path", "name"):
+        value = entry.get(key)
+        if isinstance(value, str) and value:
+            return key, value
+    return None
+
+
+def preserve_unmanaged_skill_config(
+    document: MutableMapping, managed: MutableMapping
+) -> MutableMapping:
+    """Add managed skill selectors without deleting unrelated user choices."""
+    projected = deepcopy(managed)
+    managed_skills = projected.get("skills")
+    managed_entries = (
+        managed_skills.get("config")
+        if isinstance(managed_skills, MutableMapping)
+        else None
+    )
+    current_skills = document.get("skills")
+    current_entries = (
+        current_skills.get("config")
+        if isinstance(current_skills, MutableMapping)
+        else None
+    )
+    if not isinstance(managed_entries, list):
+        return projected
+    managed_selectors = {
+        selector for entry in managed_entries if (selector := skill_selector(entry))
+    }
+    preserved = (
+        [
+            entry
+            for entry in current_entries
+            if skill_selector(entry) not in managed_selectors
+        ]
+        if isinstance(current_entries, list)
+        else []
+    )
+    managed_skills["config"] = [*preserved, *managed_entries]
+    return projected
+
+
 def remove_retired_policy(document: MutableMapping) -> MutableMapping:
     """Remove policy fields that an earlier Nix projection used to manage."""
     document.pop("profiles", None)
@@ -121,11 +168,15 @@ def remove_retired_policy(document: MutableMapping) -> MutableMapping:
 
 def project(document: MutableMapping, managed: MutableMapping) -> MutableMapping:
     """Pure policy projection over a parsed TOML document."""
+    managed_with_user_skill_choices = preserve_unmanaged_skill_config(document, managed)
     return merge(
         remove_retired_policy(
-            replace_plugins(replace_mcp_servers(document, managed), managed)
+            replace_plugins(
+                replace_mcp_servers(document, managed_with_user_skill_choices),
+                managed_with_user_skill_choices,
+            )
         ),
-        managed,
+        managed_with_user_skill_choices,
     )
 
 
