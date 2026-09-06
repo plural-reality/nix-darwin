@@ -14,6 +14,10 @@ import tomlkit
 
 
 RUNTIME_MCP_SERVERS = frozenset({"node_repl", "openaiDeveloperDocs"})
+RUNTIME_PLUGINS = frozenset({
+    "computer-history@openai-bundled",
+    "unified-computer-use@openai-bundled",
+})
 BROWSER_BACKEND_ENV = "BROWSER_USE_AVAILABLE_BACKENDS"
 
 # The loopback router these two selected is retired. They are matched by exact value so a
@@ -87,8 +91,15 @@ def replace_mcp_servers(
 
 
 def replace_plugins(document: MutableMapping, managed: MutableMapping) -> MutableMapping:
-    """Treat plugin enablement as an exact Nix projection, not mutable policy."""
+    """Preserve native Desktop choices; explicit Nix policy still takes precedence."""
+    plugins = document.get("plugins")
+    runtime_plugins = (
+        {name: plugins[name] for name in RUNTIME_PLUGINS if name in plugins}
+        if isinstance(plugins, MutableMapping)
+        else {}
+    )
     document["plugins"] = tomlkit.table()
+    merge(document, {"plugins": runtime_plugins})
     return merge(document, {"plugins": managed.get("plugins", {})})
 
 

@@ -180,7 +180,24 @@ def test_skill_override_can_be_restored_explicitly() -> None:
     ]
 
 
+def test_native_plugin_choices_survive_activation() -> None:
+    names = ("computer-history@openai-bundled", "unified-computer-use@openai-bundled")
+    for enabled in (True, False):
+        current = tomlkit.parse('[features]\nchronicle = true\n')
+        current["plugins"] = {name: {"enabled": enabled} for name in names}
+        current["plugins"]["unmanaged@example"] = {"enabled": True}
+        projected = MODULE.project(current, {})
+        assert projected["plugins"] == {name: {"enabled": enabled} for name in names}
+        assert projected["features"]["chronicle"] is True
+        assert MODULE.project(tomlkit.parse(tomlkit.dumps(projected)), {}) == projected
+    assert not MODULE.project(tomlkit.document(), {})["plugins"]
+    managed = {"plugins": {names[0]: {"enabled": False}}}
+    current = tomlkit.parse(f'[plugins."{names[0]}"]\nenabled = true\n')
+    assert MODULE.project(current, managed)["plugins"][names[0]]["enabled"] is False
+
+
 if __name__ == "__main__":
     main()
     test_deliberate_override_survives_retirement()
     test_skill_override_can_be_restored_explicitly()
+    test_native_plugin_choices_survive_activation()
