@@ -60,7 +60,7 @@ archive hash and absence of the old discovery file after the second apply.
 
 The inspected home-root AGENTS shadow is archived separately. It duplicated the
 managed instructions and contained mechanically renamed, invalid routing paths.
-Unknown project AGENTS files are not changed; the useful handoff contract is kept
+Unknown project AGENTS files are not changed; the useful handoff and high-impact independent-validation contracts are kept
 in the managed Codex prompt.
 
 ## Verification
