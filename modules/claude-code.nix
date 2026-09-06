@@ -410,8 +410,8 @@ let
     ];
 
     memories = {
-      generate_memories = false;
-      use_memories = false;
+      generate_memories = true;
+      use_memories = true;
     };
 
     skills.config = codexImportedSkillShadows ++ codexSkillSelectors;
@@ -422,7 +422,7 @@ let
       # by the CLI without enabling this Desktop execution mode.
       code_mode = false;
       hooks = true;
-      memories = false;
+      memories = true;
     };
 
     tui = {
