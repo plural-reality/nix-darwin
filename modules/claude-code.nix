@@ -13,6 +13,12 @@
 let
   expandTemplate = import ../lib/expand-template.nix { inherit lib; };
   expandTemplatesDir = import ../lib/expand-templates-dir.nix { inherit pkgs lib; };
+  # Derive the migration witness from the sole system-hook definition. Home
+  # Manager may activate before Darwin switches /etc, so never retire a user
+  # safety hook until the exact replacement system wiring is already installed.
+  codexSystemHooksText =
+    (import ./codex-hooks.nix { inherit pkgs lib userConfig; }).environment.etc."codex/hooks.json".text;
+  codexSystemHooksSha256 = builtins.hashString "sha256" codexSystemHooksText;
 
   xcodebuildmcp = import ../packages/xcodebuildmcp { inherit pkgs; };
   freeeMcp = import ../packages/freee-mcp { inherit pkgs; };
@@ -273,62 +279,6 @@ let
 
   agentFiles = builtins.foldl' (acc: profile: acc // (mkAgentAttrs profile)) { } agentProfiles;
 
-  # Codex の turn 終了フック。以前はここでデスクトップ通知も出していたが、通知は全廃した
-  # (2026-08-08)。残っている責務はセッションの自動命名だけなので、名前もそれに合わせる。
-  # `notify` is the legacy turn-complete callback used only for task naming.
-  # Lifecycle hooks are independently owned by modules/codex-hooks.nix.
-  codexTurnEndNameHook = pkgs.writeShellApplication {
-    name = "codex-name-on-turn-end";
-    runtimeInputs = [
-      pkgs.coreutils
-      pkgs.llm-agents.codex
-    ];
-    text = ''
-      set -u
-      CODEX_HOME="''${CODEX_HOME:-$HOME/.codex}"
-      LOG_DIR="$CODEX_HOME/logs"
-      LOCK="$CODEX_HOME/.codex-name-hook.lock"
-      LOCK_STALE_SECONDS=300
-      mkdir -p "$LOG_DIR"
-      # Codex legacy notify appends its JSON payload as the final argv; stdin is null.
-      # Keep every argument so the Sky turn-ended adapter can prepend its own marker.
-
-      acquired=0
-      for attempt in 1 2 3 4 5; do
-        if mkdir "$LOCK" 2>/dev/null; then
-          printf '%s\n' "$$" > "$LOCK/pid"
-          acquired=1
-          break
-        fi
-        lock_mtime="$(stat -c %Y "$LOCK" 2>/dev/null || printf '0')"
-        now="$(date +%s)"
-        owner_pid="$(cat "$LOCK/pid" 2>/dev/null || true)"
-        if [ "$lock_mtime" -gt 0 ] && [ "$((now - lock_mtime))" -ge "$LOCK_STALE_SECONDS" ] && { [ -z "$owner_pid" ] || ! kill -0 "$owner_pid" 2>/dev/null; }; then
-          rm -f "$LOCK/pid"
-          rmdir "$LOCK" 2>/dev/null || true
-          printf '%s\tstale-lock-recovered\n' "$(date -u +%FT%TZ)" >> "$LOG_DIR/codex-name-hook.log"
-        fi
-        sleep 1
-      done
-      if [ "$acquired" -ne 1 ]; then
-        printf '%s\tlock-timeout\n' "$(date -u +%FT%TZ)" >> "$LOG_DIR/codex-name-hook.log"
-        exit 0
-      fi
-      trap '[ -f "$LOCK/pid" ] && [ "$(cat "$LOCK/pid" 2>/dev/null || true)" = "$$" ] && rm -f "$LOCK/pid" && rmdir "$LOCK" 2>/dev/null || true' EXIT
-
-      attempt=1
-      while [ "$attempt" -le 2 ]; do
-        if ${pkgs.nodejs_22}/bin/node --experimental-strip-types ${../scripts/codex-name.ts} --notify --auto "$@" >> "$LOG_DIR/codex-name-hook.log" 2>&1; then
-          exit 0
-        fi
-        printf '%s\tattempt=%s failed\n' "$(date -u +%FT%TZ)" "$attempt" >> "$LOG_DIR/codex-name-hook.log"
-        attempt=$((attempt + 1))
-        [ "$attempt" -le 2 ] && sleep 1
-      done
-      exit 0
-    '';
-  };
-
   codexBrowserProfileConfig = {
     shell_environment_policy = {
       set = codexBrowserEnv;
@@ -405,9 +355,10 @@ let
     model_reasoning_summary = "auto";
     model_verbosity = "medium";
     personality = "pragmatic";
-    notify = [
-      "${codexTurnEndNameHook}/bin/codex-name-on-turn-end"
-    ];
+    # Native task titles and set_thread_title own naming. The legacy callback
+    # overwrote task state after every turn and spawned a separate model call.
+    # Keep the manual codex-name CLI available; disable only automatic invocation.
+    notify = [ ];
 
     memories = {
       generate_memories = true;
@@ -883,12 +834,43 @@ in
     fi
   '';
 
+  # Archive only the two inspected legacy copies. Unknown user hooks and trust
+  # state remain untouched; a known archive is an idempotent restoration witness.
   home.activation.removeLegacyCodexHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     LEGACY_HOOKS="$HOME/.codex/hooks.json"
-    LEGACY_HOOKS_SHA256="0dd0a2d540cfbef57e7b68473298aa68b140da6408475b21a39219bcf2ca6d3c"
-    if [ -f "$LEGACY_HOOKS" ] && [ ! -L "$LEGACY_HOOKS" ] \
-      && [ "$(${pkgs.coreutils}/bin/sha256sum "$LEGACY_HOOKS" | ${pkgs.coreutils}/bin/cut -d ' ' -f 1)" = "$LEGACY_HOOKS_SHA256" ]; then
-      ${pkgs.coreutils}/bin/rm "$LEGACY_HOOKS"
+    LEGACY_HOOKS_ARCHIVE_ROOT="$HOME/.local/state/home-manager-adoption/codex-hooks"
+    if [ -f "$LEGACY_HOOKS" ] && [ ! -L "$LEGACY_HOOKS" ]; then
+      readonly legacy_hooks_sha256="$(${pkgs.coreutils}/bin/sha256sum "$LEGACY_HOOKS" | ${pkgs.coreutils}/bin/cut -d ' ' -f 1)"
+      case "$legacy_hooks_sha256" in
+        0dd0a2d540cfbef57e7b68473298aa68b140da6408475b21a39219bcf2ca6d3c|0a82547526bf884552a327b479c1ec9061d109e4ad6e3f6e8b236108b99f4584)
+          readonly system_hooks="/etc/codex/hooks.json"
+          readonly expected_system_hooks_sha256="${codexSystemHooksSha256}"
+          if [ ! -f "$system_hooks" ] || [ ! -r "$system_hooks" ] \
+            || [ "$( ${pkgs.coreutils}/bin/sha256sum "$system_hooks" 2>/dev/null | ${pkgs.coreutils}/bin/cut -d ' ' -f 1 || true)" != "$expected_system_hooks_sha256" ]; then
+            echo "preserving legacy Codex hooks: replacement system hooks are not active; reapply this revision after the system switch" >&2
+          else
+            readonly legacy_hooks_archive="$LEGACY_HOOKS_ARCHIVE_ROOT/hooks.json.$legacy_hooks_sha256"
+            if [ -L "$LEGACY_HOOKS_ARCHIVE_ROOT" ]; then
+              echo "refusing to use linked Codex hooks archive directory at $LEGACY_HOOKS_ARCHIVE_ROOT" >&2
+              exit 1
+            fi
+            ${pkgs.coreutils}/bin/mkdir -p "$LEGACY_HOOKS_ARCHIVE_ROOT"
+            ${pkgs.coreutils}/bin/chmod 700 "$LEGACY_HOOKS_ARCHIVE_ROOT"
+            if [ -f "$legacy_hooks_archive" ] && [ ! -L "$legacy_hooks_archive" ] \
+              && [ "$(${pkgs.coreutils}/bin/sha256sum "$legacy_hooks_archive" | ${pkgs.coreutils}/bin/cut -d ' ' -f 1)" = "$legacy_hooks_sha256" ]; then
+              ${pkgs.coreutils}/bin/chmod 600 "$legacy_hooks_archive"
+              ${pkgs.coreutils}/bin/rm "$LEGACY_HOOKS"
+            elif [ ! -e "$legacy_hooks_archive" ] && [ ! -L "$legacy_hooks_archive" ]; then
+              ${pkgs.coreutils}/bin/mv "$LEGACY_HOOKS" "$legacy_hooks_archive"
+              ${pkgs.coreutils}/bin/chmod 600 "$legacy_hooks_archive"
+            else
+              echo "refusing to replace unmanaged Codex hooks archive at $legacy_hooks_archive" >&2
+              exit 1
+            fi
+          fi
+          ;;
+        *) ;;
+      esac
     fi
   '';
 
@@ -904,14 +886,21 @@ in
     if [ -f "$LEGACY_AGENTS" ] && [ ! -L "$LEGACY_AGENTS" ]; then
       readonly actual_sha256="$(${pkgs.coreutils}/bin/sha256sum "$LEGACY_AGENTS" | ${pkgs.coreutils}/bin/cut -d ' ' -f 1)"
       case "$actual_sha256" in
-        d673e46c7c9790b83d17425f736599421809df1d593a3c883c5c6232d8dd34f7|bca362f53ba57bf1ecd9b67f5329106fdbe66ebdad22477ef7b7d243feba8d4c)
+        d673e46c7c9790b83d17425f736599421809df1d593a3c883c5c6232d8dd34f7|bca362f53ba57bf1ecd9b67f5329106fdbe66ebdad22477ef7b7d243feba8d4c|bb50ba8e6afbe29cd85fedd946638f1b208191c2dd16f49917b9069841d72674)
           readonly archive="$LEGACY_AGENTS_ARCHIVE_ROOT/AGENTS.md.$actual_sha256"
+          if [ -L "$LEGACY_AGENTS_ARCHIVE_ROOT" ]; then
+            echo "refusing to use linked AGENTS.md archive directory at $LEGACY_AGENTS_ARCHIVE_ROOT" >&2
+            exit 1
+          fi
           ${pkgs.coreutils}/bin/mkdir -p "$LEGACY_AGENTS_ARCHIVE_ROOT"
+          ${pkgs.coreutils}/bin/chmod 700 "$LEGACY_AGENTS_ARCHIVE_ROOT"
           if [ -f "$archive" ] && [ ! -L "$archive" ] \
             && [ "$(${pkgs.coreutils}/bin/sha256sum "$archive" | ${pkgs.coreutils}/bin/cut -d ' ' -f 1)" = "$actual_sha256" ]; then
+            ${pkgs.coreutils}/bin/chmod 600 "$archive"
             ${pkgs.coreutils}/bin/rm "$LEGACY_AGENTS"
           elif [ ! -e "$archive" ] && [ ! -L "$archive" ]; then
             ${pkgs.coreutils}/bin/mv "$LEGACY_AGENTS" "$archive"
+            ${pkgs.coreutils}/bin/chmod 600 "$archive"
           else
             echo "refusing to replace unmanaged AGENTS.md archive at $archive" >&2
             exit 1
