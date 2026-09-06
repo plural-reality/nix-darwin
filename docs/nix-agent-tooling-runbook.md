@@ -77,6 +77,13 @@ ls -1 "$(nix build .#desktop-skills --no-link --print-out-paths)" | rg '^<skill>
 
 Claude's self-learning memory is the harness-native auto-memory at `~/.claude/projects/<project>/memory/` (canonical). It is NOT Nix-managed: it is mutated only through the `self-learn` skill, which writes one fact per file plus a one-line `MEMORY.md` pointer and reads back to verify. Claude injects its index natively. Codex receives the same 200-line/25-KiB bounded pointer index through four Nix-managed SessionStart hook chunks (each below Codex's per-hook output limit), then opens only task-relevant topic files. Do not hand-edit memory from Nix activation, and do not route shared writes into `~/.codex/memories`; Codex native memory generation/use is enabled independently; this does not migrate or replace the shared Claude memory store. The hook is projected at `/etc/codex/hooks.json`, Codex's managed system layer, rather than user hook state. Therefore no mutable trust hash or pre-approval bypass is required.
 
+## Codex Hook Changes
+
+See [Codex native hook policy](codex-hooks-policy.md) for the retained registry,
+exact-hash archives, activation-order safety gate and synthetic validation. Do not
+copy Claude hook registries wholesale or change hook trust state. Preserve the
+synchronous safety guard until the replacement system registry is live.
+
 ## Downstream Promotion
 
 `/private/etc/nix-darwin` is the deployment root. Its `flake.lock` is the one
