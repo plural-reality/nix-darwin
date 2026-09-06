@@ -7,6 +7,8 @@ description: Scrapbox/Cosenseの既知ページを読む、またはplural-reali
 
 **読み専用**。質問に必要な根拠を、Scrapboxのpage / graphと必要なlive sourceから取得する。一般知識を答えるだけの時や、既に十分な原文がある時に探索を増やさない。書込・訂正・状態更新は`save-to-scrapbox`へ。
 
+Web/WorkへSkillを導入しても、MacのCLI・認証は移らない。`cosense-fetch`が使えなければ、提供された原文の範囲で答えるか必要なページのrawを求め、live未取得を明示する。検索したふり、空振りの捏造、WebFetchによる代替、Cookie/SIDの取得・移植をしない。
+
 ## 入口と終了条件
 
 | 分かっていること | 最初にすること |

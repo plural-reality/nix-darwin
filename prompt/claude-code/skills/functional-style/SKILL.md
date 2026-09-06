@@ -18,8 +18,8 @@ description: >
 
 ## 指針
 
-- `let` / `var` / 再代入を使わず、`const` / immutable value / persistent dataを使う。
-- `if` / `switch` / imperative loopを使わず、式、pattern matching、map/filter/fold、再帰で表す。
+- 再代入と可変データを避け、言語に合う不変bindingを使う。JS/TSは`let` / `var`でなく`const`、Swift/Rustはimmutableな`let`、Haskellは不変の値を使い、参照先の破壊的変更もcoreへ持ち込まない。
+- 命令的な分岐文・loopを避け、値を返す式、網羅的pattern matching、map/filter/fold、再帰で表す。Rust/Swift等の値を返す`if` / `switch`式を、JS/TSの文と同じ理由で禁止しない。
 - `try-catch` / `throw` で通常の失敗を扱わず、Result/Either/Option等の型で表す。
 - `async/await` の逐次列を避け、Promise/Effect等の合成と明示的な並列性で表す。
 - `void` を通常の戻り値にせず、副作用境界も成功・失敗を表す値を返す。

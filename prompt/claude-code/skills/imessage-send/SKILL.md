@@ -1,9 +1,11 @@
 ---
 name: imessage-send
-description: "macOS の iMessage を使って連絡先にメッセージを送信する。トリガー例: \"メッセージして\", \"iMessage送って\", \"LINEして\", \"連絡して\", \"テキスト送って\", \"send message\", \"text someone\""
+description: "macOS の iMessage を使って連絡先にメッセージを送信する。トリガー例: \"メッセージして\", \"iMessage送って\", \"連絡して\", \"テキスト送って\", \"send message\", \"text someone\""
 ---
 
 # iMessage Send Skill
+
+LINE/Slack等を明示した依頼は `beeper-send` へ。iMessageに勝手に変更しない。
 
 macOS の Messages.app / Contacts.app を AppleScript 経由で操作し、iMessage を送る。
 **CRM 文体取得 + MessageHistoryBridge経由のiMessage履歴取得 → 宛先解決 → 送信 → chat.db での着地確認** を `imsg-send` ヘルパーに集約してある。
@@ -46,8 +48,7 @@ printf '%s' "送りたい本文" | "$SK" --style-contact "Kentaro Iwata" "Kentar
 返った CRM の文体ガイド・関係性と、`history` の最近の送受信を読んで本文を作る。
    `history` は `imsg-history`（署名済みread-only bridge）の成功した JSONL stream から得る。
    文字列の人名を決め打ちしない。CRM が解決できる表示名をその都度使う。
-2. **ユーザー確認は必須。** 宛先（名前＋ハンドル）と本文を提示し、明示的な承認を得る
-   （`AskUserQuestion` で「この文面で送っていいか」を聞くのが定番。言語の選択肢も同時に出せる）。
+2. **送信前承認は必須。** 宛先（名前＋ハンドル）・チャネル・返信先／グループと本文全文を提示し、その後のユーザー発言で未変更の下書きへの明示承認を得る。変更したら再提示する。利用環境に存在しない質問toolを要求せず、通常の会話で確認する。本人が全文を逐語指定して「このまま送って」と依頼した場合は共有送信policyの例外に従う。
 3. 承認後、`printf '%s' "本文" | imsg-send --style-contact "<CRMの人物名>" "<宛先>"` で送信。
    `--style-contact` が無ければ fail closed で送信しない。送信直前にも文体・履歴を再取得する。
 4. 返ってきた JSON の `"ok":true` と `rowid` を見て「送信完了」を報告する。
