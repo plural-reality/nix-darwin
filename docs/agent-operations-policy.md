@@ -13,10 +13,11 @@ explains the decisions; it does not duplicate the instruction text verbatim.
 
 - Shared Claude Code and Codex instructions already have one source:
   `prompt/agent-operations.md`.
-- The managed Codex projection exposes only the Chrome backend, disables the
-  in-app browser and generic Computer Use, and keeps the installed-Chrome
-  plugin enabled. A downstream may opt into Computer Use only for an explicit
-  isolated VM/display or separately acquired desktop lease.
+- The managed legacy browser projection exposes only the Chrome backend,
+  disables the in-app browser and old pixel `computer-use@openai-bundled`
+  plugin, and keeps the installed-Chrome plugin enabled. Global desktop input
+  requires an explicit isolated VM/display or separately acquired desktop lease;
+  this does not disable the separate, app-scoped Unified Computer Use route.
 - The default Codex sandbox was `danger-full-access` even for work that only
   needs the current checkout.
 - OneTab 2.18 is already installed in the relevant Chrome profiles. OneTab has
@@ -87,8 +88,17 @@ The shared Mac is not an automation sandbox. The default route is the existing
 Chrome extension/native host, whose tab IDs and turn-scoped cleanup are managed
 by the Chrome plugin. The in-app browser is not a fallback: its backend is
 removed from the runtime discovery allow-list, so an implicit default selection
-cannot open a second browser surface. Generic Computer Use is also disabled by
-default because its mouse, keyboard, and focus events are global to the desktop.
+cannot open a second browser surface. The old pixel Computer Use plugin is also
+disabled by default because its mouse, keyboard, and focus events are global to
+the desktop.
+
+The separate Unified Computer Use route may perform necessary app-scoped native
+work when its tools are exposed to the current task and the target app already
+has permission. Prefer narrower CLI/API operations, avoid concurrent use of the
+same app, and do not silently fall back from Chrome to desktop control. This is
+not permission to expand app access or TCC, nor to weaken task-specific isolation
+or lease requirements. New authentication and permission grants remain human
+boundaries.
 
 Only an explicitly isolated Playwright/Chrome for Testing run may create its own
 profile, and that profile is run-scoped and disposable. A shared persistent

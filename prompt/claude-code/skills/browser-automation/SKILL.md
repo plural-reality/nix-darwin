@@ -16,7 +16,9 @@ description: >
 3. stableなtab/window IDを返すnative Chrome APIがある場合は、それでbackground作成・操作する。
 4. 前段で表現できない隔離検証だけPlaywrightを使う。この場合も実Chrome channel (`--browser chrome`)を指定する。Playwright同梱Chromium/Chrome for Testingを既定にしない。
 
-Managed Codexのbackend allow-listは`chrome`だけである。in-app browser (`iab`) とgeneric Computer Useは無効化されており、エラー時に暗黙のfallbackとして選ばない。Computer Useが必要な場合は、共有desktopではなく専用VM/displayまたは明示的なdesktop leaseを用意した一回限りの実行として扱う。
+Managed Codexの旧browser backend allow-listは`chrome`だけで、`iab`と旧pixel plugin (`computer-use@openai-bundled`) は無効である。この制約は新しいUnified Computer Use全体の禁止ではない。Chromeの調査・操作から、エラーを理由に別browserやMac全体の操作へ暗黙にfallbackしない。
+
+Macアプリ固有の操作が必要なら、現在のtaskに公開され、対象appへの既存権限があるUnified Computer Useのapp-scoped操作を使える。専用CLI/APIを優先し、同じappへの他taskや本人の操作と競合しない範囲でbackground操作する。前面化やglobal mouse/keyboard操作は専用VM/displayまたは明示的なdesktop leaseを持つ一回限りの実行に留める。既存の金融監視などの隔離・lease条件を緩めず、追加の認証・app許可・TCC承認が必要なら本人の操作を待つ。
 
 `~/.claude/scripts/pw.mjs`は既知の不適切な旧経路であり、実行しない。`npm install`、`npx`、`playwright install`を実行して依存やブラウザをその場で追加してはいけない。必要な依存はNix/Home Managerの入力として追加し、適用後に再開する。
 

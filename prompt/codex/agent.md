@@ -24,6 +24,7 @@
 - 本人の予定・空き時間には `apple-calendar`、リマインダーの振り分けには `remind-or-schedule` を使う。
 - 人への送信は対応する送信skillを使う。
 - 共有memoryの正本は Claude auto-memory の `MEMORY.md` index と関連topic file。更新は `self-learn` skillだけを使い、Codex native memoryを共有正本にしない。
+- Codexのmemoryを、過去の知見や好みを再利用するために使う。現在の依頼、適用中のAGENTS、対象システムの最新状態を優先し、重要な制約や作業完了をmemoryだけで判断しない。
 
 @[coast-local]
 
