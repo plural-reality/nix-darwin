@@ -1,79 +1,61 @@
 ---
 name: apple-calendar
 description: >
-  Apple Calendarの本人予定を正しく読み、イベントをiCloudへ追加・更新する唯一の窓口。
-  トリガー: 「いつ空いてる」「予定確認」「カレンダーに追加」「予定を入れて」「カレンダー登録」「add to calendar」。
+  本人の予定・空き時間をApple Calendarから確認し、許可されたイベントを既存iCloudカレンダーへ追加・更新する。
+  「いつ空いてる」「予定確認」「予定を入れて」「カレンダーに追加」で使う。締切つきのやることはremind-or-scheduleへ。
 ---
 
-# apple-calendar — Apple カレンダー書込みの唯一の窓口
+# apple-calendar — 対象を解決してから読み書きする
 
-Claude / Codex が Apple カレンダーにイベントを追加・更新するときは **必ずこのスキル(＝下の `evkit calendar`)を通す**。直接 osascript でイベントを作らない（位置情報の座標ピンを付けられず、新規カレンダーが On My Mac に落ちて iPhone 同期しないため）。
-
-**`swift apply.swift` を直接叩かない。** TCC はカレンダー許可を「責任プロセスの code identity」に紐づけるため、Claude Code から直接叩くと許可が claude のバージョン付きパスに付き、更新のたびに失効する。さらに SSH/tmux は Aqua セッションでないので許可ダイアログを描画できず自動拒否される。`evkit` は MacBook Air 常駐の署名済みヘルパー `evkitd` に委譲するので、どのホスト・どのセッションからでも通る。`apply.swift` はその evkitd が exec する実装であり、呼び出し口ではない。
+予定の存在、本人の参加・対応責任、完了を分ける。他人の予定や「仮」のラベルだけから本人の予定を確定しない。
+読取は `evkit snapshot`、既存iCloudへの書込は `evkit calendar`。法人Googleへの書込は `gws calendar` に分岐する。
 
 ## 本人の予定・空き時間を読む
 
-本人の空き時間を判断する時は、Google Calendarだけで判定せず、**Apple Calendarを先に読む**。読取りは `evkit snapshot` を使い、次の本人カレンダーだけを対象にする。
+1. Google Calendarだけで判断せず、Apple Calendar側も読む。`evkit calendar.catalog` で現在のID・表示名・source・writableを確認し、本人が指定した対象を解決する。表示名は改名されるため、既知のstable IDとsourceを優先する。同名の共有用を選ばない。
+2. 本人の個人予定（旧表示名 `Taka の予定`、現在の候補名 `個人予定`）、本人の法人・個人Google、ルーティーン、トレーニング計画、祝日を対象にする。対象のbindingは本人の最新指定と現catalogに照合する。旧 `Business` や旧トレーニング名が存在すると決め打ちしない。
+   共有の `Univ` / `勤務先` / `Personal` / `Exercise` / `惟の居住地` / `目黒区民プール` / `Yui` / `Ryu` 等は他人・施設の予定であり、本人の空き判定に混ぜない。トレーニング計画は可動枠、祝日や施設枠は拘束予定と区別する。
+3. 必要な期間と解決済みIDに絞ってsnapshotを取得する。両selectorの `names` と `ids` は省略しない。名前とIDはOR条件なので、IDが分かるなら名前は空にする。
 
-`Taka の予定` / `takagi@plural-reality.com` / `Shunsuke Takagi (General)` / `Business` / `ルーティーン` / `練習メニュー from interval.icu`（トレーニング計画は可動） / `日本の祝日`
-
-`Univ` / `勤務先` / `Personal` / `Exercise` / `惟の居住地` / `目黒区民プール` / `Yui` / `Ryu` など、チェックのない共有カレンダーは他人の予定なので空き判定から除外する。書込みは下記の `evkit calendar` だけを使い、直接osascriptで作成しない。
-
-## 不変の契約（必ず守る）
-1. **iCloud に入れる** — 新規カレンダーは iCloud(CalDAV)ソースに作る。On My Mac は iPhone と同期しない。`apply.swift` が自動でそうする。
-2. **位置情報を必ず入れる** — `location`(または `defaultLocation`)を付ける。`address` を書けば `apply.swift` が Apple geocoder で座標化し `EKStructuredLocation.geoLocation` に入れる＝**iPhoneでタップ→Appleマップ**。座標が分かっていれば `lat`/`lon` を直接渡す（geocode省略）。場所が本当に無いイベントのみ location 省略可。
-3. **時刻指定**（`start`/`end` を ISO で）。終日にしない。
-4. **mode** で洗い替えか追記かを選ぶ。
-
-## 使い方
-1. 汎用イベントJSONを組み立てて一時ファイルに Write（schema 下記）。
-2. `evkit calendar < events.json`
-3. 返る JSON の `ok` が true で、`stdout` が `applied N / removed M / mode=… / source=iCloud` であることを確認（source が iCloud であること）。
-
-`ok:false` かつ `calendar access not granted` が返ったら、TCC 許可が剥がれている。MacBook Air の画面で
-システム設定 → プライバシーとセキュリティ → カレンダー → **EventKitBridge** をフルアクセスにする（原則一度きり）。
-Air がスリープ／到達不能なら ssh が失敗する。これは正しい失敗であり、黙って別経路に落ちてはいけない。
-
-## 汎用イベントJSON schema
 ```json
 {
-  "calendar": "カレンダー名",
-  "mode": "append",                         // append | replace-month | replace-range
-  "year": 2026, "month": 6,                 // replace-month の削除窓
-  "rangeStart": "2026-06-01T00:00",          // replace-range の削除窓
-  "rangeEnd": "2026-07-01T00:00",
-  "defaultLocation": { "title": "場所名", "address": "東京都…", "lat": 35.6, "lon": 139.7 },
-  "events": [
-    { "title": "イベント名",
-      "start": "2026-06-07T18:00", "end": "2026-06-07T22:00",
-      "notes": "メモ", "url": "https://…",
-      "alarms": [60, 1440],                                     // start からの「分前」通知リスト(省略可)
-      "location": { "title": "個別の場所", "address": "…" } }   // 省略時 defaultLocation
-  ]
+  "rangeStart": "2026-09-07T00:00:00+09:00",
+  "rangeEnd": "2026-09-08T00:00:00+09:00",
+  "calendars": {"names": [], "ids": ["解決済み本人カレンダーID"]},
+  "reminderLists": {"names": [], "ids": []}
 }
 ```
-- `start`/`end` は `yyyy-MM-ddTHH:mm`（ローカル時刻、秒付きも可）。
-- `location`/`defaultLocation`: `lat`/`lon` 省略時は `address` を geocode。`title` は地図ピンの名称。
-- `alarms`: `start` からの分前(例 `60`=1時間前, `1440`=1日前, `7200`=5日前)。複数指定で複数通知。省略可。
-- 単発追加は `mode: "append"`、月次の洗い替えは `replace-month`、任意期間の貼り替えは `replace-range`。
 
-## mode の指針
-- **単発予定**（打ち合わせ・予約など）: `append`。同じ予定の二重登録に注意（必要なら先に確認）。
-- **定期洗い替え**（外部ソースから当月分を貼り直す等）: `replace-month` / `replace-range`。冪等。
+`evkit snapshot < snapshot.json` は開始を含み終了を含まない範囲で読む。offset・秒付きISO 8601を使う。
+`ok`、`partial`、`errors.events` と `containers.calendars` を確認する。期待IDが未解決なら **eventsが空でも「予定なし」ではない**。catalogと対象指定を見直す。必要な本人カレンダーが欠けている時は空き判定を確定しない。
 
-## 消費者（このスキルに依存している例）
-- `meguro-pool-update`（プールPDF→往復コースルール→この schema→ `evkit calendar`）。新しいカレンダー自動化も同様にこの窓口へ委譲する。
+## 書込先と副作用
 
-## 層の分担（どこに何が住むか）
-| 層 | 実体 | 責務 |
-|---|---|---|
-| client | `evkit`（PATH） | spec を包んで Air のソケットへ流すだけ。TCC 権限不要。mini からは ssh で縮退 |
-| 権限境界 | `evkitd`（署名済み `EventKitBridge.app`, Air の LaunchAgent） | TCC の責任プロセス。許可を恒久保持し、実装を exec する |
-| 実装 | `apply.swift` | iCloud固定・geocode・mode の「正しさ」。ここが canonical |
+- **既存iCloudだけ**: catalogで確定した `calendarId` を渡す。`calendar` 名前指定はlegacy fallbackなので新規specには併記しない。現writerはカレンダーを新規作成せず、未知ID・非iCloudを拒否する。
+- **法人Google**: 本人の法人アカウントと対象Calendar IDを確認し `gws calendar` の既存経路を使う。個人iCloudへの代替保存、同一予定の二重登録はしない。
+- **位置・時刻**: `start` / `end` はローカル `yyyy-MM-ddTHH:mm`（秒付きも可）、終日にしない。実際の場所がある予定には `location` / `defaultLocation` を付ける。住所はgeocode、既知なら座標を指定する。場所のないオンライン予定等に架空の住所を付けない。
+- **変更範囲**: 単発は重複確認後 `append`。`replace-month` / `replace-range` は対象Calendarの指定期間を洗い替えるため、その削除範囲を含む依頼に限る。個別予定の修正目的で無関係な予定まで洗い替えない。
 
-## いつ「カレンダーでない」か（兄弟バックエンド）
-時間で起こる予定はここ。**やること(タスク)で場所がトリガー**なら別バックエンド。判断は `remind-or-schedule`(ルーター)に従う:
-- 特定の場所に着いたら通知（この支店/駅, 少数） → `apple-reminders-geofence`（ジオフェンス・リマインダー）
-- カテゴリのどこかに近づいたら（どこかの郵便局/プール, 多数） → geo-reminder アプリ
-- 時刻だけのタスク通知 → Apple Reminders（時刻）
-「この日時に・この場所で」＝カレンダー（位置つき）。「近づいたら」＝リマインダー側。両方欲しければ併用可。
+```json
+{
+  "calendarId": "catalogで解決した既存iCloud ID",
+  "mode": "append",
+  "defaultLocation": {"title": "場所名", "address": "確認した住所"},
+  "events": [{
+    "title": "イベント名", "start": "2026-09-07T14:00", "end": "2026-09-07T15:00",
+    "notes": "根拠・未確定条件", "url": "https://example.org/event", "alarms": [60]
+  }]
+}
+```
+
+任意の個別 `location` はdefaultを上書きし、`lat` / `lon` も指定できる。`alarms` は開始の何分前か（例60=1時間前）。
+洗い替えだけ `year` / `month`、または `rangeStart` / `rangeEnd` を追加する。入力を固定して `evkit calendar < events.json`。
+
+## 検証と停止
+
+- 書込応答の `ok` と `applied N / removed M / mode=… / calendarId=… / source=iCloud` を確認後、対象ID・期間でsnapshotを再取得し、タイトル・開始終了・場所・件数を照合する。応答OKだけで登録済みにしない。
+- snapshotが確認できるのは場所文字列等まで。備考・通知・座標ピン・iPhone同期が結果の要件なら、それを確認できる正本表示も必要。snapshotだけでその成功を主張しない。
+- `evkit` は署名済み `EventKitBridge` / `evkitd` に委譲する境界。直接 `swift apply.swift` やosascriptで代替しない。許可不足、到達不能、書込・readback失敗は未完了として区別し、黙って別経路へ落とさない。
+- 端末の許可設定・認証が必要な時だけ本人に依頼する。TCCエラー以外をすべて権限失効と断定しない。
+
+`meguro-pool-update` 等の消費者もこの入出力契約を使う。場所で発火するタスク・締切タスクは `remind-or-schedule` で振り分ける。

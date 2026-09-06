@@ -157,6 +157,6 @@ $SCRIPT send "to@example.com" "件名" "本文" work
 
 ## トラブルシューティング
 
-- **認証エラー**: `security find-generic-password -a 'EMAIL' -s 'himalaya-imap' -w` でパスワード取得確認
+- **認証エラー**: アカウント名・CLIの状態・秘密値を含まないエラーだけを確認する。Keychainのパスワード本文を出力して診断しない。認証の入力・更新は本人のnative UI操作に委ね、資格情報を会話へ貼り付けさせない。
 - **フォルダエラー**: `himalaya folder list` で実際のフォルダ名を確認
 - **タイムアウト**: IMAP 接続に数秒かかることがある。初回は待つ
