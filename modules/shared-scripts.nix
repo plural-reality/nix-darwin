@@ -540,6 +540,9 @@ in
   home.file.".local/share/scrapbox-write/scrapbox-write.mjs".source = ../scripts/scrapbox-write.mjs;
   # scrapbox-rename shares the same dir (and its @cosense/std node_modules).
   home.file.".local/share/scrapbox-write/scrapbox-rename.mjs".source = ../scripts/scrapbox-rename.mjs;
+  # Sibling import used by the writer; keep the production authentication launcher.
+  home.file.".local/share/scrapbox-write/scrapbox-title-normalize.mjs".source =
+    ../scripts/scrapbox-title-normalize.mjs;
   home.file.".local/share/scrapbox-write/package.json".text = builtins.toJSON {
     name = "scrapbox-write";
     version = "1.0.0";

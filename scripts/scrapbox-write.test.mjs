@@ -9,8 +9,11 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import {
   carriesCompletionEvidence,
+  decideWriteTitle,
   grayBodyLines,
   grayCore,
   guardPatchStrategy,
@@ -23,6 +26,22 @@ import {
   validateBoardWrite,
   validateTaskTransition,
 } from "./scrapbox-write.mjs";
+
+// --- decideWriteTitle: 正規化先を選ぶのは「不在を確認できた時だけ」 ---------------
+// SID 失効時の 403 で既存ページを正規形の別ページへ逸らすと二重化を自ら起こす(2026-07-24 Codex レビュー High)。
+test("decideWriteTitle: exact page exists (200 persistent) → keep given title", () => {
+  assert.equal(decideWriteTitle("☑️️X", "☑️X", 200, { persistent: true }), "☑️️X");
+});
+test("decideWriteTitle: phantom (200 persistent:false) → normalized", () => {
+  assert.equal(decideWriteTitle("☑️️X", "☑️X", 200, { persistent: false }), "☑️X");
+});
+test("decideWriteTitle: 404 (confirmed absent) → normalized", () => {
+  assert.equal(decideWriteTitle("☑️️X", "☑️X", 404, null), "☑️X");
+});
+test("decideWriteTitle: 403/5xx (absence NOT confirmed) → keep given title", () => {
+  assert.equal(decideWriteTitle("☑️️X", "☑️X", 403, null), "☑️️X");
+  assert.equal(decideWriteTitle("☑️️X", "☑️X", 500, null), "☑️️X");
+});
 
 test("CAS guard accepts an unchanged base and rejects a concurrent edit", () => {
   const expected = linesDigest(["Page", " old"]);
@@ -37,6 +56,82 @@ test("CAS guard accepts an unchanged base and rejects a concurrent edit", () => 
 test("CAS guard canonicalizes a not-yet-created page as a title-only page", () => {
   const strategy = guardPatchStrategy("New Page", linesDigest(["New Page"]), () => ["New Page", " body"]);
   assert.deepEqual(strategy([]), ["New Page", " body"]);
+});
+
+
+const expectedPageId = "0123456789abcdef01234567";
+const expectedPage = { id: expectedPageId, title: "Page", persistent: true };
+const currentPageLines = [{ id: "line-0", text: "Page" }, { id: "line-1", text: " body" }];
+const unchangedPageHash = linesDigest(["Page", " body"]);
+
+test("page identity guard accepts upstream Page.id metadata and preserves hash checking", () => {
+  const strategy = guardPatchStrategy("Page", unchangedPageHash, () => ["Page", " changed"], expectedPageId);
+  assert.deepEqual(strategy(currentPageLines, expectedPage), ["Page", " changed"]);
+  assert.throws(() => strategy(["Page", " concurrent"], expectedPage), /concurrent edit detected/);
+});
+
+test("page identity guard rejects another page with identical title and body on retry", () => {
+  const strategy = guardPatchStrategy("Page", unchangedPageHash, () => ["Page", " changed"], expectedPageId);
+  assert.deepEqual(strategy(currentPageLines, expectedPage), ["Page", " changed"]);
+  assert.throws(() => strategy(currentPageLines, { ...expectedPage, id: "1123456789abcdef01234567" }), /target page ID mismatch/);
+});
+
+test("page identity guard rejects missing, wrong-shaped, or phantom metadata before the strategy", () => {
+  const strategy = guardPatchStrategy("Page", unchangedPageHash, () => assert.fail("must not generate a patch"), expectedPageId);
+  [undefined, { pageId: expectedPageId, title: "Page", persistent: true }, { ...expectedPage, persistent: false }]
+    .forEach((page) => assert.throws(() => strategy(currentPageLines, page), /target page ID mismatch/));
+});
+
+test("page identity guard rejects renamed metadata or title lines even when ID still matches", () => {
+  const strategy = guardPatchStrategy("Page", undefined, () => assert.fail("must not generate a patch"), expectedPageId);
+  assert.throws(() => strategy(currentPageLines, { ...expectedPage, title: "Renamed" }), /target page title mismatch/);
+  assert.throws(() => strategy(["Renamed", " body"], expectedPage), /target page title mismatch/);
+});
+
+const runWriterPreview = (extraArgs) => spawnSync(
+  process.execPath,
+  [fileURLToPath(new URL("./scrapbox-write.mjs", import.meta.url)), "--title", "Page", "--dry-run", ...extraArgs],
+  { input: "body", encoding: "utf8", env: { SCRAPBOX_SID: "" } },
+);
+
+test("CLI accepts a valid expected page ID in preview without authentication", () => {
+  const result = runWriterPreview(["--expect-page-id", expectedPageId]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^Page\n/);
+});
+
+test("CLI identity-guarded preview preserves the exact title instead of normalizing it", () => {
+  const title = "☑️️Page";
+  const guarded = runWriterPreview(["--title", title, "--expect-page-id", expectedPageId]);
+  assert.equal(guarded.status, 0, guarded.stderr);
+  assert.equal(guarded.stdout.split("\n")[0], title);
+  const legacy = runWriterPreview(["--title", title]);
+  assert.equal(legacy.status, 0, legacy.stderr);
+  assert.equal(legacy.stdout.split("\n")[0], "☑️Page");
+});
+
+test("CLI identity guard rejects title trimming while legacy previews retain it", () => {
+  [" Page", "Page ", " Page "].forEach((title) => {
+    const guarded = runWriterPreview(["--title", title, "--expect-page-id", expectedPageId]);
+    assert.equal(guarded.status, 1);
+    assert.match(guarded.stderr, /without leading or trailing whitespace/);
+    assert.equal(guarded.stdout, "");
+    const legacy = runWriterPreview(["--title", title]);
+    assert.equal(legacy.status, 0, legacy.stderr);
+    assert.equal(legacy.stdout.split("\n")[0], "Page");
+  });
+});
+
+test("CLI rejects missing or malformed expected page IDs without writing", () => {
+  const missing = runWriterPreview(["--expect-page-id"]);
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /--expect-page-id requires a value/);
+  ["", "not-a-page-id", "a".repeat(23), "A".repeat(24)]
+    .forEach((id) => {
+      const result = runWriterPreview(["--expect-page-id", id]);
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /--expect-page-id requires 24 lowercase hexadecimal characters/);
+    });
 });
 
 const boardArgs = (overrides = {}) => ({
@@ -261,4 +356,29 @@ test("completion-looking writes under open task titles fail closed unless explic
   assert.deepEqual(validateTaskTransition(args, body).ok, false);
   assert.deepEqual(validateTaskTransition({ ...args, title: "☑️Mozilla grantをGMOへ資金移動する" }, body), { ok: true, value: body });
   assert.deepEqual(validateTaskTransition({ ...args, allowOpenTask: true }, body), { ok: true, value: body });
+});
+
+// Production callers use inline options, including titles that begin with a dash.
+test("CLI preserves production inline value options with expected identity and hash", () => {
+  const result = runWriterPreview(["--title=-example", `--expect-page-id=${expectedPageId}`, `--expect-sha256=${unchangedPageHash}`]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.split("\n")[0], "-example");
+});
+
+test("CLI rejects malformed inline expected flags before writing", () => {
+  for (const flag of ["--expect-page-id=", "--expect-page-id=bad", "--expect-sha256=bad"]) {
+    const result = runWriterPreview([flag]);
+    assert.equal(result.status, 1, result.stderr);
+  }
+});
+
+test("CLI preserves production open-task guard and explicit historical-note override", () => {
+  const preview = (extraArgs) => spawnSync(process.execPath,
+    [fileURLToPath(new URL("./scrapbox-write.mjs", import.meta.url)), "--dry-run", "--title=⬜ Task", ...extraArgs],
+    { input: "status:: done\n完了確認", encoding: "utf8", env: { SCRAPBOX_SID: "" } });
+  const denied = preview([]);
+  assert.equal(denied.status, 1);
+  assert.match(denied.stderr, /open task/);
+  const allowed = preview(["--allow-open-task"]);
+  assert.equal(allowed.status, 0, allowed.stderr);
 });
