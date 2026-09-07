@@ -37,6 +37,8 @@ Options:
   -g, --gray            Wrap AI-written lines in the [( …] grey deco (default ON for
                         non-verbatim writes; idempotent; skips code:/table: blocks).
       --no-gray, --human  Write plain (un-greyed). For human-authored content.
+      --expect-page-id <id> Require this persisted page ID and the exact requested
+                           title. Rechecked after a concurrent-edit retry.
       --expect-sha256 <h> Replace only when the current canonical line array has this
                           SHA-256. Concurrent edits abort instead of being overwritten.
   -n, --dry-run         Render Scrapbox lines to stdout without writing
@@ -59,6 +61,7 @@ const optionsWithValue = {
   "-t": "title",
   "--mode": "mode",
   "--expect-sha256": "expectSha256",
+  "--expect-page-id": "expectPageId",
 };
 
 const flagOptions = {
@@ -97,6 +100,7 @@ const parseArgs = (argv) =>
       verbatim: false,
       gray: undefined,
       expectSha256: undefined,
+      expectPageId: undefined,
       unknownOptions: [],
     }
   );
@@ -114,10 +118,14 @@ const validateArgs = (argv, args, patchStrategy) => {
     ? { ok: false, error: `unknown option: ${args.unknownOptions.join(", ")}` }
   : !process.env.SCRAPBOX_SID && !args.dryRun
     ? { ok: false, error: "SCRAPBOX_SID environment variable is not set" }
+  : args.expectPageId !== undefined && !/^[0-9a-f]{24}$/.test(args.expectPageId)
+    ? { ok: false, error: "--expect-page-id requires 24 lowercase hexadecimal characters" }
   : args.expectSha256 !== undefined && !/^[0-9a-f]{64}$/.test(args.expectSha256)
     ? { ok: false, error: "--expect-sha256 requires 64 lowercase hexadecimal characters" }
   : !args.title || args.title.trim() === ""
     ? { ok: false, error: "--title (-t) is required" }
+  : args.expectPageId !== undefined && args.title !== args.title.trim()
+    ? { ok: false, error: "--expect-page-id requires --title without leading or trailing whitespace" }
   : !patchStrategy
     ? { ok: false, error: `unsupported mode: ${args.mode}` }
   : { ok: true, value: { ...args, title: args.title.trim(), project: args.project.trim() } };
@@ -327,11 +335,25 @@ const bodyToLines = (title, body, verbatim, gray) => {
 const lineText = (line) => typeof line === "string" ? line : line.text;
 const linesDigest = (lines) =>
   createHash("sha256").update(JSON.stringify(lines)).digest("hex");
-const guardPatchStrategy = (title, expected, strategy) => (currentLines) => {
+// @cosense/std supplies the actual pulled Page as the callback's second argument.
+// Keep identity checks inside this callback: NotFastForward retries pull by title,
+// so a renamed/deleted page can otherwise resolve to a different (or phantom) page.
+const patchPreconditionError = (title, expected, expectedPageId, current, page) =>
+  expectedPageId !== undefined && (page?.persistent !== true || page?.id !== expectedPageId)
+    ? "target page ID mismatch or page is not persisted; write aborted"
+  : expectedPageId !== undefined && (page?.title !== title || current[0] !== title)
+    ? "target page title mismatch; write aborted"
+  : expected !== undefined && linesDigest(current) !== expected
+    ? "concurrent edit detected; write aborted"
+    : undefined;
+
+const guardPatchStrategy = (title, expected, strategy, expectedPageId) => (currentLines, page) => {
   const current = currentLines.length === 0 ? [title] : currentLines.map(lineText);
-  return expected === undefined || linesDigest(current) === expected
+  const error = patchPreconditionError(title, expected, expectedPageId, current, page);
+  // The upstream patch callback uses exceptions to abort without committing.
+  return error === undefined
     ? strategy(currentLines)
-    : (() => { throw new Error("concurrent edit detected; write aborted"); })();
+    : (() => { throw new Error(error); })();
 };
 const withBlankSeparator = (lines) =>
   lines.length <= 1 || isBlankLine(lines.at(-1) ?? "")
@@ -403,8 +425,10 @@ const resolveWriteTitle = (project, title, sid) => {
 
 const writePage = (args, body, patchStrategy) =>
   args.dryRun
-    ? Promise.resolve(renderDryRun(normalizeStatusEmoji(args.title), body, args.verbatim, effectiveGray(args)))
-    : resolveWriteTitle(args.project, args.title, process.env.SCRAPBOX_SID).then((title) =>
+    ? Promise.resolve(renderDryRun(args.expectPageId === undefined ? normalizeStatusEmoji(args.title) : args.title, body, args.verbatim, effectiveGray(args)))
+    : (args.expectPageId === undefined
+        ? resolveWriteTitle(args.project, args.title, process.env.SCRAPBOX_SID)
+        : Promise.resolve(args.title)).then((title) =>
         patchPage(
           args.project,
           title,
@@ -412,6 +436,7 @@ const writePage = (args, body, patchStrategy) =>
             title,
             args.expectSha256,
             patchStrategy(title, body, args.verbatim, effectiveGray(args)),
+            args.expectPageId,
           ),
           process.env.SCRAPBOX_SID,
         )

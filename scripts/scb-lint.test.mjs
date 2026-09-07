@@ -1,6 +1,11 @@
 // scb-lint の純検知判定のユニットテスト。
 // 実行: node scb-lint.test.mjs （失敗時 exit 1）。ネットワーク不要(判定は純関数)。
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   isDatePage,
   isSystemPage,
@@ -192,6 +197,109 @@ T("severity: stub and duplicate are fileable, orphan is digest-only", () => {
   assert.equal(SEVERITY["orphan"], "digest");
   const pages = [{ title: "未記述の概念", linesCount: 1, linked: 5, pin: 0 }];
   assert.equal(detect("takalog", pages, NOW)[0].severity, "file");
+});
+
+// CLI tests use a local fake cosense-fetch; no network/auth or Scrapbox writes.
+const runCli = (responses, args = ["--json", ...Object.keys(responses)]) => {
+  const dir = mkdtempSync(join(tmpdir(), "scb-lint-test-"));
+  try {
+    const fake = `#!/usr/bin/env node
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+const response = ${JSON.stringify(responses)}[args[args.indexOf("-p") + 1]];
+if (response.body !== undefined) fs.writeFileSync(args[args.indexOf("-o") + 1], response.body);
+process.exit(response.exitCode || 0);
+`;
+    writeFileSync(join(dir, "cosense-fetch"), fake, { mode: 0o755 });
+    return spawnSync(process.execPath, [fileURLToPath(new URL("./scb-lint.mjs", import.meta.url)), ...args], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${dir}${delimiter}${process.env.PATH || ""}` },
+      timeout: 10_000,
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+};
+const listedPage = (page) => ({ linked: 0, pin: 0, charsCount: 0, linesCount: 1, created: OLD, updated: OLD, ...page });
+const response = (pages, count = pages.length) => ({ body: JSON.stringify({ pages, count }) });
+
+T("CLI: child failure rejects even a plausible output file", () => {
+  const result = runCli({ takalog: { ...response([]), exitCode: 7 } });
+  assert.equal(result.status, 1);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.status, "failed");
+  assert.equal(report.coverage[0].status, "failed");
+  assert.equal(report.coverage[0].total, null);
+  assert.deepEqual(report.findings, []);
+});
+T("CLI: unreadable output is failure, not healthy empty project", () => {
+  const result = runCli({ takalog: {} });
+  assert.equal(result.status, 1);
+  assert.equal(JSON.parse(result.stdout).status, "failed");
+});
+T("CLI: malformed JSON, schema and page metadata fail closed", () => {
+  const bodies = ["not json", "null", "{}", '{"pages":[]}', '{"count":-1,"pages":[]}',
+    '{"count":0,"pages":[{"title":"A"}]}', '{"count":1,"pages":[null]}',
+    '{"count":1,"pages":[{"title":3}]}', '{"count":1,"pages":[{"title":"A","linked":"0"}]}'];
+  for (const body of bodies) {
+    const result = runCli({ takalog: { body } });
+    assert.equal(result.status, 1, body);
+    assert.equal(JSON.parse(result.stdout).status, "failed", body);
+  }
+});
+T("CLI: missing detection metadata never implies healthy or empty-stub", () => {
+  const full = listedPage({ title: "A" });
+  const missingFields = ["linked", "pin", "charsCount", "linesCount", "created", "updated"];
+  const pages = [{ title: "A" }, { title: "A", linked: 3 },
+    ...missingFields.map((key) => Object.fromEntries(Object.entries(full).filter(([field]) => field !== key)))];
+  for (const page of pages) {
+    const result = runCli({ takalog: response([page]) });
+    assert.equal(result.status, 1, JSON.stringify(page));
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.status, "failed");
+    assert.deepEqual(report.findings, []);
+  }
+});
+T("CLI: genuinely empty successful project is complete", () => {
+  const result = runCli({ takalog: response([]) });
+  assert.equal(result.status, 0);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.status, "complete");
+  assert.deepEqual(report.findings, []);
+  assert.equal(report.coverage[0].total, 0);
+  assert.equal(report.coverage[0].scanned, 0);
+});
+T("CLI: mixed fetch outcome preserves findings with partial coverage and failure exit", () => {
+  const result = runCli({ takalog: { exitCode: 22 }, "plural-reality": response([listedPage(stub)]) });
+  assert.equal(result.status, 1);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.status, "partial");
+  assert.equal(report.findings.length, 1);
+  assert.equal(report.findings[0].type, "empty-stub");
+  assert.deepEqual(report.coverage.map((c) => c.status), ["failed", "complete"]);
+});
+T("CLI: latest-1000 bound is explicit in JSON coverage", () => {
+  const pages = Array.from({ length: 1000 }, (_, i) => listedPage({ title: `page${i}`, linesCount: 2, linked: 1 }));
+  const result = runCli({ takalog: response(pages, 4542) });
+  assert.equal(result.status, 0);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.status, "partial");
+  assert.equal(report.coverage[0].scanned, 1000);
+  assert.equal(report.coverage[0].total, 4542);
+  assert.equal(report.coverage[0].limit, 1000);
+  assert.equal(report.coverage[0].scope, "latest-updated");
+  assert.match(result.stderr, /partial/);
+});
+T("CLI: unexpected empty subset does not claim a complete scan", () => {
+  const result = runCli({ takalog: response([], 3) });
+  assert.equal(result.status, 0);
+  assert.equal(JSON.parse(result.stdout).status, "partial");
+});
+T("CLI: failed human report does not say findings absent", () => {
+  const result = runCli({ takalog: { exitCode: 22 } }, ["takalog"]);
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /failed/);
+  assert.doesNotMatch(result.stdout, /機械的 findings なし/);
 });
 
 if (process.exitCode) console.error("\nSOME TESTS FAILED");

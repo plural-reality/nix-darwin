@@ -5,7 +5,7 @@
 // 意味的観点(矛盾 / stale claim / 概念ページ不足 / 新質問提案)は /scb-lint skill 側の LLM パスが担当する。
 // source of truth は Scrapbox 自身。状態(filing 済みか)は skill 側の seen.json が持ち、本ファイルは純検知のみ。
 //
-// 入力: project 名(args、既定 3 project) / 出力: findings 一覧(既定=表 / --json=JSON)
+// 入力: project 名(args、既定 3 project) / 出力: findings + coverage(既定=表 / --json=report object)
 // 依存: cosense-fetch(--list で各 project のページ一覧メタを取る。linked=被リンク数, linesCount, charsCount, pin, created)。
 //
 // 機械的検知タイプ:
@@ -15,7 +15,7 @@
 //   emoji-variant … 状態絵文字プレフィックス/VS16/cc: だけ違う実ページ群(rename せず新規作成した置き去り二重ページ)。
 //
 // ponytail: 機械的スキャンは `cosense-fetch --list -l LIMIT`(更新降順)で最新 LIMIT 件/project を対象にする。
-//   それより古い tail は対象外(cosense-fetch が skip ページングを公開していないため)。上限到達は log に出す。
+//   それより古い tail は対象外(cosense-fetch が skip ページングを公開していないため)。coverage=partial として報告。
 //   将来 cosense-fetch に skip を足すか直 API でページングすれば全件化できる(=upgrade path)。
 
 import { execFile } from "node:child_process";
@@ -220,34 +220,37 @@ export const detect = (project, pages, nowSec) => {
 // --- IO 境界 ----------------------------------------------------------------
 
 const runFile = (cmd, cmdArgs) =>
-  new Promise((resolve) =>
+  new Promise((resolve, reject) =>
     execFile(
       cmd,
       cmdArgs,
       { maxBuffer: 128 * 1024 * 1024, env: { ...process.env, LANG: "ja_JP.UTF-8", LC_ALL: "ja_JP.UTF-8" } },
-      () => resolve()
+      (error) => error ? reject(error) : resolve()
     )
   );
 
-const parseJson = (s) => {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return null;
-  }
-};
+// An API error, missing count or malformed entry must not become an empty project.
+const isPageList = (data) =>
+  data !== null && typeof data === "object" &&
+  Number.isSafeInteger(data.count) && data.count >= 0 &&
+  Array.isArray(data.pages) && data.count >= data.pages.length &&
+  data.pages.every((page) =>
+    page !== null && typeof page === "object" &&
+    typeof page.title === "string" && page.title.length > 0 &&
+    ["linked", "pin", "charsCount", "linesCount", "created", "updated"].every((key) =>
+      Number.isFinite(page[key]) && page[key] >= 0
+    )
+  );
 
-// cosense-fetch --list は JSON を「実ファイル」にしか書かない(stdout/-o /dev/stdout はテーブル)。
-// よって ephemeral な temp file 経由で JSON を受け、必ず unlink する(内部処理限定の一時領域)。
+// cosense-fetch --list writes JSON to a real file. Read only after a successful exit.
 const listPages = async (project) => {
   const dir = mkdtempSync(join(tmpdir(), "scb-lint-"));
   const out = join(dir, "list.json");
   try {
     await runFile("cosense-fetch", ["--list", "-p", project, "-l", String(LIMIT), "-o", out]);
-    const d = parseJson(readFileSync(out, "utf8"));
-    return d && Array.isArray(d.pages) ? d : { pages: [], count: 0 };
-  } catch {
-    return { pages: [], count: 0 };
+    const data = JSON.parse(readFileSync(out, "utf8"));
+    if (!isPageList(data)) throw new Error("Invalid page-list metadata");
+    return data;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -255,18 +258,27 @@ const listPages = async (project) => {
 
 const crawl = async (projects, nowSec) => {
   const perProject = await Promise.all(
-    projects.map(async (p) => {
-      const lj = await listPages(p);
-      const pages = Array.isArray(lj.pages) ? lj.pages : [];
-      const total = typeof lj.count === "number" ? lj.count : pages.length;
-      const capped = total > pages.length ? { project: p, scanned: pages.length, total } : null;
-      return { findings: detect(p, pages, nowSec), capped };
+    projects.map(async (project) => {
+      const scope = { project, scope: "latest-updated", limit: LIMIT };
+      try {
+        const { pages, count } = await listPages(project);
+        return {
+          findings: detect(project, pages, nowSec),
+          coverage: { ...scope, status: count > pages.length ? "partial" : "complete", scanned: pages.length, total: count },
+        };
+      } catch {
+        // Do not copy child stderr/credentials into a report. Unknown total stays null.
+        return {
+          findings: [],
+          coverage: { ...scope, status: "failed", scanned: 0, total: null, error: "page-list-unavailable-or-invalid" },
+        };
+      }
     })
   );
-  return {
-    findings: perProject.flatMap((x) => x.findings),
-    capped: perProject.map((x) => x.capped).filter(Boolean),
-  };
+  const coverage = perProject.map((result) => result.coverage);
+  const status = coverage.every((item) => item.status === "failed") ? "failed"
+    : coverage.some((item) => item.status !== "complete") ? "partial" : "complete";
+  return { schemaVersion: 1, status, coverage, findings: perProject.flatMap((result) => result.findings) };
 };
 
 const main = async () => {
@@ -274,19 +286,26 @@ const main = async () => {
   const asJson = args.includes("--json");
   const projects = args.filter((a) => !a.startsWith("--"));
   const nowSec = Math.floor(Date.now() / 1000);
-  const { findings, capped } = await crawl(projects.length ? projects : PROJECTS_DEFAULT, nowSec);
+  const report = await crawl(projects.length ? projects : PROJECTS_DEFAULT, nowSec);
+  const { findings, coverage, status } = report;
 
-  // 上限到達は沈黙でドロップせず必ず報告(no silent caps)
-  capped.forEach((c) =>
-    process.stderr.write(`[scb-lint] capped: ${c.project} scanned ${c.scanned}/${c.total} pages (tail not scanned)\n`)
+  // A fetch failure is operational failure even when another project yields findings.
+  if (coverage.some((item) => item.status === "failed")) process.exitCode = 1;
+  coverage.forEach((item) =>
+    process.stderr.write(`[scb-lint] ${item.status}: ${item.project} scanned ${item.scanned}/${item.total ?? "unknown"} pages (latest updated, limit=${item.limit})\n`)
   );
 
   if (asJson) {
-    process.stdout.write(JSON.stringify(findings, null, 2) + "\n");
+    process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+    return;
+  }
+  process.stdout.write(`scb-lint: ${status} (各 project 最新 ${LIMIT} 件までのメタデータ検知)\n`);
+  if (status === "failed") {
+    process.stdout.write("ページ一覧の取得に失敗したため判定できません。\n");
     return;
   }
   if (findings.length === 0) {
-    process.stdout.write("scb-lint: 機械的 findings なし\n");
+    process.stdout.write("scb-lint: 取得できた範囲では findings 0件\n");
     return;
   }
   const byType = findings.reduce((acc, f) => ({ ...acc, [f.type]: (acc[f.type] || 0) + 1 }), {});
