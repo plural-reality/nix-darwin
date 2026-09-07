@@ -14,6 +14,7 @@
 //   SCRAPBOX_SID — connect.sid cookie value (URL-decoded, starts with "s:")
 
 import { createHash } from "node:crypto";
+import { normalizeStatusEmoji } from "./scrapbox-title-normalize.mjs";
 
 const usage = `Usage:
   scrapbox-write --title "Page Title" [--project plural-reality] [--mode replace|append|prepend] [--dry-run]
@@ -41,6 +42,8 @@ Options:
       --title=<t>       Same as -t, but as one token. Required when the title begins
                         with "-" (Scrapbox titles may); the separate form would read
                         the value as the next flag. Works for every value option.
+      --expect-page-id <id> Require this persisted page ID and the exact requested
+                           title. Rechecked after a concurrent-edit retry.
       --expect-sha256 <h> Replace only when the current canonical line array has this
                           SHA-256. Concurrent edits abort instead of being overwritten.
   -n, --dry-run         Render Scrapbox lines to stdout without writing
@@ -63,6 +66,7 @@ const optionsWithValue = {
   "-t": "title",
   "--mode": "mode",
   "--expect-sha256": "expectSha256",
+  "--expect-page-id": "expectPageId",
 };
 
 // `--opt=value`. Required for values that legitimately begin with "-" (Scrapbox page
@@ -114,6 +118,7 @@ const parseArgs = (argv) =>
       gray: undefined,
       allowOpenTask: false,
       expectSha256: undefined,
+      expectPageId: undefined,
       unknownOptions: [],
     }
   );
@@ -131,10 +136,14 @@ const validateArgs = (argv, args, patchStrategy) => {
     ? { ok: false, error: `unknown option: ${args.unknownOptions.join(", ")}` }
   : !process.env.SCRAPBOX_SID && !args.dryRun
     ? { ok: false, error: "SCRAPBOX_SID environment variable is not set" }
+  : args.expectPageId !== undefined && !/^[0-9a-f]{24}$/.test(args.expectPageId)
+    ? { ok: false, error: "--expect-page-id requires 24 lowercase hexadecimal characters" }
   : args.expectSha256 !== undefined && !/^[0-9a-f]{64}$/.test(args.expectSha256)
     ? { ok: false, error: "--expect-sha256 requires 64 lowercase hexadecimal characters" }
   : !args.title || args.title.trim() === ""
     ? { ok: false, error: "--title (-t) is required" }
+  : args.expectPageId !== undefined && args.title !== args.title.trim()
+    ? { ok: false, error: "--expect-page-id requires --title without leading or trailing whitespace" }
   : !patchStrategy
     ? { ok: false, error: `unsupported mode: ${args.mode}` }
   : { ok: true, value: { ...args, title: args.title.trim(), project: args.project.trim() } };
@@ -378,11 +387,25 @@ const bodyToLines = (title, body, verbatim, gray) => {
 const lineText = (line) => typeof line === "string" ? line : line.text;
 const linesDigest = (lines) =>
   createHash("sha256").update(JSON.stringify(lines)).digest("hex");
-const guardPatchStrategy = (title, expected, strategy) => (currentLines) => {
+// @cosense/std supplies the actual pulled Page as the callback's second argument.
+// Keep identity checks inside this callback: NotFastForward retries pull by title,
+// so a renamed/deleted page can otherwise resolve to a different (or phantom) page.
+const patchPreconditionError = (title, expected, expectedPageId, current, page) =>
+  expectedPageId !== undefined && (page?.persistent !== true || page?.id !== expectedPageId)
+    ? "target page ID mismatch or page is not persisted; write aborted"
+  : expectedPageId !== undefined && (page?.title !== title || current[0] !== title)
+    ? "target page title mismatch; write aborted"
+  : expected !== undefined && linesDigest(current) !== expected
+    ? "concurrent edit detected; write aborted"
+    : undefined;
+
+const guardPatchStrategy = (title, expected, strategy, expectedPageId) => (currentLines, page) => {
   const current = currentLines.length === 0 ? [title] : currentLines.map(lineText);
-  return expected === undefined || linesDigest(current) === expected
+  const error = patchPreconditionError(title, expected, expectedPageId, current, page);
+  // The upstream patch callback uses exceptions to abort without committing.
+  return error === undefined
     ? strategy(currentLines)
-    : (() => { throw new Error("concurrent edit detected; write aborted"); })();
+    : (() => { throw new Error(error); })();
 };
 const withBlankSeparator = (lines) =>
   lines.length <= 1 || isBlankLine(lines.at(-1) ?? "")
@@ -420,24 +443,60 @@ const patchPage = (project, title, patchStrategy, sid) =>
 // never when --no-gray is passed.
 const effectiveGray = (args) => !args.verbatim && args.gray !== false;
 
+// VS16 揺れタイトルでの二重ページ生成を入口で防ぐ。ただし「与えられた表記そのままの
+// ページが実在する」場合はそちらを正とする(mid-page 編集フローが正確なタイトルで
+// 既存ページを指名するのを、正規化で別ページへ逸らさないため)。
+//
+// 正規化先を選ぶのは「与えられた表記のページが不在」を **確認できた時だけ**:
+//   200 + persistent:false → phantom(実体なし) → 正規形へ
+//   404                    → 不在 → 正規形へ
+//   それ以外(403/5xx/parse失敗/ネットワーク断) → 不在の証拠にならないので与えられた表記を維持
+//   (SID 失効時の 403 で既存ページを正規形の別ページへ逸らすと、防ぐはずの二重化を自ら起こす)
+export const decideWriteTitle = (title, norm, status, meta) =>
+  status === 200
+    ? (meta && meta.persistent !== false ? title : norm)
+  : status === 404
+    ? norm
+    : title;
+
+const resolveWriteTitle = (project, title, sid) => {
+  const norm = normalizeStatusEmoji(title);
+  return norm === title
+    ? Promise.resolve(title)
+    : fetch(
+        `https://scrapbox.io/api/pages/${encodeURIComponent(project)}/${encodeURIComponent(title)}`,
+        { headers: { Cookie: `connect.sid=${encodeURIComponent(sid)}` } },
+      )
+        .then((res) =>
+          res.status === 200
+            ? res.json().then((meta) => decideWriteTitle(title, norm, 200, meta), () => title)
+            : decideWriteTitle(title, norm, res.status, null),
+        )
+        .catch(() => title); // 照会不能時は与えられた表記を維持(現状動作へ縮退)
+};
+
 const writePage = (args, body, patchStrategy) =>
   args.dryRun
-    ? Promise.resolve(renderDryRun(args.title, body, args.verbatim, effectiveGray(args)))
-    : patchPage(
-        args.project,
-        args.title,
-        guardPatchStrategy(
-          args.title,
-          args.expectSha256,
-          patchStrategy(args.title, body, args.verbatim, effectiveGray(args)),
-        ),
-        process.env.SCRAPBOX_SID,
-      )
-      .then((result) =>
-        result.ok
-          ? process.stdout.write(`https://scrapbox.io/${args.project}/${encodeURIComponent(args.title)}\n`)
-          : die(`patch failed: ${JSON.stringify(result)}`)
-      );
+    ? Promise.resolve(renderDryRun(args.expectPageId === undefined ? normalizeStatusEmoji(args.title) : args.title, body, args.verbatim, effectiveGray(args)))
+    : (args.expectPageId === undefined
+        ? resolveWriteTitle(args.project, args.title, process.env.SCRAPBOX_SID)
+        : Promise.resolve(args.title)).then((title) =>
+        patchPage(
+          args.project,
+          title,
+          guardPatchStrategy(
+            title,
+            args.expectSha256,
+            patchStrategy(title, body, args.verbatim, effectiveGray(args)),
+            args.expectPageId,
+          ),
+          process.env.SCRAPBOX_SID,
+        )
+          .then((result) =>
+            result.ok
+              ? process.stdout.write(`https://scrapbox.io/${args.project}/${encodeURIComponent(title)}\n`)
+              : die(`patch failed: ${JSON.stringify(result)}`)
+          ));
 
 const main = () => {
   const args = parseArgs(process.argv);

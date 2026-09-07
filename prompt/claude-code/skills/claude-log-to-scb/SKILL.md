@@ -79,7 +79,7 @@ python3 $S/split.py ~/Downloads/data-*.zip          # or 展開済みdir
 
 # 2) 要点抽出(headless・claude -p haiku 並列)。extracted.jsonl に追記(冪等)
 python3 $S/extract.py                 # 未抽出のみ。--workers N / --limit N / --force(全再抽出)
-#    ※canonical は extract.py。大量初回だけ Workflow ツールの model:'haiku' fan-out が速い(任意)
+#    ※既定Codex逐次。UUIDと入力/抽出器/promptの版でskipを判定する。
 
 # 3) 会話ページを takalog に(冪等・updated_at watermark)
 python3 $S/ingest.py ~/Downloads/data-*.zip --project takalog
@@ -111,19 +111,41 @@ python3 "$S/sessions.py" render --project takalog [--dry-run|--limit N|--force]
 
 冪等: `seen-sessions.json`(uuid→updated_at)。セッションは追記され続けるので updated_at が進めば再 render される。
 
-### Codex セッション取り込み
+### Codex セッション取り込み（v2・段階移行）
 
-各ホストの `~/.codex/sessions/**/*.jsonl` と `~/.codex/archived_sessions/**/*.jsonl`
-はそのホストを原本のまま保持し、TakaLog へ一方向に投影する。system/developer/tool payload は
-取り込まず、`event_msg` のユーザー入力と最終回答だけを Claude Code と同じ
-normalize → extract → render パイプラインへ渡す。`codex-<session id>` と
-`seen-codex-sessions.json` が重複取り込みを防ぐ。
+原本は各ホストのローカルに保つ。別ホストの `.codex` ツリーを走査・コピーして集約しない。
+最初の `session_meta.id` を不変IDとし、継承した親ID、分類、原本hashを来歴へ残す。
+subagent / 既知の抽出・命名処理はarchiveに保持し、人間向け知識の抽出対象から除く。
+`source=exec` だけでは除外しない。壊れたJSON行のある原本は投影しない。
+
+要約入力は先頭と最新発言を含む有界範囲で、文字範囲と省略範囲を記録する。
+抽出のskipはUUIDだけでなく、入力・抽出器・prompt・engine/modelの版を比較する。
+Codexを既定とし、逐次・read-only・ephemeral・ツール無効で実行する。
+`--force` も既存の抽出結果を消さず追記する。失敗は非zero終了。
+
+旧 `seen-codex-sessions.json` とタイトルsuffixは新writerの保存先判断に使わない。
+`~/.claude/data/knowledge-projection/codex-v2/` は永続的な運用台帳。cache扱いで削除しない。
+source ID→pageId/titleの対応、操作前後の行、operation ID、readback結果を保管する。
+既存の未対応ページは自動採用・上書き・削除しない。既存ページ整理は別の照合工程で行う。
+生成ブロック外の人間行は保持し、生成ブロック内が人間編集されたら競合として停止する。
+既存pageIdと本文hashをCLIで確認し、書込後にcanonical行が一致した時だけverifiedにする。
+不明な書込はreadbackを先に行い、確認できない場合に再送しない。
+
+導入時は明示UUIDだけのcanary。通常実行は同台帳ディレクトリの `allowlist.json`
+（`codex-<native UUID>` のJSON配列）だけを対象とする。allowlist未設定ならexit 75で保留し、
+旧方式の全件転記へフォールバックしない。writer所有者を移すときは台帳も保持する。
 
 ```bash
 S=~/.claude/skills/claude-log-to-scb/scripts
+"$S/codex-sessions-sync.sh" --uuid codex-<native-uuid> --dry-run
+"$S/codex-sessions-sync.sh" --uuid codex-<native-uuid>
+# canary検証後に明示したallowlistだけ定期同期
 "$S/codex-sessions-sync.sh"
-"$S/codex-sessions-sync.sh" --dry-run --limit 20
 ```
+
+`--dry-run` は原文再構築・モデル呼出・台帳更新を行わず、予定するsourceと工程だけ返す。
+詳細な候補確認には既存archive/抽出結果を指定して `projection.py --dry-run` を使う。
+これは検索精度・人物同定・既存全ページの移行完了を意味しない。
 
 ### ChatGPT 会話取り込み(claude.ai と同じ takalog へ・第3のソース)
 
@@ -200,7 +222,7 @@ ToS 留意: 自分の履歴でも「プログラムによる抽出」は規約�
 | `scripts/claude_cookies.py` | Claude Desktop cookie jar を復号(sessionKey/cf_clearance/org) |
 | `scripts/common.py` | 本文抽出 + 人物エイリアス(canon) + self除外 + esc + latest_archive |
 | `scripts/split.py` | conversations.json → compact per-conv files(`~/.claude/.cache/claude-log-to-scb/conv/`) |
-| `scripts/extract.py` | claude -p(haiku)並列で要点+entity抽出 → extracted.jsonl(冪等) |
+| `scripts/extract.py` | 版を比較しCodexで要点+entity抽出 → extracted.jsonl（逐次・追記） |
 | `scripts/ingest.py` | 会話ページ生成 → takalog |
 | `scripts/aggregate_and_upsert.py` | entity ページ分配 → takalog |
 | `~/.claude/data/claude-export/<date>/` | 原本 cold archive(SoT) |
@@ -227,7 +249,7 @@ ToS 留意: 自分の履歴でも「プログラムによる抽出」は規約�
 ## 注意
 
 - 私的データを読むため **共有 nix-darwin へは publish しない**(mac-local-data と同様)。
-- haiku 抽出の canonical は `extract.py`(`claude -p --no-session-persistence --model claude-haiku-4-5`・`CLAUDE_SKIP_DAILY_CAPTURE=1` で日報収集hookを抑止)。抽出ワーカーはClaude Code履歴を永続化しない。大量初回のみ Workflow の `model:'haiku'` fan-out が速い。
+- 抽出の正本は `extract.py`。既定は Codex ephemeral / read-only / 1 worker。抽出にClaude CLIへの依存を残さない。未検証の並列数・未版管理の抽出結果へフォールバックしない。
 - takalog は読取も配線済(2026-06-01): cosense-context-proxy に `ACCESS_TOKEN_TAKALOG`、ローカル `cosense-fetch -p takalog` 対応。agent が h=1/h=2 で takalog を読める。
 - 関連: [mac-local-data](ローカルアプリデータ) / [daily-report](日次集約・同じ pipeline 思想) /
   [save-to-scrapbox](書込規約) / [scrapbox-llm-marking](書き分け)。
