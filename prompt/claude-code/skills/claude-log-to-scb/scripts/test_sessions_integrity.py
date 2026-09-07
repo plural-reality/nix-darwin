@@ -176,6 +176,103 @@ class ResponseItemTests(unittest.TestCase):
             self.parse([meta(), response("依頼", kinds=[])])
 
 
+def flat_header(identity=CHILD):
+    return {"id": identity, "timestamp": "2025-10-10T01:00:00Z",
+            "instructions": "synthetic hidden instructions", "git": {"branch": "synthetic-private-branch"}}
+
+
+def flat_message(text, role="user", phase=None):
+    item = response(text, role, phase, item_id=None)["payload"]
+    return item
+
+
+class LegacyFlatTests(unittest.TestCase):
+    parse = IdentityTests.parse
+
+    def test_flat_rollout_keeps_header_identity_and_only_dialogue(self):
+        events = [flat_header(), {"record_type": "response"},
+                  flat_message("旧形式の依頼"),
+                  {"type": "reasoning", "text": "hidden reasoning"},
+                  {"type": "function_call", "arguments": "hidden arguments"},
+                  {"type": "function_call_output", "output": "hidden output"},
+                  flat_message("hidden system", "system"),
+                  flat_message("hidden developer", "developer"),
+                  flat_message("hidden tool", "tool"),
+                  flat_message("旧形式の回答", "assistant"),
+                  flat_message("hidden commentary", "assistant", "commentary"),
+                  flat_message("hidden analysis", "assistant", "analysis")]
+        result = self.parse(events)
+        self.assertEqual(result["uuid"], "codex-" + CHILD)
+        self.assertEqual([m["text"] for m in result["chat_messages"]], ["旧形式の依頼", "旧形式の回答"])
+        self.assertEqual(result["created_at"], "2025-10-10T01:00:00Z")
+        self.assertEqual(result["_provenance"]["rollout_format"], "legacy_flat")
+        self.assertEqual(result["_provenance"]["metadata_source"], "unknown_legacy")
+        self.assertEqual(result["_provenance"]["assistant_scope"], "legacy_message_role_only_phase_unavailable")
+        self.assertEqual(result["_provenance"]["legacy_user_message_candidates"], 1)
+        self.assertIn("candidate", result["_session_kind_reason"])
+        self.assertTrue(result["_source_version"].startswith("codex-parser-v4:"))
+        self.assertNotIn("hidden", json.dumps(result))
+        self.assertNotIn("synthetic-private-branch", json.dumps(result))
+
+    def test_flat_native_header_cannot_be_replaced_by_later_headers(self):
+        result = self.parse([flat_header(), flat_header(PARENT), meta(PARENT, source="vscode"),
+                             flat_message("親の履歴を含む依頼")])
+        self.assertEqual(result["_source_key"], "codex:" + CHILD)
+        self.assertEqual(result["_provenance"]["inherited_session_ids"], [PARENT])
+        self.assertEqual(result["_provenance"]["metadata_source"], "unknown_legacy")
+        self.assertEqual(result["created_at"], "2025-10-10T01:00:00Z")
+
+    def test_flat_legacy_user_injection_is_excluded_and_correction_retained(self):
+        result = self.parse([flat_header(), flat_message("<user_instructions> synthetic"),
+                             flat_message("<environment_context> synthetic"),
+                             flat_message("# AGENTS.md instructions synthetic"),
+                             flat_message("最初の依頼"), flat_message("回答", "assistant"),
+                             flat_message("訂正: 公開せず下書きにする")])
+        self.assertEqual([m["text"] for m in result["chat_messages"]],
+                         ["最初の依頼", "回答", "訂正: 公開せず下書きにする"])
+        self.assertEqual(result["_provenance"]["legacy_user_message_candidates"], 2)
+        self.assertEqual(result["_provenance"]["excluded_injected_user_blocks"], 3)
+
+    def test_legacy_mixed_blocks_remove_only_known_injection_in_either_order(self):
+        for prefix in ("<user_instructions>", "<environment_context>"):
+            for texts in (("通常の依頼", prefix + " synthetic injected"),
+                          (prefix + " synthetic injected", "通常の依頼")):
+                for legacy_flat in (True, False):
+                    with self.subTest(prefix=prefix, texts=texts, legacy_flat=legacy_flat):
+                        item = flat_message("unused")
+                        item["content"] = [{"type": "input_text", "text": text} for text in texts]
+                        events = ([flat_header(), item] if legacy_flat else
+                                  [meta(), {"type": "response_item", "payload": item}])
+                        result = self.parse(events)
+                        self.assertEqual([m["text"] for m in result["chat_messages"]], ["通常の依頼"])
+                        self.assertEqual(result["_provenance"]["excluded_injected_user_blocks"], 1)
+                        self.assertEqual(result["_provenance"]["legacy_user_message_candidates"], 1)
+
+    def test_flat_null_message_ids_do_not_deduplicate_repeated_turns(self):
+        result = self.parse([flat_header(), flat_message("続けて"), flat_message("返答", "assistant"),
+                             flat_message("続けて"), flat_message("返答", "assistant")])
+        self.assertEqual(len(result["chat_messages"]), 4)
+        self.assertTrue(all("source_item_id" not in m for m in result["chat_messages"]))
+
+    def test_legacy_assistant_phase_exception_does_not_expand_modern_schema(self):
+        result = self.parse([meta(), response("依頼", kinds=["user.text"]),
+                             response("hidden phase-less answer", "assistant", item_id="old"),
+                             response("最終回答", "assistant", "final_answer", "final")])
+        self.assertEqual([m["text"] for m in result["chat_messages"]], ["依頼", "最終回答"])
+        self.assertEqual(result["_provenance"]["rollout_format"], "session_meta")
+        self.assertIsNone(self.parse([meta(), flat_message("unexpected flat user")]))
+
+    def test_invalid_or_non_initial_flat_header_does_not_supply_identity(self):
+        for events in ([flat_header("../outside"), meta(PARENT), flat_message("依頼")],
+                       [{"record_type": "response"}, flat_header(), flat_message("依頼")]):
+            with self.subTest(events=events), self.assertRaises(ValueError):
+                self.parse(events)
+
+    def test_flat_tool_only_trace_remains_ineligible(self):
+        self.assertIsNone(self.parse([flat_header(), {"type": "reasoning", "text": "hidden"},
+                                     {"type": "function_call_output", "output": "hidden"}]))
+
+
 class TranscriptTests(unittest.TestCase):
     def assert_coverage(self, messages, bounded, cap):
         coverage = bounded["coverage"]

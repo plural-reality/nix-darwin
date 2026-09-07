@@ -8,7 +8,9 @@ import subprocess
 import sys
 
 from projection import DEFAULT_LEDGER
-from sessions import CODEX_ARCHIVE, CODEX_CONV_DIR, CODEX_EXTRACTED
+from sessions import CACHE_DIR, CODEX_EXTRACTED
+
+SELECTED_SNAPSHOT_ROOT = str(Path(CACHE_DIR, 'codex-projection-v2'))
 
 
 def main(argv):
@@ -37,18 +39,21 @@ def main(argv):
         return 0
     selection = [argument for item in selected for argument in ('--uuid', item)]
     scripts = Path(__file__).resolve().parent
+    snapshot = Path(SELECTED_SNAPSHOT_ROOT)
     def run():
         if args.dry_run:
             # A dry-run does not build archives, call an LLM, or alter the ledger.
             print(json.dumps({'status': 'planned', 'source_uuids': selected,
-                              'steps': ['build_local_archive', 'extract_changed_revisions', 'verify_projection']}, ensure_ascii=False))
+                              'scope': 'selected', 'unselected_sources': 'not_inspected',
+                              'steps': ['build_selected_snapshot', 'extract_changed_revisions', 'verify_projection']}, ensure_ascii=False))
             return 0
         commands = [
-            [sys.executable, str(scripts / 'sessions.py'), 'build', '--source', 'codex'],
-            [sys.executable, str(scripts / 'extract.py'), '--conv-dir', CODEX_CONV_DIR,
+            [sys.executable, str(scripts / 'sessions.py'), 'build', '--source', 'codex',
+             '--output-root', str(snapshot), *selection],
+            [sys.executable, str(scripts / 'extract.py'), '--conv-dir', str(snapshot / 'compact'),
              '--out', CODEX_EXTRACTED, '--workers', '1', *selection, *(['--force'] if args.force else [])],
-            [sys.executable, str(scripts / 'projection.py'), '--archive', str(Path(CODEX_ARCHIVE, 'conversations.json')),
-             '--conv-dir', CODEX_CONV_DIR, '--extracted', CODEX_EXTRACTED, *selection],
+            [sys.executable, str(scripts / 'projection.py'), '--archive', str(snapshot / 'archive' / 'conversations.json'),
+             '--conv-dir', str(snapshot / 'compact'), '--extracted', CODEX_EXTRACTED, *selection],
         ]
         for command in commands:
             result = subprocess.run(command)
