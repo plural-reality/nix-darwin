@@ -192,7 +192,7 @@ def parse_session(path):
     }
 
 
-CODEX_PARSER_VERSION = "codex-parser-v3"
+CODEX_PARSER_VERSION = "codex-parser-v4"
 AUTOMATION_PROMPT_PREFIXES = (
     EXTRACTION_PROMPT_PREFIX,
     "次の Claude Code セッションを要約・分類せよ。",
@@ -246,15 +246,17 @@ CODEX_INJECTED_USER_PREFIXES = SKILL_INJECTION_PREFIXES + (
     "<environment_context>",
     "<recommended_plugins>",
     "<skills_instructions>",
+    "<user_instructions>",
 )
 
 
-def _codex_response_message(payload):
-    """Read only user-authored blocks/final answer from the current item schema."""
+def _codex_response_message(payload, *, legacy_flat=False):
+    """Read dialogue blocks; only flat rollouts lack assistant final phases."""
     if payload.get("type") != "message" or payload.get("role") not in ("user", "assistant"):
         return None, False, 0
     role = payload["role"]
-    if role == "assistant" and payload.get("phase") != "final_answer":
+    if (role == "assistant" and payload.get("phase") != "final_answer"
+            and not (legacy_flat and payload.get("phase") is None)):
         return None, False, 0
     blocks = payload.get("content")
     if not isinstance(blocks, list):
@@ -271,16 +273,20 @@ def _codex_response_message(payload):
         excluded = len(blocks) - len(selected)
     else:
         selected = blocks
-    text = "\n".join(block["text"] for block in selected
-                     if isinstance(block, dict) and block.get("type") in ("input_text", "output_text")
-                     and isinstance(block.get("text"), str)).strip()
+    text_blocks = [block["text"] for block in selected
+                   if isinstance(block, dict) and block.get("type") in ("input_text", "output_text")
+                   and isinstance(block.get("text"), str)]
+    # Untyped user messages can mix injected context and real input in either
+    # order. Filter each block before joining, preserving explicit user.text.
+    retained = [text for text in text_blocks
+                if not (legacy and text.lstrip().startswith(CODEX_INJECTED_USER_PREFIXES))]
+    excluded += len(text_blocks) - len(retained)
+    text = "\n".join(retained).strip()
     if not text:
         return None, False, excluded
-    if legacy and text.lstrip().startswith(CODEX_INJECTED_USER_PREFIXES):
-        return None, False, len(blocks)
     item_id, turn_id = payload.get("id"), metadata.get("turn_id")
     message = {"sender": "human" if role == "user" else "assistant", "text": text,
-               "_transport": "response_item"}
+               "_transport": "legacy_flat_message" if legacy_flat else "response_item"}
     if isinstance(item_id, str) and item_id:
         message["source_item_id"] = item_id
     if isinstance(turn_id, str) and turn_id:
@@ -340,6 +346,8 @@ def parse_codex_session(path):
     System, developer and tool bodies are not copied to the normalized archive.
     """
     metadata = None
+    rollout_format = "session_meta"
+    first_record = True
     created_at = updated_at = None
     inherited_ids = []
     candidates = []
@@ -352,6 +360,8 @@ def parse_codex_session(path):
             raw_hash.update(raw_line)
             if not raw_line.strip():
                 continue
+            is_first_record = first_record
+            first_record = False
             try:
                 event = json.loads(raw_line)
             except (json.JSONDecodeError, UnicodeDecodeError):
@@ -367,6 +377,26 @@ def parse_codex_session(path):
             timestamp = event.get("timestamp")
             if timestamp_order(timestamp) > timestamp_order(updated_at):
                 updated_at = timestamp
+            # 2025 rollouts start with an untyped native header, followed by
+            # record_type markers and direct message/reasoning/tool items. Only
+            # that first record may establish legacy identity; never infer it
+            # from a later inherited header or the filename.
+            if (is_first_record and "type" not in event
+                    and "id" in event and "timestamp" in event):
+                session_id = event["id"]
+                if not isinstance(session_id, str) or not SAFE_SOURCE_ID.fullmatch(session_id):
+                    raise ValueError("Codex rollout has invalid native session identity")
+                metadata = event
+                rollout_format = "legacy_flat"
+                created_at = timestamp
+                continue
+            if rollout_format == "legacy_flat" and event.get("type") == "message":
+                candidate, legacy, excluded = _codex_response_message(event, legacy_flat=True)
+                legacy_user_candidates += int(legacy)
+                excluded_injected_blocks += excluded
+                if candidate is not None:
+                    candidates.append(candidate)
+                continue
             payload = event.get("payload")
             if not isinstance(payload, dict):
                 if event.get("type") == "session_meta" and metadata is None:
@@ -424,9 +454,13 @@ def parse_codex_session(path):
     project = project_for_cwd(cwd)
     kind, reason = codex_session_kind(metadata, humans[0]["text"])
     native_source = metadata.get("source")
-    source_marker = native_source if isinstance(native_source, str) else (
-        "subagent" if isinstance(native_source, dict) and "subagent" in native_source else "unknown"
+    source_marker = "unknown_legacy" if rollout_format == "legacy_flat" else (
+        native_source if isinstance(native_source, str) else (
+            "subagent" if isinstance(native_source, dict) and "subagent" in native_source else "unknown"
+        )
     )
+    if rollout_format == "legacy_flat":
+        reason += "; legacy source and assistant final phase unavailable"
     return {
         "uuid": f"codex-{session_id}",
         "name": clean_title(short, f"codex {session_id[:8]}"),
@@ -447,6 +481,9 @@ def parse_codex_session(path):
             "parent_thread_id": codex_parent_id(metadata),
             "inherited_session_ids": inherited_ids,
             "metadata_source": source_marker,
+            "rollout_format": rollout_format,
+            "assistant_scope": ("legacy_message_role_only_phase_unavailable" if rollout_format == "legacy_flat"
+                                else "final_response_items_and_legacy_event_messages"),
             "parser_version": CODEX_PARSER_VERSION,
             "body_scope": "native_rollout_including_inherited_context",
             "malformed_lines": malformed_lines,
@@ -573,18 +610,51 @@ def _write_private_json(path, value):
             os.unlink(temporary)
 
 
-def build(source):
+def build(source, selected_uuids=None, output_root=None):
     archive, conv_dir, _, _ = source_paths(source)
+    selected = None
+    if selected_uuids is not None:
+        if (source != "codex" or not isinstance(selected_uuids, (list, tuple))
+                or not selected_uuids or any(
+                    not isinstance(uuid, str) or not uuid.startswith("codex-")
+                    or not SAFE_SOURCE_ID.fullmatch(uuid[6:]) for uuid in selected_uuids)):
+            raise ValueError("selected build requires explicit Codex source UUIDs")
+        if not output_root:
+            raise ValueError("selected build requires a separate --output-root")
+        selected = set(selected_uuids)
+    if output_root is not None:
+        output_root = os.path.expanduser(os.fspath(output_root))
+        snapshot_paths = (os.path.join(output_root, "archive"), os.path.join(output_root, "compact"))
+        if selected is not None:
+            # A selected subset must never replace the full normalized archive
+            # or its compacts, including through an existing symlink.
+            for target in map(os.path.realpath, snapshot_paths):
+                for canonical in map(os.path.realpath, (archive, conv_dir)):
+                    if os.path.commonpath((target, canonical)) in (target, canonical):
+                        raise ValueError("selected output overlaps the canonical archive or compacts")
+        archive, conv_dir = snapshot_paths
     files = (
         glob.glob(os.path.join(PROJECTS_ROOT, "*", "*.jsonl"))
         if source == "claude"
         else [path for pattern in CODEX_ROOTS for path in glob.glob(pattern, recursive=True)]
     )
+    files = sorted(set(files))
+    if selected is not None:
+        # Filename identity is only a bounded discovery hint. Include suffix
+        # fork/copy candidates too, then verify every parsed native identity.
+        native_ids = [uuid[6:] for uuid in selected]
+        files = [path for path in files if any(native in os.path.basename(path) for native in native_ids)]
     parser = parse_session if source == "claude" else parse_codex_session
     by_id = {}
     ignored = 0
-    for path in sorted(set(files)):
+    for path in files:
         conv = parser(path)
+        if selected is not None:
+            if conv is None or conv.get("uuid") not in selected:
+                raise ValueError("selected filename candidate has no matching native conversation")
+            if (conv.get("_session_kind") != "human_session"
+                    or conv.get("_provenance", {}).get("malformed_lines") != 0):
+                raise ValueError("selected source is ineligible or contains malformed records")
         if conv is None:
             ignored += 1
             continue
@@ -613,6 +683,8 @@ def build(source):
                     and timestamp_order(prior.get("updated_at")) >= timestamp_order(conv.get("updated_at"))):
                 continue
         by_id[conv["uuid"]] = conv
+    if selected is not None and set(by_id) != selected:
+        raise ValueError("every selected source must resolve exactly once before snapshot generation")
     convs = list(by_id.values())
     eligible = [c for c in convs if c["_session_kind"] == "human_session"]
     os.makedirs(archive, exist_ok=True)
@@ -634,7 +706,12 @@ def build(source):
     _write_private_json(os.path.join(conv_dir, "_index.json"), index)
     kinds = {kind: sum(c["_session_kind"] == kind for c in convs)
              for kind in sorted({c["_session_kind"] for c in convs})}
-    print(f"built {len(convs)} {source} source records; extraction={len(index)} ignored={ignored} kinds={kinds}")
+    if selected is not None:
+        print(json.dumps({"status": "built", "scope": "selected", "unselected_sources": "not_inspected",
+                          "source_uuids": sorted(selected), "candidate_files": len(files),
+                          "records": len(convs), "extraction": len(index)}, ensure_ascii=False))
+    else:
+        print(f"built {len(convs)} {source} source records; extraction={len(index)} ignored={ignored} kinds={kinds}")
 
 
 def load_extracted(path):
@@ -729,6 +806,8 @@ def main(argv):
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build")
     b.add_argument("--source", choices=("claude", "codex"), default="claude")
+    b.add_argument("--uuid", action="append", help="Inspect only filename candidates for these native Codex IDs")
+    b.add_argument("--output-root", help="Separate snapshot root; required for selected builds")
     r = sub.add_parser("render")
     r.add_argument("--source", choices=("claude", "codex"), default="claude")
     r.add_argument("--uuid", action="append")
@@ -738,7 +817,7 @@ def main(argv):
     r.add_argument("--limit", type=int, default=0)
     args = ap.parse_args(argv)
     if args.cmd == "build":
-        build(args.source)
+        build(args.source, selected_uuids=args.uuid, output_root=args.output_root)
     elif args.cmd == "render":
         return render_cmd(args)
 
