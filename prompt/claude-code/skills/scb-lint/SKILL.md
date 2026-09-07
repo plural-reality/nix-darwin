@@ -16,7 +16,7 @@ Karpathy の LLM Wiki の 3 操作 Ingest / Query / Lint のうち **Lint** を�
 - **headless(launchd `run.sh` 経由・人間不在)**: プロンプトに「headless 自律実行の契約」が明記される。`run.sh` が既に `.lock` を取得済み＝**並行する scb-lint run は存在しない。あなたがその唯一の run**。
   - **AskUserQuestion を絶対に使わない**(headless では auto-skip され「安全側=何もしない」に倒れ、filing 0 で終わる。2026-06-28 の本番 run がこれで停止した)。
   - **「別の run が担当中だから譲る/重複回避で検知だけで止まる」という判断を絶対にしない**(そんな run は無い)。
-  - 下記を**最後まで実行して終了**する: (1)機械的 filing(≤8) (2)意味パス(recent∪rotation・**`rotateCursor` を必ず前進**) (3)orphan surfacing(§4.5) (4)digest 追記 (5)seen.json 更新。迷ったら skill 既定値で進める。
+  - 下記を**§0.1 の coverage 境界を優先して実行し、未実行理由も記録して終了**する: (1)機械的 filing(≤8) (2)意味パス(recent∪rotation・**実際に確認できた範囲だけ `rotateCursor` を前進**) (3)orphan surfacing(§4.5) (4)digest 追記 (5)seen.json 更新。迷ったら skill 既定値で進める。
 - **対話(手動 `/scb-lint`)**: 人間が承認できるので、必要なら確認してよい。ロックは見ない(run.sh を介さないため)。
 
 ## 全体フロー
@@ -32,11 +32,18 @@ scb-lint.mjs --json   →  意味的パス(LLM)  →  dedup(seen.json) + 優先�
 node ~/Developer/plural-reality/nix-darwin/scripts/scb-lint.mjs --json   # 機械的 findings(JSON)
 node ~/Developer/plural-reality/nix-darwin/scripts/scb-lint.mjs          # 人間向け表(filing対象とdigestを分けて表示)
 ```
-出力 finding = `{type, severity, project, subject, fingerprint, question, url, signal}`。
+`--json` は report object = `{schemaVersion:1, status, coverage, findings}`。各 finding = `{type, severity, project, subject, fingerprint, question, url, signal}`。旧配列を処理していた呼出しは `.findings` を読む。
 - `type`: `empty-stub`(参照多いが本体空=概念ページ不足) / `duplicate`(正規化タイトル衝突) / `emoji-variant`(状態絵文字/VS16/cc: だけ違う二重ページ=rename 置き去り。正本判定と `scrapbox-rename` 統合を問う。語彙の正本: [[scrapbox-status]]) / `orphan`(被リンク0・実質本文あり)。
 - `severity`: `file`(empty-stub/duplicate/emoji-variant=高精度→WIP filing) / `digest`(orphan=ノイズ多→レポートのみ)。
-- 機械的スキャンは各 project 最新 1000 ページ(更新降順)。tail 未走査は stderr に `capped` で出る(沈黙ドロップしない)。
+- 機械的スキャンは各 project 最新 1000 ページ(更新降順)。tail 未走査は `status:"partial"` として JSON と stderr に出る。coverage は project ごとに `{project,status,scanned,total,scope:"latest-updated",limit:1000}` を持ち、取得失敗の total は `null`。
 - `orphan` は `scb-lint.mjs` の `ORPHAN_PROJECTS`(=plural-reality)でのみ検知(tkgshn-private/takalog は会話ログ・自動取込ログが多く偽陽性だらけのため抑止)。さらに `isLogPage`(メール転記/クローリング結果/思考ログ/URL題貼付け)と `isDatePage`(ハイフン日付含む)で機械的にノイズ除去済み。**この orphan は severity=digest だが「捨てる」のではなく §4.5 で必ず処理する。**
+
+## 0.1 coverage に応じた更新境界（headless の全工程実行指示より優先）
+
+- 最初に終了コードと report の `status` / `coverage` を読む。取得・JSON・必須メタデータ検証の失敗が一つでもあれば exit 1。`failed` は未判定、`partial` は一部のみ確認済みであり、どちらも「全体で問題0件」と報告しない。
+- report が `failed` / `partial` のとき、§4.5 のレビュー節や他の既存節を**丸ごと洗い替えない**。未調査の既存項目と seen 状態を保持し、検知結果から消えただけの項目を解決済みにしない。成功部分の新しい根拠付き finding は対象範囲を明示して追加できる。
+- 対象 project の取得が `failed` なら、その project の機械的 filing / レビュー節更新を行わず、digest に失敗と不明な total を記録する。部分取得や本文取得の失敗で未確認の対象を `rotateCursor` が通過したことにしない。
+- digest と人向け報告に project ごとの status、scanned / total（不明なら unknown）、最新1000件という scope を含める。section更新を見送った理由も記録する。`complete` はページ一覧の件数範囲であり、意味的な健全性の証明ではない。
 
 ## 1. 機械的検知(実装済み・純関数)
 `scb-lint.mjs` がメタデータ(`cosense-fetch --list` の linked/linesCount/charsCount/pin/created)だけで deterministic に出す。日付ページ・システム・取引/タスクページ(☑️⬜⏳🔖💬 等プレフィックス)は全タイプで除外済み。**ここで出る `severity:"file"` の findings をそのまま filing 候補にする。**
@@ -79,7 +86,7 @@ finding 1 件の書式(**WIP アイコン行だけ灰色にしない**=行頭ト
 
 orphan は誤検知が起きやすいので**全件を WIP 化しない**。代わりに2段階で対処する(plural-reality のみ):
 
-1. **レビュー節に全件集約(人間レビュー用)**: `Scrapbox Lint` ページ内の見出し `[* 🔗 孤立ページ（orphan・被リンク0・要リンク先検討）]` 節を、検知結果で**丸ごと洗い替え**する(prepend ではなく当該節だけ置換)。各行は素テキスト:
+1. **レビュー節に全件集約(人間レビュー用・report が complete のときだけ全節置換)**: `Scrapbox Lint` ページ内の見出し `[* 🔗 孤立ページ（orphan・被リンク0・要リンク先検討）]` 節を、検知結果で**丸ごと洗い替え**する(prepend ではなく当該節だけ置換)。各行は素テキスト:
    ```
    	[孤立ページのタイトル] （chars=N・created=YYYY-MM-DD）
    ```
@@ -97,7 +104,7 @@ printf '%s\n' "$(jq -nc --arg t "$(date +%H:%M)" --arg ty "<type>" --arg p "<pro
 orphan は §4.5 の2段階(レビュー節へ全件集約=`digest`、上位WIP化=`filed`)で記録する。件数サマリ + コンテンツ量上位のみ digest 明記(全件は jsonl に出さない・残数は明示)。
 
 ## 6. 検証(必須)
-filing 後、`cosense-fetch -r "Scrapbox Lint" -p <project> -o final.json` を保存し `jq -r '.lines[].text'` で **WIP アイコン行が行頭・問い行に `？`・参照リンク intact・孤立ページ・レビュー節が最新の検知結果で洗い替え済み** を実数確認。さらに `node scb-lint.mjs` を再走し、**filing 済み subject(orphan 上位WIP含む)が次回 filing 候補に出ない**(seen 反映)ことを確認。
+filing 後、`cosense-fetch -r "Scrapbox Lint" -p <project> -o final.json` を保存し `jq -r '.lines[].text'` で **WIP アイコン行が行頭・問い行に `？`・参照リンク intact・coverage が complete ならレビュー節更新済み、partial / failed なら未調査の既存項目が保持されていること** を実数確認。さらに `node scb-lint.mjs` を再走し、**filing 済み subject(orphan 上位WIP含む)が次回 filing 候補に出ない**(seen 反映)ことを確認。
 
 ## 7. 安全策(autonomous 前提)
 - 灰色 `[( ]` は**可逆**(人間が承認で昇格 / 打ち消しで却下)。だが誤検知は起きる → orphan は**レビュー節集約が主・WIP化は上位N件のみ**に絞り、leaf(パスワード/連絡先/CRM個人)は WIP 化 skip・上限・dedup を厳守。

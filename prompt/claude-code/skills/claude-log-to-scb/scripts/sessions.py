@@ -28,6 +28,9 @@ import subprocess
 import time
 import argparse
 import re
+import datetime
+import tempfile
+import hashlib
 
 from common import msg_text  # noqa: F401  (kept for parity / future use)
 from extract import EXTRACTION_PROMPT_PREFIX
@@ -189,56 +192,267 @@ def parse_session(path):
     }
 
 
+CODEX_PARSER_VERSION = "codex-parser-v3"
+AUTOMATION_PROMPT_PREFIXES = (
+    EXTRACTION_PROMPT_PREFIX,
+    "次の Claude Code セッションを要約・分類せよ。",
+    "あなたは会話の文字起こしに見出しを付けます。",
+    "あなたは会話の記録に題を付けます。",
+    "あなたは日報の分類・要約器です。",
+)
+SAFE_SOURCE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*\Z")
+
+
+def content_fingerprint(value):
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def codex_session_kind(metadata, first_input):
+    """Classify explicit execution markers, not certainty about a human author."""
+    source = metadata.get("source")
+    if isinstance(source, dict) and "subagent" in source:
+        return "subagent", "explicit native subagent source"
+    if first_input.lstrip().startswith(AUTOMATION_PROMPT_PREFIXES):
+        return "automation", "known automation prompt prefix"
+    # 'exec' also contains genuine one-shot user work. It is not an exclusion.
+    return "human_session", "conversation_candidate: no explicit automation/subagent marker"
+
+
+def codex_parent_id(metadata):
+    parent = metadata.get("forked_from_id") or metadata.get("parent_thread_id")
+    source = metadata.get("source")
+    subagent = source.get("subagent") if isinstance(source, dict) else None
+    spawn = subagent.get("thread_spawn") if isinstance(subagent, dict) else None
+    if not parent and isinstance(spawn, dict):
+        parent = spawn.get("parent_thread_id")
+    return parent if isinstance(parent, str) and SAFE_SOURCE_ID.fullmatch(parent) else None
+
+
+def timestamp_order(value):
+    if not isinstance(value, str):
+        return float("-inf")
+    try:
+        parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+        return parsed.timestamp()
+    except ValueError:
+        return float("-inf")
+
+
+CODEX_INJECTED_USER_PREFIXES = SKILL_INJECTION_PREFIXES + (
+    "# AGENTS.md instructions",
+    "<environment_context>",
+    "<recommended_plugins>",
+    "<skills_instructions>",
+)
+
+
+def _codex_response_message(payload):
+    """Read only user-authored blocks/final answer from the current item schema."""
+    if payload.get("type") != "message" or payload.get("role") not in ("user", "assistant"):
+        return None, False, 0
+    role = payload["role"]
+    if role == "assistant" and payload.get("phase") != "final_answer":
+        return None, False, 0
+    blocks = payload.get("content")
+    if not isinstance(blocks, list):
+        raise ValueError("Codex message has malformed content blocks")
+    metadata = payload.get("internal_chat_message_metadata_passthrough")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    kinds = metadata.get("content_item_kinds")
+    legacy = role == "user" and not isinstance(kinds, list)
+    excluded = 0
+    if role == "user" and isinstance(kinds, list):
+        if len(kinds) != len(blocks):
+            raise ValueError("Codex user content kinds do not match its blocks")
+        selected = [block for kind, block in zip(kinds, blocks) if kind == "user.text"]
+        excluded = len(blocks) - len(selected)
+    else:
+        selected = blocks
+    text = "\n".join(block["text"] for block in selected
+                     if isinstance(block, dict) and block.get("type") in ("input_text", "output_text")
+                     and isinstance(block.get("text"), str)).strip()
+    if not text:
+        return None, False, excluded
+    if legacy and text.lstrip().startswith(CODEX_INJECTED_USER_PREFIXES):
+        return None, False, len(blocks)
+    item_id, turn_id = payload.get("id"), metadata.get("turn_id")
+    message = {"sender": "human" if role == "user" else "assistant", "text": text,
+               "_transport": "response_item"}
+    if isinstance(item_id, str) and item_id:
+        message["source_item_id"] = item_id
+    if isinstance(turn_id, str) and turn_id:
+        message["turn_id"] = turn_id
+    return message, legacy, excluded
+
+
+def _dedupe_codex_messages(candidates):
+    """Prefer item identity, then pair adjacent legacy event/item mirrors once.
+
+    Equal text from two different turns is not duplicate evidence. Without an
+    ID, only an adjacent cross-transport pair can be safely recognized here.
+    """
+    result = []
+    by_item_id = {}
+    paired = set()
+    for candidate in candidates:
+        item_id = candidate.get("source_item_id")
+        key = (candidate["sender"], item_id) if item_id else None
+        existing_index = by_item_id.get(key) if key else None
+        if existing_index is not None:
+            # Replayed same-ID items denote one message, including an updated
+            # final version. Prefer response_item's typed provenance.
+            existing = result[existing_index]
+            if candidate["_transport"] == "response_item" or existing["_transport"] != "response_item":
+                result[existing_index] = candidate
+            continue
+        previous_index = len(result) - 1
+        previous = result[-1] if result else None
+        same_turn = previous is not None and (
+            not previous.get("turn_id") or not candidate.get("turn_id")
+            or previous["turn_id"] == candidate["turn_id"]
+        )
+        mirror = (previous is not None and previous_index not in paired and same_turn
+                  and previous["_transport"] != candidate["_transport"]
+                  and previous["sender"] == candidate["sender"] and previous["text"] == candidate["text"]
+                  and (not previous.get("source_item_id") or not item_id
+                       or previous["source_item_id"] == item_id))
+        if mirror:
+            if candidate["_transport"] == "response_item":
+                result[previous_index] = candidate
+            paired.add(previous_index)
+            if key:
+                by_item_id[key] = previous_index
+        else:
+            result.append(candidate)
+            if key:
+                by_item_id[key] = len(result) - 1
+    return [{k: v for k, v in message.items() if k != "_transport"} for message in result]
+
+
 def parse_codex_session(path):
-    """Normalize one Codex rollout without ingesting system/tool context."""
-    metadata = {}
-    first_ts = last_ts = None
-    messages = []
-    with open(path, errors="ignore") as source:
-        events = []
-        for line in source:
+    """Normalize a native rollout; inherited headers never replace its identity.
+
+    Messages may contain forked history. Preserve that scope explicitly rather
+    than claiming that every user_message was newly written in this session.
+    System, developer and tool bodies are not copied to the normalized archive.
+    """
+    metadata = None
+    created_at = updated_at = None
+    inherited_ids = []
+    candidates = []
+    legacy_user_candidates = 0
+    excluded_injected_blocks = 0
+    malformed_lines = 0
+    raw_hash = hashlib.sha256()
+    with open(path, "rb") as source:
+        for raw_line in source:
+            raw_hash.update(raw_line)
+            if not raw_line.strip():
+                continue
             try:
-                events.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
-    for event in events:
-        timestamp = event.get("timestamp")
-        if timestamp:
-            first_ts = first_ts or timestamp
-            last_ts = timestamp
-        payload = event.get("payload") or {}
-        if event.get("type") == "session_meta":
-            metadata = payload
-        elif event.get("type") == "event_msg" and payload.get("type") == "user_message":
-            text = (payload.get("message") or "").strip()
-            if text:
-                messages.append({"sender": "human", "text": text})
-        elif (
-            event.get("type") == "event_msg"
-            and payload.get("type") == "agent_message"
-            and payload.get("phase") in (None, "final_answer")
-        ):
-            text = (payload.get("message") or "").strip()
-            if text:
-                messages.append({"sender": "assistant", "text": text})
+                event = json.loads(raw_line)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                if metadata is None:
+                    raise ValueError("Codex rollout has malformed content before native identity")
+                malformed_lines += 1
+                continue
+            if not isinstance(event, dict):
+                if metadata is None:
+                    raise ValueError("Codex rollout has malformed content before native identity")
+                malformed_lines += 1
+                continue
+            timestamp = event.get("timestamp")
+            if timestamp_order(timestamp) > timestamp_order(updated_at):
+                updated_at = timestamp
+            payload = event.get("payload")
+            if not isinstance(payload, dict):
+                if event.get("type") == "session_meta" and metadata is None:
+                    raise ValueError("Codex rollout has malformed native session metadata")
+                continue
+            if event.get("type") == "session_meta":
+                if metadata is None:
+                    session_id = payload.get("id")
+                    if not isinstance(session_id, str) or not SAFE_SOURCE_ID.fullmatch(session_id):
+                        raise ValueError("Codex rollout has invalid native session identity")
+                    metadata = payload
+                    created_at = timestamp or payload.get("timestamp")
+                else:
+                    inherited_id = payload.get("id")
+                    if (isinstance(inherited_id, str) and SAFE_SOURCE_ID.fullmatch(inherited_id)
+                            and inherited_id != metadata["id"] and inherited_id not in inherited_ids):
+                        inherited_ids.append(inherited_id)
+                continue
+            if event.get("type") == "response_item":
+                candidate, legacy, excluded = _codex_response_message(payload)
+                legacy_user_candidates += int(legacy)
+                excluded_injected_blocks += excluded
+                if candidate is not None:
+                    candidates.append(candidate)
+                continue
+            if event.get("type") != "event_msg":
+                continue
+            sender = None
+            if payload.get("type") == "user_message":
+                sender = "human"
+            elif (payload.get("type") == "agent_message"
+                  and payload.get("phase") in (None, "final_answer")):
+                sender = "assistant"
+            text = payload.get("message")
+            if sender and isinstance(text, str) and text.strip():
+                if sender == "human" and text.lstrip().startswith(CODEX_INJECTED_USER_PREFIXES):
+                    excluded_injected_blocks += 1
+                    continue
+                candidate = {"sender": sender, "text": text.strip(), "_transport": "event_msg"}
+                for field, value in (("source_item_id", payload.get("message_id")),
+                                     ("turn_id", payload.get("turn_id"))):
+                    if isinstance(value, str) and value:
+                        candidate[field] = value
+                candidates.append(candidate)
+    if metadata is None:
+        raise ValueError("Codex rollout is missing native session identity")
+    messages = _dedupe_codex_messages(candidates)
     humans = [message for message in messages if message["sender"] == "human"]
-    cwd = metadata.get("cwd")
-    if not humans or not cwd or "/var/folders/" in cwd or "/tmp/" in cwd or "/T/tmp." in cwd:
+    if not humans:
         return None
-    session_id = metadata.get("id") or os.path.splitext(os.path.basename(path))[0]
+    session_id = metadata["id"]
+    cwd = metadata.get("cwd") if isinstance(metadata.get("cwd"), str) else ""
     seed = humans[0]["text"].split("\n")[0].strip()
     short = (seed[:48] + "…") if len(seed) > 48 else seed
     project = project_for_cwd(cwd)
+    kind, reason = codex_session_kind(metadata, humans[0]["text"])
+    native_source = metadata.get("source")
+    source_marker = native_source if isinstance(native_source, str) else (
+        "subagent" if isinstance(native_source, dict) and "subagent" in native_source else "unknown"
+    )
     return {
         "uuid": f"codex-{session_id}",
-        "name": clean_title(short, f"codex {str(session_id)[:8]}"),
-        "created_at": first_ts,
-        "updated_at": last_ts,
+        "name": clean_title(short, f"codex {session_id[:8]}"),
+        "created_at": created_at,
+        "updated_at": updated_at,
         "chat_messages": messages,
         "_entities": [project] if project else [],
         "_hub": "Codexセッション",
-        "_source_label": "Codex セッション自動取り込み。ユーザー入力=全文 / Codex応答=要点のみ",
+        "_source_label": "Codex セッション自動取り込み。入力=全文 / Codex応答=要点のみ（継承された履歴を含む場合あり）",
         "_origin": f"{path} (cwd={cwd})",
+        "_source_key": f"codex:{session_id}",
+        "_content_hash": content_fingerprint(messages),
+        "_source_version": f"{CODEX_PARSER_VERSION}:{raw_hash.hexdigest()}",
+        "_session_kind": kind,
+        "_session_kind_reason": reason,
+        "_provenance": {
+            "native_id": session_id,
+            "parent_thread_id": codex_parent_id(metadata),
+            "inherited_session_ids": inherited_ids,
+            "metadata_source": source_marker,
+            "parser_version": CODEX_PARSER_VERSION,
+            "body_scope": "native_rollout_including_inherited_context",
+            "malformed_lines": malformed_lines,
+            "legacy_user_message_candidates": legacy_user_candidates,
+            "excluded_injected_user_blocks": excluded_injected_blocks,
+        },
     }
 
 
@@ -250,16 +464,113 @@ def source_paths(source):
     )
 
 
+def _message_excerpt(text, budget):
+    """Return literal source slices and their half-open Unicode character ranges."""
+    if budget <= 0 or not text:
+        return "", []
+    if len(text) <= budget:
+        return text, [{"start": 0, "end": len(text)}]
+    marker = "\n…(message middle omitted)…\n"
+    if budget < len(marker) + 2:
+        return text[-budget:], [{"start": len(text) - budget, "end": len(text)}]
+    available = budget - len(marker)
+    head = available // 2
+    tail = available - head
+    return text[:head] + marker + text[-tail:], [
+        {"start": 0, "end": head}, {"start": len(text) - tail, "end": len(text)}
+    ]
+
+
+def bounded_transcript(msgs, cap=4000):
+    """Bound extraction input while retaining the newest correction and reply.
+
+    Coverage is measured against normalized message text, in Unicode codepoints
+    with end-exclusive ranges. It does not assert full original-rollout coverage.
+    """
+    if not isinstance(cap, int) or cap < 0:
+        raise ValueError("transcript cap must be a non-negative integer")
+    messages = [{"sender": m["sender"], "text": m["text"]} for m in msgs]
+    labels = [f"{m['sender']}: [message {index}] " for index, m in enumerate(messages)]
+    full = "\n".join(label + m["text"] for label, m in zip(labels, messages))
+    chosen = {}
+    if len(full) <= cap:
+        text = full
+        for index, m in enumerate(messages):
+            if m["text"]:
+                chosen[index] = (labels[index] + m["text"], [{"start": 0, "end": len(m["text"])}])
+    else:
+        marker = "…(partial transcript; see transcript_coverage)\n"
+        # For very small caps the coverage contract remains the omission signal.
+        prefix = marker if len(marker) < cap else ""
+        remaining = cap - len(prefix)
+        human_indices = [i for i, m in enumerate(messages) if m["sender"] == "human"]
+        assistant_indices = [i for i, m in enumerate(messages) if m["sender"] == "assistant"]
+        core = list(dict.fromkeys(
+            (human_indices[-1:] + assistant_indices[-1:] + human_indices[:1])
+            or list(range(len(messages) - 1, -1, -1))[:1]
+        ))
+
+        def include(index, budget):
+            nonlocal remaining
+            separator = 1 if chosen else 0
+            available = min(budget, remaining) - len(labels[index]) - separator
+            excerpt, ranges = _message_excerpt(messages[index]["text"], available)
+            if ranges:
+                chunk = labels[index] + excerpt
+                chosen[index] = (chunk, ranges)
+                remaining -= len(chunk) + separator
+
+        for position, index in enumerate(core):
+            # Reserve a share for every core message; a short correction frees
+            # unused space for the last answer/initial request.
+            include(index, remaining // (len(core) - position))
+        for index in range(len(messages) - 1, -1, -1):
+            if index not in chosen:
+                include(index, remaining)
+        text = prefix + "\n".join(chosen[i][0] for i in sorted(chosen))
+    ranges = [{"message_index": i, "ranges": chosen[i][1]} for i in sorted(chosen)]
+    included_chars = sum(r["end"] - r["start"] for entry in ranges for r in entry["ranges"])
+    covered = sorted(chosen)
+    partial = [entry["message_index"] for entry in ranges
+               if sum(r["end"] - r["start"] for r in entry["ranges"])
+               < len(messages[entry["message_index"]]["text"])]
+    return {
+        "text": text,
+        "coverage": {
+            "strategy": "latest-human-latest-assistant-first-human-head-tail-v1",
+            "range_unit": "unicode_codepoint_end_exclusive",
+            "total_messages": len(messages),
+            "covered_message_indices": covered,
+            "omitted_message_indices": [i for i in range(len(messages)) if i not in chosen],
+            "partial_message_indices": partial,
+            "message_ranges": ranges,
+            "total_chars": sum(len(m["text"]) for m in messages),
+            "included_chars": included_chars,
+            "rendered_chars": len(text),
+            "cap_chars": cap,
+        },
+    }
+
+
 def transcript(msgs, cap=4000):
-    out, used = [], 0
-    for m in msgs:
-        chunk = f"{m['sender']}: {m['text'][:700]}"
-        out.append(chunk)
-        used += len(chunk)
-        if used >= cap:
-            out.append("…(truncated)")
-            break
-    return "\n".join(out)
+    """Compatibility wrapper for callers that need only the bounded text."""
+    return bounded_transcript(msgs, cap)["text"]
+
+
+def _write_private_json(path, value):
+    """Atomically replace one generated artifact; a failed write preserves base."""
+    directory = os.path.dirname(path)
+    fd, temporary = tempfile.mkstemp(prefix=".sessions-", suffix=".json", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
+            os.fchmod(output.fileno(), 0o600)
+            json.dump(value, output, ensure_ascii=False)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def build(source):
@@ -270,25 +581,60 @@ def build(source):
         else [path for pattern in CODEX_ROOTS for path in glob.glob(pattern, recursive=True)]
     )
     parser = parse_session if source == "claude" else parse_codex_session
+    by_id = {}
+    ignored = 0
+    for path in sorted(set(files)):
+        conv = parser(path)
+        if conv is None:
+            ignored += 1
+            continue
+        # The Claude adapter keeps its prior eligibility rules, but downstream
+        # compact/extraction revisions use the same explicit source contract.
+        if "_source_key" not in conv:
+            digest = content_fingerprint(conv["chat_messages"])
+            conv = {**conv, "_source_key": f"claude-code:{conv['uuid']}",
+                    "_content_hash": digest,
+                    "_source_version": f"claude-parser-v1:{content_fingerprint(conv)}",
+                    "_session_kind": "human_session",
+                    "_session_kind_reason": "conversation_candidate: existing Claude adapter eligibility",
+                    "_provenance": {"native_id": conv["uuid"], "parser_version": "claude-parser-v1"}}
+        prior = by_id.get(conv["uuid"])
+        if prior is not None:
+            old_messages, new_messages = prior["chat_messages"], conv["chat_messages"]
+            common_length = min(len(old_messages), len(new_messages))
+            if (old_messages[:common_length] != new_messages[:common_length]
+                    or prior["_session_kind"] != conv["_session_kind"]):
+                raise ValueError(f"Conflicting source content for {conv['uuid']}; archive left unchanged")
+            # A moved/copy-identical or append-only rollout is one source.
+            # Keep the longer transcript; never silently merge divergent copies.
+            if len(old_messages) > len(new_messages):
+                continue
+            if (len(old_messages) == len(new_messages)
+                    and timestamp_order(prior.get("updated_at")) >= timestamp_order(conv.get("updated_at"))):
+                continue
+        by_id[conv["uuid"]] = conv
+    convs = list(by_id.values())
+    eligible = [c for c in convs if c["_session_kind"] == "human_session"]
     os.makedirs(archive, exist_ok=True)
     os.makedirs(conv_dir, exist_ok=True)
-    convs = []
-    for f in files:
-        c = parser(f)
-        if c:
-            convs.append(c)
-    with open(os.path.join(archive, "conversations.json"), "w") as fh:
-        json.dump(convs, fh, ensure_ascii=False)
+    # Persist every classified normalized transcript locally. Ineligible traces
+    # remain auditable; they are omitted only from extraction's explicit index.
+    _write_private_json(os.path.join(archive, "conversations.json"), convs)
     index = []
-    for c in convs:
-        compact = {"uuid": c["uuid"], "name": c["name"], "summary": "",
-                   "created_at": c["created_at"], "transcript": transcript(c["chat_messages"])}
-        with open(os.path.join(conv_dir, f"{c['uuid']}.json"), "w") as fh:
-            json.dump(compact, fh, ensure_ascii=False)
-        index.append(c["uuid"])
-    with open(os.path.join(conv_dir, "_index.json"), "w") as fh:
-        json.dump(index, fh)
-    print(f"built {len(convs)} real {source} sessions -> {archive}/conversations.json + {conv_dir}/ (compact)")
+    for conv in eligible:
+        bounded = bounded_transcript(conv["chat_messages"])
+        compact = {"uuid": conv["uuid"], "name": conv["name"], "summary": "",
+                   "created_at": conv["created_at"], "transcript": bounded["text"],
+                   "source_key": conv["_source_key"], "source_version": conv["_source_version"],
+                   "content_hash": conv["_content_hash"], "session_kind": conv["_session_kind"],
+                   "provenance": conv["_provenance"], "transcript_coverage": bounded["coverage"]}
+        _write_private_json(os.path.join(conv_dir, f"{conv['uuid']}.json"), compact)
+        index.append(conv["uuid"])
+    # Index goes last: interrupted builds do not advertise a not-yet-written file.
+    _write_private_json(os.path.join(conv_dir, "_index.json"), index)
+    kinds = {kind: sum(c["_session_kind"] == kind for c in convs)
+             for kind in sorted({c["_session_kind"] for c in convs})}
+    print(f"built {len(convs)} {source} source records; extraction={len(index)} ignored={ignored} kinds={kinds}")
 
 
 def load_extracted(path):
@@ -307,6 +653,18 @@ def load_extracted(path):
 
 
 def render_cmd(args):
+    if args.source == "codex":
+        if not args.uuid:
+            raise SystemExit("Codex projection requires explicit --uuid; legacy title-based writes are disabled")
+        from projection import main as project_main
+        argv = ["--archive", os.path.join(CODEX_ARCHIVE, "conversations.json"),
+                "--conv-dir", CODEX_CONV_DIR, "--extracted", CODEX_EXTRACTED,
+                "--project", args.project]
+        for uuid in args.uuid:
+            argv.extend(["--uuid", uuid])
+        if args.dry_run:
+            argv.append("--dry-run")
+        return project_main(argv)
     archive, _, extracted_path, seen_path = source_paths(args.source)
     convs = json.load(open(os.path.join(archive, "conversations.json")))
     convs.sort(key=lambda c: c.get("updated_at") or "", reverse=True)
@@ -349,6 +707,7 @@ def render_cmd(args):
     if not args.dry_run:
         save_seen_sessions(seen, seen_path)
     print(f"\n--- written={written} skipped={skipped} errors={errors} (extracted={len(ext)}) ---")
+    return 1 if errors else 0
 
 
 def load_seen_sessions(path):
@@ -372,6 +731,7 @@ def main(argv):
     b.add_argument("--source", choices=("claude", "codex"), default="claude")
     r = sub.add_parser("render")
     r.add_argument("--source", choices=("claude", "codex"), default="claude")
+    r.add_argument("--uuid", action="append")
     r.add_argument("--project", default="takalog")
     r.add_argument("--dry-run", action="store_true")
     r.add_argument("--force", action="store_true")
@@ -380,8 +740,8 @@ def main(argv):
     if args.cmd == "build":
         build(args.source)
     elif args.cmd == "render":
-        render_cmd(args)
+        return render_cmd(args)
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    sys.exit(main(sys.argv[1:]))

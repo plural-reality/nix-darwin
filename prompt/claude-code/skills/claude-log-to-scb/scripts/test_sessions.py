@@ -73,13 +73,18 @@ class CodexSessionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / "conversation.json"
             path.write_text(json.dumps({"name": "test", "transcript": "human: test"}))
+            def respond(command, **kwargs):
+                output = pathlib.Path(command[command.index("--output-last-message") + 1])
+                output.write_text('{"ja_title":"テストの会話","ja_summary":"ok","people":[],"projects":[],"decisions":[],"commitments":[]}')
+                return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
             with patch.object(extract, "CONV_DIR", directory), patch.object(
-                extract.subprocess,
-                "run",
-                return_value=type("Result", (), {"returncode": 0, "stdout": '{"ja_summary":"ok"}', "stderr": ""})(),
+                extract.subprocess, "run", side_effect=respond,
             ) as run:
                 extract.extract_one("conversation")
-            self.assertIn("--no-session-persistence", run.call_args.args[0])
+            self.assertIn("--ephemeral", run.call_args.args[0])
+            self.assertIn("--ignore-user-config", run.call_args.args[0])
+            self.assertIn("shell_tool", run.call_args.args[0])
+
 
 
 if __name__ == "__main__":
