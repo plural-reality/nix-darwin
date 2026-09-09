@@ -2,7 +2,7 @@
 name: prompt-review
 description: >
   AIエージェント対話履歴を分析し、技術理解度・プロンプティングパターン・AI依存度のレポートを生成する。
-  トリガー: 「プロンプトをレビューして」「対話履歴を分析して」「理解度を診断して」または /prompt-review。
+  トリガー: 「画面操作をCLI/MCPで見直して」「tool使用を監査して」、「プロンプトをレビューして」「対話履歴を分析して」「理解度を診断して」または /prompt-review。
   対応ツール: Claude Code, GitHub Copilot Chat, Cursor, Cline, Roo Code, Windsurf, Antigravity, Gemini CLI, OpenAI Codex, OpenCode。
 allowed-tools: Read, Write, Glob, Grep, Bash, Agent
 context: fork
@@ -11,6 +11,17 @@ context: fork
 # prompt-review スキル
 
 ユーザーの過去のAIエージェント対話履歴を分析し、技術理解度・プロンプティングパターン・AI依存度を推定してレポートを生成する。
+
+## Codexのtool使用監査（画面操作の見直し）
+
+「直近1か月のcomputer/browser useをCLI/MCPで置換」「操作経路を自己改善」の依頼では、この分岐だけを実行する。下の汎用`collect.py`で他のAIツールやプロンプト本文まで収集しない。
+
+1. 読むhost・Codex保存領域・時刻窓を明示する。1か月はユーザーのタイムゾーンで起点を決め、`--since`（含む）と`--until`（含まない）を固定する。現在の監査sessionを除外する。別hostの`~/.codex`を横断読出ししない。取得できたローカル履歴と、取得できないhost/期間を分ける。
+2. 同梱の[scripts/tool_usage.py](scripts/tool_usage.py)の`--help`を読み、timezone付きISO時刻を渡す。既定は当該hostの`sessions`と`archived_sessions`のみ。`--root`でfixtureや許可済みの明示領域を指定できる。出力は現在の作業領域へ保存する。
+3. 出力はtool名・固定された操作種別・時刻・session ID・行番号とcoverageのみ。引数、実コード、URL、title、本文、OCR、tool結果を出力しない。`functions.exec`/`node_repl`内の参照やshell中のUI語は候補であり、実行回数・失敗回数には加算しない。fork/archivedの重複はcall IDで除き、欠測・未知形式・parse errorを明示する。
+4. 件数から順位をつけ、代表例に絞って元のtool callを確認する。本文/引数の追加取得は依頼で許可された対象・用途の最小範囲に限る。未許可の会話本文・私信・機微入力が必要になったときは、対象・用途・取得範囲を示して確認する。集計だけから「無駄」「置換済み」「冪等」を断定しない。
+5. [browser-automationの判断表](../browser-automation/references/semantic-routing.md)で`replace`/`hybrid`/`keep_ui`/`unverified`を判定する。既存CLI/MCPが今使えるかと、当時使えたかを混同しない。
+6. `self-learn`の「2-E. 画面操作から学ぶ」へ渡して正本の最小改善と検証を行う。レポートは目的・対象期間・母数・代表例のsource ID/行・判断・検証・未確認を残す。生の対話はレポートに複製しない。
 
 ## ステップ0: 使い方の案内
 

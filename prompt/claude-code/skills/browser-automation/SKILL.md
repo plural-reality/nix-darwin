@@ -11,10 +11,14 @@ description: >
 
 ## 選択順序
 
-1. 公開情報の読取りは Web、API、専用 CLI を使う。ブラウザを開かない。
-2. ログイン済み画面の読取り、対話、視覚検証は、ユーザーの実 Google Chrome に接続した Chrome plugin/native host を使う。
-3. stable な tab/window ID を返す native Chrome API がある場合は、それで background 作成・操作する。
-4. 前段で表現できない隔離検証だけ Playwright を使う。この場合も実 Chrome channel (`--browser chrome`)を指定する。Playwright 同梱 Chromium/Chrome for Testing を既定にしない。
+1. まず対象の「操作・対象ID・必要な結果」を決め、現在使える専用skill、native CLI/API、typed MCPのschema/helpを狭く確認する。ログイン済みサービスも対象。アカウント・host・権限・操作の適合を確かめ、既存経路で表現できるならそれを使う。公開情報の読取りはWebも使える。
+2. 見た目・操作感の検証、公開APIで表せないフォーム、本人の認証が必要な局面ではブラウザを使う。API障害だけを理由に別アカウントや認証経路へ切り替えない。CLI/MCPがないことを確かめたら、探索を延々と続けず次へ進む。
+3. ブラウザはユーザーが指定した利用可能な接続を優先し、指定がなければ実Google Chromeのplugin/native hostを使う。stableなtab/window IDでbackground操作し、role/name/stateを対象にする。CLIからクリックを呼んでもsemanticな置換とは数えない。
+4. 前段で表現できない隔離検証だけPlaywrightを使い、実Chrome channel (`--browser chrome`)を指定する。Playwright同梱Chromium/Chrome for Testingを既定にしない。
+
+変更は `対象IDでread → 差分/事前条件確認 → 許可済みmutation → 同IDでreadback` とする。既に望む状態ならno-op。CLI/MCPという形式や`idempotentHint`だけでは冪等と判断しない。作成・送信のtimeoutでは再作成/再送前に結果を照合し、保証されたidempotency keyがあれば同じ論理操作に同じkeyを使う。詳しい既存経路と判断例は[semantic操作への置換](references/semantic-routing.md)を読む。
+
+画面操作を選んだ理由を `visual_validation` / `ui_only` / `human_auth` / `semantic_unavailable` / `explicit_user_request` のいずれかで作業証跡に1行残す。同じ手順の反復・失敗が見えたら、終端ゲート後に`self-learn`の操作改善手順で既存skill/scriptへ反映する。月次の振り返りは`prompt-review`のtool使用監査を使う。これらは新たな外部操作・認証・公開の許可を与えない。
 
 Managed Codex の backend allow-list は `chrome` だけである。in-app browser (`iab`) と generic Computer Use は無効化されており、エラー時に暗黙の fallback として選ばない。Computer Use が必要な場合は、共有 desktop ではなく専用 VM/display または明示的な desktop lease を用意した一回限りの実行として扱う。
 
