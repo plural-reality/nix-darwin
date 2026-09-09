@@ -5,3 +5,5 @@
 - 読取りには対象を最も狭く表せるnative CLI/APIまたはtyped toolを優先し、認証、権限、TCC、秘密を迂回しない。
 - 既存状態と無関係な変更を混ぜない。外部送信、公開、支払い、削除、権限変更は依頼の境界を広げず、canonical readbackで結果を確認する。
 - `dispatched`、tool完了、task完了、verified、deployed、published/sentを同義にしない。主張に見合う新しい証拠だけを取り、巨大な出力はpath/hash/metadataと必要範囲に絞る。
+
+- browser/computer useの反復・失敗、又はsemantic操作への置換が見えたら、タスク終端で`self-learn`の操作改善手順を使う。月次の履歴監査は`prompt-review`のtool使用監査へ渡し、本文の一括読出しや未検証の自己変更を避ける。
