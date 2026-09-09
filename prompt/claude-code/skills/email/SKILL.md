@@ -12,7 +12,8 @@ description: >
 # Email スキル（個人 Gmail）
 
 個人 Gmail は himalaya CLI ラッパー (`~/.claude/scripts/himalaya-mail.sh`) を使う。
-法人 `takagi@plural-reality.com` はこの skill ではなく `gws gmail` を使う。Gmail MCP/plugin は使わない。
+法人 `takagi@plural-reality.com` の操作は `gws gmail` を使う。Gmail MCP/plugin は使わない。
+下書きの作成・編集・送信・送信後の確認は、個人・法人ともに [下書きのライフサイクル](references/draft-lifecycle.md) を先に読む。
 
 ## クイックリファレンス
 

@@ -37,7 +37,7 @@ Taka の MacBook では `gws` は Domain-wide Delegation で `takagi@plural-real
 アカウントの切り分け:
 
 - **個人 Gmail (`@gmail.com`)**: `gws` で読まない。`email` skill の himalaya CLI を使う。曖昧なら読む前に確認する。
-- **法人 Gmail (`takagi@plural-reality.com`)**: `gws gmail` を使う。送信・返信は直前に宛先と本文をpreviewし、明示承認後にreadbackする。
+- **法人 Gmail (`takagi@plural-reality.com`)**: `gws gmail` を使う。下書きの作成・編集・送信・残留確認は [email の下書きライフサイクル](../email/references/draft-lifecycle.md) に従う。送信前に宛先・件名・本文全文を提示し、その後の明示承認を得る。
 - **予定・空き時間確認**: Google Calendar ではなく Apple Calendar が authoritative。`gws` Calendar を空き判定の source of truth にしない。
 - **法人 Google Calendar のオブジェクト操作**: Google Workspace 側のカレンダーを明示された場合だけ `gws calendar` で扱う。
 
