@@ -295,6 +295,15 @@ let
     '';
   };
 
+  # Account-bound Gmail reconciliation; account and schedule belong downstream.
+  gmailDraftReconcile = pkgs.writeShellApplication {
+    name = "gmail-draft-reconcile";
+    runtimeInputs = [ pkgs.python313 ];
+    text = ''
+      exec ${pkgs.python313}/bin/python3 ${../scripts/claude/gmail-draft-reconcile.py} "$@"
+    '';
+  };
+
   # One schedule target for Mori, Limitless, and the official Plaud CLI.
   transcriptSync = pkgs.writeShellApplication {
     name = "transcript-sync";
@@ -473,6 +482,7 @@ in
     codexTaskAudit
     mori
     transcriptSync
+    gmailDraftReconcile
     imsgHistory
     photoLibrary
     photoCardScan
