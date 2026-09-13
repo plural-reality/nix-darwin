@@ -395,34 +395,63 @@ def fetch_sessions(d: str) -> SourceResult:
     return _present(out, f"{len(out)}件")
 
 
+def _codex_message(row: dict) -> tuple[str, str, str]:
+    payload = row.get("payload") or {}
+    if row.get("type") == "event_msg":
+        role = {"user_message": "user", "agent_message": "assistant"}.get(payload.get("type"), "")
+        return role, str(payload.get("message") or "").strip(), str(payload.get("phase") or "")
+    if row.get("type") == "response_item" and payload.get("type") == "message":
+        content = payload.get("content") or []
+        text = content if isinstance(content, str) else "\n".join(
+            block.get("text", "") for block in content
+            if isinstance(block, dict) and block.get("type") in ("input_text", "output_text", "text"))
+        return str(payload.get("role") or ""), text.strip(), str(payload.get("phase") or "")
+    return "", "", ""
+
+
 def _codex_session(path: str, d: str) -> dict | None:
     meta, first_prompt, first_time, final = {}, "", "", ""
+    preceding_prompt = ""
     active = False
-    sid = Path(path).stem.rsplit("-", 5)[-1]
-    for line in open(path):
-        try:
-            o = json.loads(line)
-        except Exception:
-            continue
-        payload = o.get("payload") or {}
-        if o.get("type") == "session_meta":
-            meta = payload
-            sid = payload.get("id") or sid
-        try:
-            t = datetime.fromisoformat((o.get("timestamp") or "").replace("Z", "+00:00")).astimezone(JST)
-        except Exception:
-            t = None
-        if not t or t.strftime("%Y-%m-%d") != d or o.get("type") != "event_msg":
-            continue
-        kind = payload.get("type")
-        text = str(payload.get("message") or "").strip()
-        if kind == "user_message" and text and not first_prompt:
-            first_prompt, first_time = " ".join(text.split())[:160], t.strftime("%H:%M")
-        if kind == "agent_message" and text and payload.get("phase") == "final_answer":
-            final = " ".join(text.split())[:200]
-        if kind == "agent_message" and text and payload.get("phase") != "final_answer":
-            active = True
-    if not first_prompt:
+    sid = Path(path).stem
+    with open(path) as stream:
+        for line in stream:
+            try:
+                row = json.loads(line)
+            except (ValueError, TypeError):
+                continue
+            if row.get("type") == "session_meta":
+                meta = row.get("payload") or {}
+                sid = meta.get("id") or sid
+            try:
+                t = datetime.fromisoformat((row.get("timestamp") or "").replace("Z", "+00:00")).astimezone(JST)
+            except (ValueError, TypeError):
+                continue
+            day = t.strftime("%Y-%m-%d")
+            if day > d:
+                continue
+            role, text, phase = _codex_message(row)
+            if role not in ("user", "assistant") or not text:
+                continue
+            if role == "user" and text.startswith(("<environment_context>", "<recommended_plugins>", "# AGENTS.md instructions")):
+                continue
+            if day < d:
+                if role == "user":
+                    preceding_prompt = " ".join(text.split())[:160]
+                continue
+            if role == "user":
+                if not first_prompt:
+                    first_prompt = " ".join(text.split())[:160]
+                first_time = first_time or t.strftime("%H:%M")
+                final, active = "", True
+            else:
+                first_prompt = first_prompt or preceding_prompt
+                first_time = first_time or t.strftime("%H:%M")
+                if phase == "final_answer":
+                    final = " ".join(text.split())[:2000]
+                else:
+                    active = True
+    if not first_prompt or not first_time:
         return None
     cwd = str(meta.get("cwd") or "")
     return {"agent": "codex", "hash": str(sid)[:8], "time": first_time,
