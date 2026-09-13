@@ -1,0 +1,20 @@
+{
+  "hatebucli": {
+    "rev": "9323fe3ec55f8a9e741577fd3c6a472e17a39153",
+    "hash": "sha256-wGxb2Wd/IX4H+v00eePvXltH7mM1HFxRnFziv+ifHOQ=",
+    "version": "0.1.0",
+    "npmDepsHash": "sha256-HC9Llx+dyqDYMg8hIbogH3uZTijSs3HKteNHsP2ooJY="
+  },
+  "gyazocli": {
+    "rev": "582e0c6c34552ccc4cb16f48009c1fd3e1c4b36a",
+    "hash": "sha256-TGhF+IQ48xDJxQ8fPDqaxb2FJcAKe+TSwZc0OhqSxmU=",
+    "version": "0.9.0",
+    "npmDepsHash": "sha256-IIOCaHSXZLjnFILOojNyn+9e+DKBXeCfZtPdPpf3quw="
+  },
+  "cosensecli": {
+    "rev": "f92d5c52268009cac92db66fccb28ca421e18e57",
+    "hash": "sha256-xnuGgD/ruMxNy6LvrDmYSonXc6PIH6pjQmJVASPJdBU=",
+    "version": "0.1.0",
+    "npmDepsHash": "sha256-5bJ4hiDggftBigKJtfz7fAQfRU0jL3qInzjtL0oyYMU="
+  }
+}
