@@ -120,6 +120,18 @@ class StoreTests(unittest.TestCase):
         row['payload']['role'] = 'developer'
         self.assertIsNone(a.codex_message(row))
 
+    def test_late_scrapbox_page_does_not_abort_other_pages(self):
+        def fake(args):
+            if args[1] == '-s':
+                return {'pages': [{'title': 'late'}, {'title': 'early'}]}
+            title = args[2]
+            return {'id': title, 'updated': a.timestamp('2026-09-12T' + ('19' if title == 'late' else '17') + ':00:00+09:00')}
+        with patch.object(a, 'run_json', fake), patch.object(a, 'mori', lambda *args: iter([])), patch.object(a, 'codex', lambda *args: iter([])):
+            result = a.collect(self.root, self.base / 'state', self.host, '2026-09-12', '2026-09-12T18:00:00+09:00')
+        snap = a.checked(self.ns / 'snapshots', result['snapshot'])
+        self.assertEqual(len(snap['records']), 3)
+        self.assertEqual(snap['sources']['scrapbox'], 'post_cutoff_pages_omitted')
+
     def test_hash_traversal_rejected(self):
         with self.assertRaises(ValueError):
             a.checked(self.root, '../secret')
