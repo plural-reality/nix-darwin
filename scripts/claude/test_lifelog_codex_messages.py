@@ -43,6 +43,13 @@ class CodexMessages(unittest.TestCase):
         self.assertEqual(rows[0]['prompt'], 'Fix the parser')
         self.assertEqual(rows[0]['last'], 'Parser repaired')
 
+    def test_metadata_and_request_in_separate_content_blocks(self):
+        request = message('user', '<environment_context>metadata</environment_context>')
+        request['payload']['content'].append({'type': 'input_text', 'text': 'Fix parser'})
+        row = self.collect([request, message('assistant', 'Fixed', 'final_answer')])[0]
+        self.assertEqual(row['prompt'], 'Fix parser')
+        self.assertEqual(row['last'], 'Fixed')
+
     def test_commentary_not_result(self):
         row = self.collect([message('user', 'Fix parser'), message('assistant', 'Done soon', 'commentary')])[0]
         self.assertEqual(row['last'], '')

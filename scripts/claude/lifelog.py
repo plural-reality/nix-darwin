@@ -433,8 +433,10 @@ def _codex_session(path: str, d: str) -> dict | None:
             role, text, phase = _codex_message(row)
             if role not in ("user", "assistant") or not text:
                 continue
-            if role == "user" and text.startswith(("<environment_context>", "<recommended_plugins>", "# AGENTS.md instructions")):
-                continue
+            if role == "user":
+                text = re.sub(r"<(environment_context|recommended_plugins)>.*?</\1>\s*", "", text, flags=re.S).strip()
+                if not text or text.startswith("# AGENTS.md instructions"):
+                    continue
             if day < d:
                 if role == "user":
                     preceding_prompt = " ".join(text.split())[:160]
