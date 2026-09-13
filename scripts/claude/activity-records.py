@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 JST = ZoneInfo('Asia/Tokyo')
 SOURCES = ('mori', 'codex', 'scrapbox')
+HOSTS = ('tkgshn-mac-mini', 'tkgshn-MacBook-Air')
 DEADLINE = time.monotonic() + 1800
 TERM = re.compile(r'音威子府|otoineppu', re.I)
 
@@ -237,6 +238,8 @@ def verify(root):
     for namespace in sorted(root.iterdir()):
         if not namespace.is_dir() or namespace.name.startswith('.'):
             continue
+        if namespace.name not in HOSTS:
+            raise ValueError('unknown evidence host')
         for kind in ('objects', 'snapshots', 'receipts', 'months', 'diffs', 'drafts'):
             for path in sorted((namespace / kind).glob('*.json')):
                 value = checked(namespace / kind, path.stem)
@@ -252,6 +255,8 @@ def verify(root):
                 if kind == 'receipts':
                     checked(namespace / 'snapshots', value['snapshot'])
                 if kind == 'months':
+                    if value['sourceHost'] not in HOSTS:
+                        raise ValueError('unknown source host')
                     for key in value['snapshots']:
                         checked(root / value['sourceHost'] / 'snapshots', key)
                 count += 1
@@ -269,12 +274,13 @@ def backup(root, destination):
         raise ValueError('backup must be outside synchronized root')
     verify(root)
     before = inventory(root)
+    source_latest = max((json.loads((root / relative).read_text())['observedAt'] for relative in before if '/receipts/' in relative), default=None)
     key = digest(encoded(before))
     target = destination / key
     if target.exists():
         if inventory(target) != before:
             raise ValueError('existing backup corrupt')
-        return {'generation': key, 'files': len(before), 'verifiedAt': now()}
+        return {'generation': key, 'files': len(before), 'verifiedAt': now(), 'latestSourceObservedAt': source_latest}
     destination.mkdir(parents=True, exist_ok=True, mode=0o700)
     temp = Path(tempfile.mkdtemp(prefix='.partial-', dir=destination))
     try:
@@ -290,7 +296,7 @@ def backup(root, destination):
     finally:
         if temp.exists():
             shutil.rmtree(temp)
-    return {'generation': key, 'files': len(before), 'verifiedAt': now()}
+    return {'generation': key, 'files': len(before), 'verifiedAt': now(), 'latestSourceObservedAt': source_latest}
 
 
 def prepare(root, host, source_host, month, snapshots):
