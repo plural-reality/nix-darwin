@@ -327,6 +327,19 @@ let
 
     features.multi_agent_v2 = {
       enabled = true;
+      # A wait timeout is not an execution deadline for a delegated task.
+      root_agent_usage_hint_text = ''
+        Let delegated agents finish their bounded tasks. A wait timeout or the
+        interval for user-facing progress updates is not a subagent execution
+        deadline. Do not interrupt, restart, or ask an agent for status merely
+        because that interval elapsed. Prefer delivered completion messages;
+        while agents work, do useful non-overlapping work locally. When their
+        result is the only remaining dependency, use wait_agent within its
+        allowed bounds rather than repeatedly calling list_agents, reading
+        transcripts, or sending status requests. A timeout alone is not evidence
+        that an agent is stuck. Investigate only a concrete failure or a task's
+        justified deadline. Preserve required user-facing progress updates.
+      '';
     };
 
     # `codex-router` was a loopback proxy that split vendor-namespaced slugs off to
