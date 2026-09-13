@@ -22,6 +22,31 @@ class StoreTests(unittest.TestCase):
             'day': '2026-09-12', 'sources': {'mori': 'collected', 'codex': 'missing'},
             'records': [{'source': 'mori', 'id': 'fixture', 'hash': self.key}]})
 
+    def test_deadline_terminates_source_process_group(self):
+        import sys
+        import time
+        import os
+        pidfile = self.base / 'child.pid'
+        command = [sys.executable, '-c',
+                   "import subprocess,time,pathlib; p=subprocess.Popen(['sleep','20']); "
+                   "pathlib.Path(" + repr(str(pidfile)) + ").write_text(str(p.pid)); time.sleep(20)"]
+        started = time.monotonic()
+        with patch.object(a, 'DEADLINE', started + 0.5):
+            with self.assertRaisesRegex(RuntimeError, 'collection_deadline'):
+                a.run_json(command)
+        self.assertLess(time.monotonic() - started, 2)
+        pid = int(pidfile.read_text())
+        # Allow init to reap the terminated grandchild.
+        for _ in range(40):
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.05)
+        else:
+            os.kill(pid, a.signal.SIGKILL)
+            self.fail('source grandchild survived timeout')
+
     def test_idempotent_object_and_month(self):
         self.assertEqual(self.key, a.immutable(self.ns / 'objects', self.record))
         one = a.prepare(self.root, self.host, self.host, '2026-09', [self.snap])
