@@ -59,6 +59,18 @@ let
   # projected into each client's native schema. OAuth credentials remain mutable
   # runtime state and are never copied into the Nix store.
   remoteMcpServers = userConfig.remoteMcpServers or { };
+  personalRecords =
+    if userConfig ? personalRecords then
+      import ../packages/personal-records/runtime.nix {
+        inherit pkgs;
+        settings = userConfig.personalRecords;
+      }
+    else
+      {
+        packages = { };
+        servers = { };
+      };
+
   codexPlugins = userConfig.codexPlugins or { };
   codexSkillOverrides = userConfig.codexSkillOverrides or { };
 
@@ -407,7 +419,8 @@ let
         enabled = false;
       };
     }
-    // codexRemoteMcpServers;
+    // codexRemoteMcpServers
+    // personalRecords.servers;
 
     plugins = {
       # Pixel Computer Use posts global mouse/keyboard/focus events. It is not a
@@ -438,7 +451,8 @@ in
 {
   home.packages = [
     pkgs.llm-agents.claude-code # Claude Code CLI
-  ];
+  ]
+  ++ builtins.attrValues personalRecords.packages;
 
   # Claude Code launches LIGHT by default — no standing ultracode. ultracode
   # (xhigh reasoning + automatic multi-agent workflow orchestration) is opt-in
@@ -748,7 +762,7 @@ in
     # Idempotent: replaces .mcpServers entirely (not deep-merge) so removals
     # from Nix propagate correctly. All other keys are preserved.
     CLAUDE_JSON="$HOME/.claude.json"
-    MCP='${builtins.toJSON claudeCodeRemoteMcpServers}'
+    MCP='${builtins.toJSON (claudeCodeRemoteMcpServers // personalRecords.servers)}'
 
     if [ -f "$CLAUDE_JSON" ]; then
       ${pkgs.jq}/bin/jq --argjson mcp "$MCP" '.mcpServers = $mcp' "$CLAUDE_JSON" \

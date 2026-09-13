@@ -311,6 +311,10 @@
           # freee MCP: published ESM plus runtime npm closure, fully Nix-pinned.
           packages.freee-mcp = import ./packages/freee-mcp { inherit pkgs; };
 
+          packages.hatebucli = (import ./packages/personal-records { inherit pkgs; }).hatebucli;
+          packages.gyazocli = (import ./packages/personal-records { inherit pkgs; }).gyazocli;
+          packages.cosensecli = (import ./packages/personal-records { inherit pkgs; }).cosensecli;
+
           # A narrow upload+attachment capability, backed by the official local
           # MCP. This is deliberately distinct from the generic freee API tools.
           packages.freee-receipt-attach = import ./packages/freee-receipt-attach {
