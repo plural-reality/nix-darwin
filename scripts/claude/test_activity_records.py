@@ -113,6 +113,13 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(len(rows[0]['content']), 1)
         self.assertEqual(rows[0]['content'][0]['at'], '2026-09-30T08:59:00Z')
 
+    def test_current_codex_response_item_and_metadata_boundary(self):
+        row = {'type': 'response_item', 'payload': {'type': 'message', 'role': 'user',
+               'content': [{'type': 'input_text', 'text': '<environment_context>ignore</environment_context>音威子府の記事を整理して'}]}}
+        self.assertEqual(a.codex_message(row)['text'], '音威子府の記事を整理して')
+        row['payload']['role'] = 'developer'
+        self.assertIsNone(a.codex_message(row))
+
     def test_hash_traversal_rejected(self):
         with self.assertRaises(ValueError):
             a.checked(self.root, '../secret')
