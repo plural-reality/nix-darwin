@@ -109,6 +109,7 @@ def mori(start, end, cutoff):
 
 def scrapbox(start, end, cutoff):
     limited = False
+    after_cutoff = False
     for project in ('plural-reality', 'tkgshn-private', 'takalog'):
         found = run_json(['cosense-fetch', '-s', '音威子府', '-p', project, '-l', '100'])
         pages = found['pages']
@@ -119,12 +120,14 @@ def scrapbox(start, end, cutoff):
             title = page['title']
             body = run_json(['cosense-fetch', '-r', title, '-p', project])
             if body.get('updated') and float(body['updated']) > timestamp(cutoff):
-                raise RuntimeError('page_updated_after_cutoff')
+                after_cutoff = True
+                continue
             yield {'source': 'scrapbox', 'id': project + '/' + str(body['id']), 'title': title,
                    'activityAt': None, 'updatedAt': body.get('updated'), 'content': body}
 
-    if limited:
-        raise RuntimeError('search_limit_reached')
+    gaps = [name for flag, name in ((limited, 'search_limit_reached'), (after_cutoff, 'post_cutoff_pages_omitted')) if flag]
+    if gaps:
+        raise RuntimeError(';'.join(gaps))
 
 def codex_message(event):
     payload = event.get('payload') or {}
