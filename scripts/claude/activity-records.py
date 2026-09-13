@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import sqlite3
 import subprocess
 import tempfile
@@ -77,7 +78,18 @@ def run_json(args):
         if time.monotonic() >= DEADLINE:
             raise RuntimeError("collection_deadline")
         try:
-            result = subprocess.run(args, capture_output=True, timeout=90, check=False)
+            result = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                      start_new_session=True)
+            try:
+                stdout, _ = result.communicate(timeout=max(0, min(90, DEADLINE - time.monotonic())))
+            except subprocess.TimeoutExpired:
+                # Only terminate the process group created for this source request.
+                try:
+                    os.killpg(result.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                result.communicate()
+                raise
         except FileNotFoundError:
             raise RuntimeError('tool_unavailable') from None
         except subprocess.TimeoutExpired:
@@ -85,12 +97,12 @@ def run_json(args):
                 raise RuntimeError('timeout') from None
         else:
             if result.returncode == 0:
-                return json.loads(result.stdout)
+                return json.loads(stdout)
             if result.returncode == 2:
                 raise RuntimeError('authentication_or_usage_required')
             if attempt == 2:
                 raise RuntimeError('source_failed_exit_' + str(result.returncode))
-        time.sleep(2 ** attempt)
+        time.sleep(max(0, min(2 ** attempt, DEADLINE - time.monotonic())))
 
 
 def mori(start, end, cutoff):
