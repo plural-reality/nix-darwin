@@ -8,6 +8,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 import json
+import hashlib
 import sys
 
 import tomlkit
@@ -160,6 +161,13 @@ def remove_retired_policy(document: MutableMapping) -> MutableMapping:
     features = document.get("features")
     multi_agent = features.get("multi_agent_v2") if isinstance(features, MutableMapping) else None
     isinstance(multi_agent, MutableMapping) and multi_agent.pop("max_concurrent_threads_per_session", None)
+    # Retire only the exact experimental root-role replacement from 2026-09-13.
+    # Other user-supplied role overrides remain untouched.
+    if isinstance(multi_agent, MutableMapping):
+        old_hint = str(multi_agent.get("root_agent_usage_hint_text", "")).strip()
+        if hashlib.sha256(old_hint.encode()).hexdigest() == "9d94ff90864f4b4e9fdecdc7ff753c10ee7e2a19d698875da021e61aa3d27071":
+            multi_agent.pop("root_agent_usage_hint_text", None)
+
     # Dropping these from the projection is not enough: this merge preserves keys the
     # source no longer names, so the dead loopback address would stay in the mutable file
     # and every new thread would record `codex-router` again, keeping the compatibility
