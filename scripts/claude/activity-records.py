@@ -126,6 +126,28 @@ def scrapbox(start, end, cutoff):
     if limited:
         raise RuntimeError('search_limit_reached')
 
+def codex_message(event):
+    payload = event.get('payload') or {}
+    if event.get('type') == 'event_msg':
+        role = {'user_message': 'user', 'agent_message': 'assistant'}.get(payload.get('type'), '')
+        text = payload.get('message') or ''
+    elif event.get('type') == 'response_item' and payload.get('type') == 'message':
+        role = payload.get('role')
+        content = payload.get('content') or []
+        text = content if isinstance(content, str) else '\n'.join(
+            block.get('text', '') for block in content
+            if isinstance(block, dict) and block.get('type') in ('input_text', 'output_text', 'text'))
+    else:
+        return None
+    if role not in ('user', 'assistant'):
+        return None
+    if role == 'user':
+        text = re.sub(r'<(environment_context|recommended_plugins)>.*?</\1>\s*', '', text, flags=re.S).strip()
+        if text.startswith('# AGENTS.md instructions'):
+            return None
+    return {'role': role, 'text': text, 'phase': payload.get('phase')}
+
+
 def codex(start, end, cutoff):
     # This adapter is strictly host-local. Only selected messages leave this tree.
     base = Path.home() / '.codex'
@@ -148,7 +170,8 @@ def codex(start, end, cutoff):
                     payload = event.get('payload', {})
                     if event.get('type') == 'session_meta':
                         session_id = payload.get('id')
-                    if event.get('type') != 'event_msg':
+                    message = codex_message(event)
+                    if not message:
                         continue
                     event_time = event.get('timestamp', '')
                     try:
@@ -159,12 +182,10 @@ def codex(start, end, cutoff):
                         continue
                     if not start <= day <= end:
                         continue
-                    if payload.get('type') not in ('user_message', 'agent_message'):
-                        continue
-                    message = payload.get('message', '')
-                    if TERM.search(message):
-                        selected.append({'at': event_time, 'role': payload['type'],
-                                         'text': message, 'phase': payload.get('phase')})
+                    if TERM.search(message['text']):
+                        row = {'at': event_time, **message}
+                        if not selected or selected[-1] != row:
+                            selected.append(row)
             if selected and session_id:
                 yield {'source': 'codex', 'id': session_id, 'activityAt': None,
                        'content': selected, 'coverage': 'keyword-selected messages; not full conversation; claims are not verified outcomes'}
