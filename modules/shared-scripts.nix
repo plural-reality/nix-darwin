@@ -286,6 +286,14 @@ let
     '';
   };
 
+  activityRecords = pkgs.writeShellApplication {
+    name = "activity-records";
+    runtimeInputs = [ pkgs.python313 ];
+    text = ''
+      exec ${pkgs.python313}/bin/python3 ${../scripts/claude/activity-records.py} "$@"
+    '';
+  };
+
   # Read-only Mori MCP adapter. OAuth/runtime state remains outside Nix.
   mori = pkgs.writeShellApplication {
     name = "mori";
@@ -450,6 +458,7 @@ let
 in
 {
   home.packages = [
+    activityRecords
     # Haskell stream tools
     tar-map
     url2content
