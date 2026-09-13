@@ -286,6 +286,14 @@ let
     '';
   };
 
+  teamSharing = pkgs.writeShellApplication {
+    name = "team-sharing";
+    runtimeInputs = [ pkgs.python313 ];
+    text = ''
+      exec ${pkgs.python313}/bin/python3 ${../scripts/claude/team-sharing.py} "$@"
+    '';
+  };
+
   activityRecords = pkgs.writeShellApplication {
     name = "activity-records";
     runtimeInputs = [ pkgs.python313 ];
@@ -468,6 +476,7 @@ in
 {
   home.packages = [
     activityRecords
+    teamSharing
     # Haskell stream tools
     tar-map
     url2content
