@@ -77,6 +77,11 @@ let
   # than layering a second activation over the managed config.
   codexModel = userConfig.codexModel or "gpt-5.6-terra";
 
+  # Where Codex keeps MCP OAuth tokens: "file", "keyring", "auto" or
+  # "ephemeral". Bound here rather than left on Codex's "auto" so a host that is
+  # driven over ssh resolves the same store as one driven from its GUI.
+  codexMcpOauthCredentialsStore = userConfig.codexMcpOauthCredentialsStore or "file";
+
   # SCRAPBOX_SID is deliberately NOT here: the SID is a rotating session cookie
   # whose runtime cache is outside Nix and validated by scrapbox_session.py. Projecting it here
   # bakes a plaintext credential into the world-readable /nix/store settings.json
@@ -483,6 +488,22 @@ let
       };
     }
     // codexPlugins;
+
+    # Codex resolves this to the macOS login keychain when left on "auto", then
+    # refuses the file fallback if that read fails. A keychain is unreadable in
+    # every session without a GUI login -- ssh, mosh, launchd -- so the delegate
+    # host loses its MCP credentials entirely and each remote server starts
+    # unauthenticated. The file store is `~/.codex/.credentials.json` at 0600;
+    # its tokens rotate on refresh exactly as the keychain's do.
+    mcp_oauth_credentials_store = codexMcpOauthCredentialsStore;
+
+    # An optional MCP server is dropped from the tool catalog if it has not
+    # finished starting within this window, and a remote server's OAuth
+    # handshake (metadata discovery, then a refresh when the hour-long access
+    # token has aged out) does not fit the default. Raising it is what makes
+    # `required = false` honest: the server is still waited for, it just can no
+    # longer take the whole session down with it.
+    mcp_optional_startup_grace_ms = 5000;
   }
   // lib.optionalAttrs (codexMcpOauthCallback != null) {
     mcp_oauth_callback_port = codexMcpOauthCallback.port;
