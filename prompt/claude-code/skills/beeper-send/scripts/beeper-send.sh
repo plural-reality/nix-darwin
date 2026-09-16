@@ -24,6 +24,8 @@ set +H 2>/dev/null  # bash history expansion を無効化（! の問題を回避
 
 set -euo pipefail
 
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+
 API_BASE="http://localhost:23373"
 TOKEN_FILE="$HOME/.config/beeper/token"
 # Beeper CRM gateway (shared per-person style guide + learning loop).
