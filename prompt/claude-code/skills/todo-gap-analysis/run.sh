@@ -1,6 +1,6 @@
 #!/bin/sh
 # todo-kanban-autoupdate 定期実行ラッパー(launchd から 3〜4h ごとに呼ぶ)。
-# lock で多重起動を防ぎ、SID を自己修復し、headless の Claude Code に /todo-gap --autonomous を
+# lock で多重起動を防ぎ、SID を自己修復し、headless の Claude Code に /todo-gap-analysis --autonomous を
 # 実行させ、ログを残す。canonical ロジック = todo-gap-analysis skill + save-to-scrapbox の局所配置規約。
 # この run.sh は lock+env+SID+claude の配線だけを担う。
 # 初回は launchd を有効化せず、手動 `sh ~/.claude/skills/todo-gap-analysis/run.sh` で監督実行して確認する。
@@ -45,6 +45,27 @@ CLAUDE_BIN="/etc/profiles/per-user/${USER}/bin/claude"
 echo "$(date '+%F %T') start (claude=$CLAUDE_BIN)" >> "$LOG"
 # autonomous 書き込みのため skip-permissions。finding は canonical task/project pageへ局所反映し、
 # 横断 summary は daily page へ置く。2看板はindex移動が必要な時だけCAS付きreplaceする。
-"$CLAUDE_BIN" -p "/todo-gap --autonomous : ToDoカンバンとプロジェクト看板(plural-reality)を分析し、save-to-scrapboxのGTD canonical contractに従ってfindingをcanonical task/project pageへ更新して。2看板に独立AIセクションやrun summaryを書かず、index移動が必要な場合だけ全体候補を--mode replace --verbatim --expect-sha256で更新し、直APIで再取得検証すること。" \
-  --dangerously-skip-permissions >> "$LOG" 2>&1 || echo "$(date '+%F %T') claude exited $?" >> "$LOG"
+# CLI の exit 0 だけでは認証失敗・unknown command を判別できないため、最終結果も検証する。
+RESULT="$CACHE/last-result.json"
+if "$CLAUDE_BIN" -p "/todo-gap-analysis --autonomous : ToDoカンバンとプロジェクト看板(plural-reality)を分析し、save-to-scrapboxのGTD canonical contractに従ってfindingをcanonical task/project pageへ更新して。2看板に独立AIセクションやrun summaryを書かず、index移動が必要な場合だけ全体候補を--mode replace --verbatim --expect-sha256で更新し、直APIで再取得検証すること。" \
+  --output-format json --dangerously-skip-permissions > "$RESULT" 2>> "$LOG"; then
+  status=0
+else
+  status=$?
+fi
+cat "$RESULT" >> "$LOG"
+printf '\n' >> "$LOG"
+if [ "$status" -eq 0 ] && ! jq -s -e '
+  length == 1 and (.[0] |
+    type == "object" and .type == "result" and .subtype == "success" and
+    .is_error == false and (.result | type == "string") and
+    (.result | test("^(Failed to authenticate:|Unknown command:)") | not))
+' "$RESULT" >> "$LOG" 2>&1; then
+  echo "$(date '+%F %T') invalid or failed Claude result" >> "$LOG"
+  status=1
+fi
+if [ "$status" -ne 0 ]; then
+  echo "$(date '+%F %T') claude failed (exit=$status)" >> "$LOG"
+  exit "$status"
+fi
 echo "$(date '+%F %T') done" >> "$LOG"
