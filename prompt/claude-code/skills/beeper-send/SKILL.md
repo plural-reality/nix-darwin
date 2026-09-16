@@ -32,6 +32,8 @@ bash "$SKILL/scripts/beeper-send.sh" <subcmd> ...
 - `messages CHAT_ID [n]` — 直近を新しい順(出力の `reply->NNN` 列＝親メッセージID＝スレッド)
 - `thread CHAT_ID MSG_ID` — そのメッセージの返信チェーンを root から復元
 - `style CHAT_ID` — この相手の共有文体ガイド(CRM の Scrapbox `[** CRM 文体ガイド]` 由来)と、本人がこの会話で実際に送った直近例を引く。**起草前**に必ず叩く。別サービス/停止を成功扱いにしない。
+- `participants CHAT_ID` — 送信先のメンション候補IDと対応可否をCRMから取得する。
+- `preview CHAT_ID @本文 [親MSG_ID] --mentions @JSON` — 本文・通知対象を送信せずCRM共通検証に通す。未対応・不明は拒否し、plain textで代送しない。
 - `send CHAT_ID @file` — 新規送信(スレッドなし)
 - `reply CHAT_ID 親MSG_ID @file` — 元メッセージへスレッド返信(**既定**)
 - `send-reviewed CHAT_ID @下書き @送信済み` / `reply-reviewed CHAT_ID 親MSG_ID @下書き @送信済み` — 送信と編集学習を一操作で実行する。AI下書きが人間編集された場合はこちらを使う。ネットワークmutation前にローカルへ非機密attempt stateを保存し、途中失敗後も再送せずreadbackから再開する。
@@ -64,9 +66,24 @@ CRM gateway の base は `BEEPER_CRM_GATEWAY`(既定 `http://localhost:18787`)�
 - 相手の依頼・質問への返答を、その元メッセージに紐付けず channel 直投稿で孤立させる。
 - スレッドの有無を確認せず `send` する。
 - 生成後の本文全文に対する、後続のユーザー発言による承認なしで送る。起草と送信を同じターンで行う。
-- mention pill を API で付けようとする(不可。`@名前` はただの文字列。少人数なら通知は届く)。
+- `@名前` の文字列だけで通知対象が設定されたと判断する。メンションは `participants` の対象IDを選び、後述の範囲付きJSONを付ける。対応不明・未対応時にplain textで代送しない。
 
 ## 補足（実装メモ）
 
 - スレッド親リンクは read 側の `linkedMessageID`、書き側の `replyToMessageID`(**string 必須**。number だと `VALIDATION_ERROR`)。両者が一致＝スレッド成立(Slack の thread に入る)。
 - `send-to` の固定ショートカット(`tagen`/`tanaka`/`zos`)は導入者の Beeper room 依存。各自の room ID に書き換えて使う。
+
+## メンション付き送信
+
+`send` / `reply` / `send-reviewed` / `reply-reviewed` は `--mentions @JSONファイル` を受け取る。
+JSONは `[{"id":"@user:server","displayName":"名前","start":0,"end":3}]` の配列。位置はJavaScriptと同じUTF-16単位で、本文中の `@名前` に完全一致する範囲を指定する。表示名からIDを推測せず、送信先の `participants` 結果から本人が選んだ対象を使う。同名でもIDを区別する。
+
+承認時は宛先・返信先・本文に加え、通知対象の表示名とIDも提示する。本文や対象を変えたら再承認する。CLIはJSONを読み込んで固定し、CRM previewで対応可否と範囲を検証した後、同じtyped payloadをCRM `/api/send` に渡す。通常文の既存配送経路は維持する。
+
+readbackは可視本文・返信先・対象IDを比較する。IDを確認できなければ配送は未確認として停止し、再送しない。これは端末通知の実際の表示を証明しない。`send-reviewed`のattemptキーには通知対象と範囲も含め、同じ本文でも別の対象を既送と誤判定しない。
+
+### メンションの検証段階
+
+成功出力は4段階を分ける。`message_readback=verified` は本人の本文と返信先の読み戻し、`mention_targets_in_content=verified` は返却本文/metadataに対象IDが含まれることを表す。アンカーやraw mentionsの一致だけではブリッジがnative mentionとして解釈したことは証明できないため、`native_mention_delivery=unverified` と `notification_delivery=unverified` を明示する。実ネットワーク側のnative対象と受信側通知は別の証拠が必要。
+
+reviewed attemptの `complete` はメッセージreadbackと編集学習までの完了であり、native mentionや通知の完了ではない。既存completeの再実行は `readback_source=previous_attempt` として過去の検証結果を返し、新しいreadbackを行ったと主張しない。
