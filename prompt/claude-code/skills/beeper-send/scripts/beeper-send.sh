@@ -51,14 +51,27 @@ if [[ $# -gt 0 ]]; then
   shift
 fi
 ACK=0
+MENTIONS_SPEC=""
+MENTION_REQUEST=""
 args=()
-for arg in "$@"; do
-  if [[ "$arg" == "--ack" ]]; then
-    ACK=1
-  else
-    args+=("$arg")
-  fi
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --ack) ACK=1; shift ;;
+    --mentions)
+      [[ $# -ge 2 && -z "$MENTIONS_SPEC" ]] || { echo "ERROR: --mentions requires one @JSON-file" >&2; exit 1; }
+      MENTIONS_SPEC="$2"; shift 2 ;;
+    *) args+=("$1"); shift ;;
+  esac
 done
+# Freeze the operator-selected IDs before preview/send/readback and dedupe hashing.
+MENTIONS_JSON=""
+if [[ -n "$MENTIONS_SPEC" ]]; then
+  MENTIONS_JSON=$(python3 "$SCRIPT_DIR/beeper-mentions.py" canonical "$MENTIONS_SPEC")
+fi
+cleanup_mentions() {
+  [[ -z "$MENTION_REQUEST" ]] || rm -f "$MENTION_REQUEST"
+}
+trap cleanup_mentions EXIT
 # bash 3.2(macOS /bin/bash)では空配列の"${args[@]}"がset -uでunboundになるため${args[@]+...}ガード必須
 set -- "$cmd" ${args[@]+"${args[@]}"}
 
@@ -76,6 +89,51 @@ api_post() {
 }
 api_delete() {
   curl -g -s -o /dev/null -w "%{http_code}" -X DELETE -H "Authorization: Bearer $TOKEN" "${API_BASE}$1"
+}
+
+# Mentions always use the CRM's shared validation/transport. Never retry as plain text.
+validate_mention_support() {
+  [[ -n "$MENTION_REQUEST" ]] || return 0
+  local preview
+  preview=$(mktemp)
+  chmod 600 "$preview"
+  curl -fsS --connect-timeout 5 --max-time 30 -H 'Content-Type: application/json' \
+    --data-binary "@$MENTION_REQUEST" "$CRM_BASE/api/messages/preview" > "$preview" || {
+    rm -f "$preview"; return 1;
+  }
+  python3 "$SCRIPT_DIR/beeper-mentions.py" supported "$preview" "$MENTION_REQUEST" || {
+    rm -f "$preview"; return 1;
+  }
+  rm -f "$preview"
+}
+
+prepare_mention_request() {
+  local chat_id="$1" body="$2" reply_to="${3:-}" spec
+  [[ -n "$MENTIONS_JSON" ]] || return 0
+  spec=$(mktemp)
+  MENTION_REQUEST=$(mktemp)
+  chmod 600 "$spec" "$MENTION_REQUEST"
+  printf '%s' "$MENTIONS_JSON" > "$spec"
+  python3 "$SCRIPT_DIR/beeper-mentions.py" payload "$chat_id" "$body" "$reply_to" "@$spec" > "$MENTION_REQUEST" || {
+    rm -f "$spec"; return 1;
+  }
+  rm -f "$spec"
+  # Resuming an existing attempt must be able to read back without attempting delivery.
+  [[ "${4:-}" == "readback-only" ]] || validate_mention_support
+}
+
+mention_readback_summary() {
+  printf 'message_id=%s\nmessage_readback=verified\nmention_targets_in_content=verified\nnative_mention_delivery=unverified\nnotification_delivery=unverified\n' "$1"
+}
+
+send_payload() {
+  local enc="$1" pf="$2"
+  if [[ -n "$MENTION_REQUEST" ]]; then
+    curl -fsS --connect-timeout 5 --max-time 60 -H 'Content-Type: application/json' \
+      --data-binary "@$MENTION_REQUEST" "$CRM_BASE/api/send"
+  else
+    api_post "/v1/chats/$enc/messages" "$pf"
+  fi
 }
 
 # BODY 指定(@file または literal)と任意の replyToID から JSON payload を作り、一時ファイルパスを stdout に返す。
@@ -203,14 +261,14 @@ PY
 
 review_key() {
   local chat_id="$1" reply_to="$2" orig="$3" final="$4"
-  CHAT_ID="$chat_id" REPLY_TO="$reply_to" ORIG_SPEC="$orig" FINAL_SPEC="$final" python3 <<'PY'
+  MENTIONS_JSON="$MENTIONS_JSON" CHAT_ID="$chat_id" REPLY_TO="$reply_to" ORIG_SPEC="$orig" FINAL_SPEC="$final" python3 <<'PY'
 import hashlib, os
 def read_spec(s):
     return open(s[1:], encoding="utf-8").read().rstrip("\n") if s.startswith("@") else s
 print(hashlib.sha256("\0".join([
     os.environ["CHAT_ID"], os.environ["REPLY_TO"],
     read_spec(os.environ["ORIG_SPEC"]), read_spec(os.environ["FINAL_SPEC"]),
-]).encode()).hexdigest())
+] + ([os.environ["MENTIONS_JSON"]] if os.environ.get("MENTIONS_JSON") else [])).encode()).hexdigest())
 PY
 }
 
@@ -250,6 +308,12 @@ verified_sent_message_id() {
   local enc="$1" body_spec="$2" reply_to="${3:-}" baseline_id="${4:-}" pending_id="${5:-}" tmp
   tmp=$(mktemp)
   api_get "/v1/chats/$enc/messages?limit=40&direction=before&cursor=99999999" > "$tmp"
+  if [[ -n "$MENTION_REQUEST" ]]; then
+    local verify_status=0
+    python3 "$SCRIPT_DIR/beeper-mentions.py" verify "$tmp" "$MENTION_REQUEST" "$baseline_id" "$pending_id" || verify_status=$?
+    rm -f "$tmp"
+    return "$verify_status"
+  fi
   BODY_SPEC="$body_spec" REPLY_TO="$reply_to" BASELINE_ID="$baseline_id" PENDING_ID="$pending_id" python3 - "$tmp" <<'PY'
 import json, os, sys
 def read_spec(s):
@@ -281,6 +345,7 @@ PY
 send_reviewed() {
   local chat_id="$1" reply_to="$2" orig="$3" final="$4" enc contact_id key state claim phase baseline_id pending_id receipt verified_id
   enc=$(url_encode_chat_id "$chat_id")
+  prepare_mention_request "$chat_id" "$final" "$reply_to" readback-only
   contact_id=$(CRM_STYLE_RESP="$(crm_style_json "$chat_id")" python3 -c 'import json,os; print(json.loads(os.environ["CRM_STYLE_RESP"])["contactId"])')
   key=$(review_key "$chat_id" "$reply_to" "$orig" "$final")
   state=$(review_state_file "$key")
@@ -289,11 +354,16 @@ send_reviewed() {
     baseline_id=$(review_state_field "$state" baselineId)
     pending_id=$(review_state_field "$state" pendingId)
     if [[ "$phase" == "complete" ]]; then
-      echo "OK: this exact reviewed send was already delivered and learned (id=$(review_state_field "$state" verifiedId))"
+      echo "already_completed=true; completion_scope=message_readback_and_learning"
+      if [[ -n "$MENTION_REQUEST" ]]; then
+        mention_readback_summary "$(review_state_field "$state" verifiedId)"
+        echo "readback_source=previous_attempt"
+      fi
       return 0
     fi
     echo "RESUME: a delivery attempt already exists; skipping delivery"
   else
+    validate_mention_support
     require_send_ack "$enc"
     baseline_id=$(newest_message_id "$enc")
     pending_id=""
@@ -305,7 +375,7 @@ send_reviewed() {
       rm -f "$claim"
       local pf
       pf=$(build_payload_file "$final" "$reply_to")
-      receipt=$(api_post "/v1/chats/$enc/messages" "$pf" || true)
+      receipt=$(send_payload "$enc" "$pf" || true)
       rm -f "$pf"
       pending_id=$(RECEIPT="$receipt" python3 -c 'import json,os; d=json.loads(os.environ["RECEIPT"] or "{}"); print(d.get("pendingMessageID") or d.get("id") or "")')
     else
@@ -320,12 +390,33 @@ send_reviewed() {
     echo "ERROR: delivery attempt is ambiguous; exact post-baseline readback failed and this command will not resend" >&2
     return 1
   }
-  echo "OK: exact sent-message readback id=$verified_id"
+  if [[ -n "$MENTION_REQUEST" ]]; then
+    mention_readback_summary "$verified_id"
+  else
+    echo "OK: exact sent-message readback id=$verified_id"
+  fi
   report_edit "$contact_id" "$orig" "$final" "$chat_id" "beeper:$verified_id"
   persist_review_state "$state" complete "$baseline_id" "$pending_id" "$verified_id"
+  echo "completion_scope=message_readback_and_learning"
 }
 
 case "${1:-help}" in
+  participants)
+    chat_id="${2:?Usage: beeper-send.sh participants CHAT_ID}"
+    enc=$(url_encode_chat_id "$chat_id")
+    curl -fsS --connect-timeout 5 --max-time 30 "$CRM_BASE/api/chats/$enc/mention-targets"
+    echo
+    ;;
+
+  preview)
+    chat_id="${2:?Usage: beeper-send.sh preview CHAT_ID BODY --mentions @JSON}"
+    body="${3:?Usage: beeper-send.sh preview CHAT_ID BODY --mentions @JSON}"
+    [[ -n "$MENTIONS_JSON" ]] || { echo "ERROR: preview requires --mentions @JSON" >&2; exit 1; }
+    prepare_mention_request "$chat_id" "$body" "${4:-}"
+    cat "$MENTION_REQUEST"
+    echo
+    ;;
+
   search)
     query="${2:?Usage: beeper-send.sh search QUERY}"
     encoded=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$query")
@@ -466,11 +557,20 @@ PY
     body="${3:?Usage: beeper-send.sh send CHAT_ID BODY --ack  (BODY=@file or text)}"
     enc=$(url_encode_chat_id "$chat_id")
     require_send_ack "$enc"
+    prepare_mention_request "$chat_id" "$body"
+    baseline_id=""
+    [[ -z "$MENTION_REQUEST" ]] || baseline_id=$(newest_message_id "$enc")
     pf=$(build_payload_file "$body")
-    api_post "/v1/chats/$enc/messages" "$pf"; echo
+    send_payload "$enc" "$pf"; echo
     rm -f "$pf"
-    echo "OK: sent (new). read-back:"
-    sleep 5; print_messages "$enc" 2 || true
+    echo "送信要求を受理。続けてreadbackを検証:"
+    sleep 5
+    if [[ -n "$MENTION_REQUEST" ]]; then
+      verified_id=$(verified_sent_message_id "$enc" "$body" "" "$baseline_id" "")
+      mention_readback_summary "$verified_id"
+    else
+      print_messages "$enc" 2 || true
+    fi
     ;;
 
   reply)
@@ -479,11 +579,20 @@ PY
     body="${4:?Usage: beeper-send.sh reply CHAT_ID REPLY_TO_ID BODY --ack  (BODY=@file or text)}"
     enc=$(url_encode_chat_id "$chat_id")
     require_send_ack "$enc"
+    prepare_mention_request "$chat_id" "$body" "$reply_to"
+    baseline_id=""
+    [[ -z "$MENTION_REQUEST" ]] || baseline_id=$(newest_message_id "$enc")
     pf=$(build_payload_file "$body" "$reply_to")
-    api_post "/v1/chats/$enc/messages" "$pf"; echo
+    send_payload "$enc" "$pf"; echo
     rm -f "$pf"
-    echo "OK: replied in-thread to $reply_to. read-back (linkedMessageID が $reply_to なら成功):"
-    sleep 6; print_messages "$enc" 2 || true
+    echo "返信要求を受理。readbackでlinkedMessageID=${reply_to}を検証:"
+    sleep 6
+    if [[ -n "$MENTION_REQUEST" ]]; then
+      verified_id=$(verified_sent_message_id "$enc" "$body" "$reply_to" "$baseline_id" "")
+      mention_readback_summary "$verified_id"
+    else
+      print_messages "$enc" 2 || true
+    fi
     ;;
 
   delete)
@@ -496,6 +605,7 @@ PY
     ;;
 
   send-to)
+    [[ -z "$MENTIONS_JSON" ]] || { echo "ERROR: use send CHAT_ID with mentions" >&2; exit 1; }
     shortcut="${2:?Usage: beeper-send.sh send-to SHORTCUT BODY --ack}"
     body="${3:?Usage: beeper-send.sh send-to SHORTCUT BODY --ack}"
     chat_id=$(resolve_shortcut "$shortcut")
@@ -505,11 +615,20 @@ PY
     fi
     enc=$(url_encode_chat_id "$chat_id")
     require_send_ack "$enc"
+    prepare_mention_request "$chat_id" "$body"
+    baseline_id=""
+    [[ -z "$MENTION_REQUEST" ]] || baseline_id=$(newest_message_id "$enc")
     pf=$(build_payload_file "$body")
-    api_post "/v1/chats/$enc/messages" "$pf"; echo
+    send_payload "$enc" "$pf"; echo
     rm -f "$pf"
     echo "OK: sent to $shortcut. read-back:"
-    sleep 5; print_messages "$enc" 2 || true
+    sleep 5
+    if [[ -n "$MENTION_REQUEST" ]]; then
+      verified_id=$(verified_sent_message_id "$enc" "$body" "" "$baseline_id" "")
+      mention_readback_summary "$verified_id"
+    else
+      print_messages "$enc" 2 || true
+    fi
     ;;
 
   help|*)
@@ -524,6 +643,8 @@ Commands:
   style CHAT_ID              この相手の共有文体ガイドと実送信例を引く(起草前)
   send  CHAT_ID  BODY        新規送信(スレッドなし)
   reply CHAT_ID REPLY_TO_ID BODY   元メッセージへスレッド返信(既定はこちら)
+  participants CHAT_ID                     メンション対象と対応可否を確認
+  preview CHAT_ID @body [REPLY_ID] --mentions @JSON   送信せず対象を検証
   send-reviewed CHAT_ID @orig @final          送信と編集学習を一操作で実行
   reply-reviewed CHAT_ID MSG_ID @orig @final  返信と編集学習を一操作で実行
   report-edit CONTACT_ID @orig @final [CHAT_ID]  既送分の差分をCRMに報告
