@@ -4,7 +4,7 @@
 // この層が知っている「正しさ」:
 //   1. iCloud(CalDAV)ソースに作る/書く（On My Mac=iPhone非同期の罠を回避）
 //   2. 位置情報を必ず構造化（住所→Apple geocoder→EKStructuredLocation.geoLocation = iPhoneタップでマップ）
-//   3. 時刻指定（終日にしない）
+//   3. 時刻付き予定と終日予定を明示的に区別する
 //   4. mode で洗い替え(replace-month / replace-range) か 追記(append)
 //
 // usage: swift apply.swift <events.json>   |   cat events.json | swift apply.swift -
@@ -18,13 +18,15 @@
 //   "events": [
 //     { "title": "…", "start": "2026-06-07T18:00", "end": "2026-06-07T22:00",
 //       "notes": "…", "url": "https://…",
-//       "location": { "title": "…", "address": "…", "lat": …, "lon": … } } ] }  // 省略時 defaultLocation
+//       "location": { "title": "…", "address": "…", "lat": …, "lon": … } },
+//     { "title": "終日予定", "allDay": true, "start": "2026-06-08", "end": "2026-06-09" } ] }
+// allDay の end は排他的。1日だけなら翌日の日付を指定する。
 import EventKit
 import Foundation
 import CoreLocation
 
 struct Loc: Codable { let title: String?; let address: String?; let lat: Double?; let lon: Double? }
-struct Ev: Codable { let title: String; let start: String; let end: String; let notes: String?; let url: String?; let location: Loc?; let alarms: [Int]? }  // alarms = start からの「分前」リスト
+struct Ev: Codable { let title: String; let start: String; let end: String; let allDay: Bool?; let notes: String?; let url: String?; let location: Loc?; let alarms: [Int]? }  // alarms = start からの「分前」リスト
 struct Sched: Codable {
     let calendarId: String?
     let calendar: String? // legacy automation input; it resolves only an existing iCloud calendar
@@ -52,10 +54,26 @@ guard let sched = try? JSONDecoder().decode(Sched.self, from: inputData) else { 
 // --- datetime ---
 let dfMin: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = .current; f.dateFormat = "yyyy-MM-dd'T'HH:mm"; return f }()
 let dfSec: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = .current; f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"; return f }()
+let dfDay: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = .current; f.dateFormat = "yyyy-MM-dd"; f.isLenient = false; return f }()
 func parseDate(_ s: String) -> Date {
     if let d = dfMin.date(from: s) ?? dfSec.date(from: s) { return d }
     die("bad datetime: \(s) (expect yyyy-MM-ddTHH:mm)", 67)
 }
+func parseDay(_ s: String) -> Date {
+    guard s.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil,
+          let d = dfDay.date(from: s) else {
+        die("bad all-day date: \(s) (expect yyyy-MM-dd)", 69)
+    }
+    return d
+}
+func dates(for ev: Ev) -> (start: Date, end: Date) {
+    let pair = (ev.allDay ?? false)
+        ? (parseDay(ev.start), parseDay(ev.end))
+        : (parseDate(ev.start), parseDate(ev.end))
+    guard pair.0 < pair.1 else { die("event end must be after start: \(ev.title)", 70) }
+    return pair
+}
+let normalizedDates = sched.events.map(dates)
 
 // --- geocode cache (CLGeocoder は main queue コールバック → RunLoop で待つ) ---
 var geoCache: [String: CLLocation?] = [:]
@@ -132,12 +150,13 @@ if let s = delStart, let e = delEnd {
 
 // --- 投入 ---
 var n = 0
-for ev in sched.events {
+for (ev, eventDates) in zip(sched.events, normalizedDates) {
     let e = EKEvent(eventStore: store)
     e.calendar = cal
     e.title = ev.title
-    e.startDate = parseDate(ev.start)
-    e.endDate = parseDate(ev.end)
+    e.startDate = eventDates.start
+    e.endDate = eventDates.end
+    e.isAllDay = ev.allDay ?? false
     if let notes = ev.notes { e.notes = notes }
     if let u = ev.url, let url = URL(string: u) { e.url = url }
     for m in (ev.alarms ?? []) { e.addAlarm(EKAlarm(relativeOffset: -Double(m) * 60)) }  // m 分前に通知

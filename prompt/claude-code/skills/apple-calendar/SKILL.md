@@ -33,7 +33,7 @@ description: >
 
 - **既存iCloudだけ**: catalogで確定した `calendarId` を渡す。`calendar` 名前指定はlegacy fallbackなので新規specには併記しない。現writerはカレンダーを新規作成せず、未知ID・非iCloudを拒否する。
 - **法人Google**: 本人の法人アカウントと対象Calendar IDを確認し `gws calendar` の既存経路を使う。個人iCloudへの代替保存、同一予定の二重登録はしない。
-- **位置・時刻**: `start` / `end` はローカル `yyyy-MM-ddTHH:mm`（秒付きも可）、終日にしない。実際の場所がある予定には `location` / `defaultLocation` を付ける。住所はgeocode、既知なら座標を指定する。場所のないオンライン予定等に架空の住所を付けない。
+- **位置・時刻**: 時刻付き予定の `start` / `end` はローカル `yyyy-MM-ddTHH:mm`（秒付きも可）。終日予定は `allDay: true` と日付だけの `yyyy-MM-dd` を使い、`end` は排他的にする（1日だけなら翌日）。終日予定を深夜0時からの時刻付き予定で代用しない。実際の場所がある予定には `location` / `defaultLocation` を付ける。住所はgeocode、既知なら座標を指定する。場所のないオンライン予定等に架空の住所を付けない。
 - **変更範囲**: 単発は重複確認後 `append`。`replace-month` / `replace-range` は対象Calendarの指定期間を洗い替えるため、その削除範囲を含む依頼に限る。個別予定の修正目的で無関係な予定まで洗い替えない。
 
 ```json
@@ -44,6 +44,19 @@ description: >
   "events": [{
     "title": "イベント名", "start": "2026-09-07T14:00", "end": "2026-09-07T15:00",
     "notes": "根拠・未確定条件", "url": "https://example.org/event", "alarms": [60]
+  }]
+}
+```
+
+終日予定の例:
+
+```json
+{
+  "calendarId": "catalogで解決した既存iCloud ID",
+  "mode": "append",
+  "events": [{
+    "title": "終日予定", "allDay": true,
+    "start": "2026-09-17", "end": "2026-09-18"
   }]
 }
 ```
