@@ -28,5 +28,27 @@ CLAUDE_BIN="/etc/profiles/per-user/${USER}/bin/claude"
 
 echo "$(date '+%F %T') start (claude=$CLAUDE_BIN)" >> "$LOG"
 # autonomous 書き込みのため skip-permissions。灰色[( ]は可逆・digest と再フェッチ検証は skill 側で担保。
-"$CLAUDE_BIN" -p "/wip-crawl" --dangerously-skip-permissions >> "$LOG" 2>&1 || echo "$(date '+%F %T') claude exited $?" >> "$LOG"
+# CLI の exit 0 だけでは認証失敗・unknown command を判別できないため、最終結果も検証する。
+RESULT="$CACHE/last-result.json"
+if "$CLAUDE_BIN" -p "/wip-crawl" \
+  --output-format json --dangerously-skip-permissions > "$RESULT" 2>> "$LOG"; then
+  status=0
+else
+  status=$?
+fi
+cat "$RESULT" >> "$LOG"
+printf '\n' >> "$LOG"
+if [ "$status" -eq 0 ] && ! jq -s -e '
+  length == 1 and (.[0] |
+    type == "object" and .type == "result" and .subtype == "success" and
+    .is_error == false and (.result | type == "string") and
+    (.result | test("^(Failed to authenticate:|Unknown command:)") | not))
+' "$RESULT" >> "$LOG" 2>&1; then
+  echo "$(date '+%F %T') invalid or failed Claude result" >> "$LOG"
+  status=1
+fi
+if [ "$status" -ne 0 ]; then
+  echo "$(date '+%F %T') claude failed (exit=$status)" >> "$LOG"
+  exit "$status"
+fi
 echo "$(date '+%F %T') done" >> "$LOG"
