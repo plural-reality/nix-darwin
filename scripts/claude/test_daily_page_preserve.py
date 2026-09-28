@@ -163,6 +163,17 @@ for unsafe in (
         raise AssertionError("FAIL(R6): unsafe管理ブロックを受理した")
     except RuntimeError:
         pass
+# 空の旧テンプレートは人間本文を含まないため、通常writeで安全にmarker化できる。
+legacy_empty_scaffold = [
+    "[** Habbit]", " 30min: workout", " 3times: [meditation]", "",
+    "[** Task]", "", "[** Schedule]", "", "[** Notes]", "", "",
+    "[2026/6/18]←→[2026/6/20]",
+]
+migrated_empty = dp.build_diary(curated, legacy_empty_scaffold, "pin-diary")
+assert any("日報の自動記録" in line for line in migrated_empty), \
+    "FAIL(R6): 空の旧テンプレートを通常writeでmarker化できない"
+assert " 30min: workout" in migrated_empty and " 3times: [meditation]" in migrated_empty, \
+    "FAIL(R6): 空の旧テンプレート移行で人間用scaffoldが消えた"
 legacy_exact = ["[claude code.icon]", dp.work_line(curated["work"][0]),
                 *dp.link_lines(curated["work"][0]["links"])]
 migrated = dp.build_diary(curated, legacy_exact, "pin-diary", True)

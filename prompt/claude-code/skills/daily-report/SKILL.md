@@ -95,7 +95,7 @@ pin-diary(tkgshn-private): `[tkgshn.icon]` → `[** Habbit/Task]`(既存保持) 
 - **カレンダーは遅い/best-effort**: AppleScript の繰り返し予定展開で30〜120s・たまにタイムアウトする。取り込むのは本人のチェック済み7カレンダーだけ（`Taka の予定` / `takagi@plural-reality.com` / `Shunsuke Takagi (General)` / `Business` / `ルーティーン` / `Intervals.icu` / `日本の祝日`）。
 - Limitless は話者Unknown・他者私事混在＋STTノイズだらけ → `text` を読んで**自分で要約**(自動 `title` をコピーするな)・少数高品質に絞る・tkgshn-private 限定。Typeless ローカルDBは遅延(空のことが多い)。
 - `date` は `%-m/%-d`(ゼロ埋め無し)。日付ページ新規作成は孤児ページではない(前後日ナビ＋相互リンクで graph に繋がる)＝[[save-to-scrapbox]]「新規は最後の手段」の許容例外。
-- 書込はcanonical `scrapbox-write --verbatim --expect-sha256` だけを使う。取得後の同時編集はCAS不一致で中止し、再取得なしに上書きしない。管理範囲は行数+SHA-256 markerで明示し、markerなしの旧形式や範囲内編集は人間行を守るためfail closedする。
+- 書込はcanonical `scrapbox-write --verbatim --expect-sha256` だけを使う。取得後の同時編集はCAS不一致で中止し、再取得なしに上書きしない。管理範囲は行数+SHA-256 markerで明示する。日次テンプレートが先に作った空の管理セクションは通常writeでmarker付きへ安全に昇格する。文字のあるmarkerなし旧形式や範囲内編集は人間行を守るためfail closedする。
 
 ## 関連
 - `~/.claude/scripts/lifelog.py` — 収集（calendar/limitless/mori/plaud/sessions/typeless/gmail/beeper/scrapbox/coast）

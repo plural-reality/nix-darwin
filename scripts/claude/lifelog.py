@@ -398,6 +398,8 @@ def fetch_sessions(d: str) -> SourceResult:
 def _codex_message(row: dict) -> tuple[str, str, str]:
     payload = row.get("payload") or {}
     if row.get("type") == "event_msg":
+        if payload.get("type") == "task_complete":
+            return "assistant", str(payload.get("last_agent_message") or "").strip(), "final_answer"
         role = {"user_message": "user", "agent_message": "assistant"}.get(payload.get("type"), "")
         return role, str(payload.get("message") or "").strip(), str(payload.get("phase") or "")
     if row.get("type") == "response_item" and payload.get("type") == "message":
