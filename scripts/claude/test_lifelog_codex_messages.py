@@ -55,6 +55,13 @@ class CodexMessages(unittest.TestCase):
         self.assertEqual(row['last'], '')
         self.assertEqual(row['state'], '作業中')
 
+    def test_task_complete_is_result(self):
+        completed = {'timestamp': '2026-09-12T01:01:00Z', 'type': 'event_msg', 'payload': {
+            'type': 'task_complete', 'last_agent_message': 'Parser repaired'}}
+        row = self.collect([message('user', 'Fix parser'), completed])[0]
+        self.assertEqual(row['last'], 'Parser repaired')
+        self.assertEqual(row['state'], '完了')
+
     def test_new_request_invalidates_previous_completion(self):
         row = self.collect([message('user', 'Fix parser'), message('assistant', 'Fixed', 'final_answer'),
                             message('user', 'Also handle archives')])[0]

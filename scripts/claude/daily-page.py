@@ -250,7 +250,9 @@ def foreign_lines(block_lines: list[str], icon: str, generated: list[str] | None
                   migrate_legacy_exact: bool = False) -> list[str]:
     """明示markerで所有した行だけを除き、それ以外は装飾を問わず人間行として保持する。"""
     body = block_lines[1:] if block_lines and is_header(block_lines[0], icon) else block_lines
-    if not body:
+    # 日次テンプレートが先に作る空セクションの区切り行は人間本文ではない。
+    # 通常writeでownership marker付きへ安全に昇格できる。
+    if not _rstrip_blanks(body):
         return []
     marker = _OWNED_RE.match(body[0])
     if marker is None:
