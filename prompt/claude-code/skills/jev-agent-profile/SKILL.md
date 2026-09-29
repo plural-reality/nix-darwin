@@ -53,7 +53,7 @@ python3 <このSKILL.mdのディレクトリ>/scripts/profile_select.py --provid
 
 ## 選択を起動へ反映する
 
-- `status: selected`なら、返った`profile`が渡した候補に一致することと、現在の起動先の制約を再確認する。`sessions`の順番がworkerの順番になる。モデル文字列などをshellへ文字列連結せず、toolの構造化引数か適切に引用した引数で渡す。
+- `status: selected`なら、明示した候補を使った場合は返った`profile`との一致を確認する。設定済みコマンドはホスト候補との一致を内部検証するため、呼出元は候補を再取得せず、返った各sessionと現在の起動先schemaの整合を確認する。`sessions`の順番がworkerの順番になる。モデル文字列などをshellへ文字列連結せず、toolの構造化引数か適切に引用した引数で渡す。
 - **Codex**: 利用可能な`spawn_agent`に各sessionの`model`と`reasoning_effort`を渡す。全履歴forkでoverride不可なら`fork_turns: "none"`を使い、cwd、目的、対象ファイル、制約、完了条件、検証方法を短く渡す。CLIで新しいセッションを作る既存workflowなら`codex exec --model MODEL -c 'model_reasoning_effort="EFFORT"'`に反映する。Desktopでユーザー所有の別チャットを勝手に作らない。現在の親会話のモデルは変更しない。
 - **Claude Code**: 対象CLIが両引数に対応する場合、既存のworker起動に`claude --model MODEL --effort EFFORT`を渡す。非対話workerでは既存の`-p`、出力、権限、作業ディレクトリの契約を保つ。Agent toolがeffortを受け付けない場合は、上記の本人指定の有無で分岐する。文章で指定したことを反映済みとしない。Jevのためだけに別のCLI経路を作らない。
 - `status: fallback`なら、モデル・effortのoverrideを追加せずホストの既定で同じ作業を続ける。セッション数もJev導入前の許可済みworkflowを保ち、候補から推測しない。ホスト自体の制限は既定にも適用し、適合不明なら起動前に確認する。`key_unavailable`、タイムアウト、429、無効な回答でも再試行・導入質問を繰り返さない。既定値を推測で補わない。
