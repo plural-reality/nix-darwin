@@ -25,3 +25,7 @@ description: CodexのComputer Useで短いMacアプリ・ブラウザ操作をJe
 鍵は既存の `TYPESAFE_API_KEY` 又は呼出し時に指定した `keyFile` (0600)からだけ読む。自動探索しない。機械固有の保存先は下流設定で管理し、秘密をNix storeへ入れない。
 
 [実行例・検証方法](references/runtime.md)を実行前に読む。モデルは `jev-1.13.0` に固定。モデル更新・条件緩和は同じfixtureと実機で再検証する。
+
+## OpenJEVを使う場合
+
+`provider: 'openjev'` を明示する。接続先は `https://api.openjev.sh/v1/systemone` に限定し、鍵は `OPENJEV_API_KEY` 又は指定した0600ファイルから読む。公式TypeSafeの鍵を流用しない。既定は引き続きTypeSafeで、自動fallbackはない。送信許可は選択した事業者に対して必要。OpenJEVは独立した中継事業者で、`openjev` は更新されるモデル別名のためバージョン固定を保証しない。公式版の精度・速度と同一と扱わず、利用する操作ごとに実測する。

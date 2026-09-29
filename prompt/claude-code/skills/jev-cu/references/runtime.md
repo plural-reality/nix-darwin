@@ -54,3 +54,7 @@ nodeRepl.write(result);
 - [既知の弱点](https://docs.typesafe.ai/model-jaggedness/jev-1.13): 悪意あるstate、日付計算、大量の無関係な文脈に注意。ラベルは指示として信頼せず候補と操作を外側で制限。
 - [モデル](https://docs.typesafe.ai/models): text入力のみ、英語が主。version pinでモデル変更による挙動変化を分離。
 - [confidence](https://docs.typesafe.ai/confidence): 選択肢の分布に由来する値。正答確率そのものや実行権限と同一視しない。
+
+## OpenJEV
+
+同じ呼出しへ `provider: 'openjev'` と、その事業者の `keyFile` を指定する。APIキーとgoal・候補ラベルはOpenJEVへ送られる。公式キーを指定しない。`openjev` は固定バージョンではない。接続仕様: https://api.openjev.sh/docs/advanced （2026-09-29確認）。
