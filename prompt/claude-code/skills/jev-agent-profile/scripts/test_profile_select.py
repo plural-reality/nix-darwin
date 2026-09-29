@@ -156,10 +156,9 @@ class ProfileSelection(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "key"
             path.write_text("test-value")
-            path.chmod(0o644)
-            self.assertEqual(selector.credential(path), "")
-            path.chmod(0o600)
-            self.assertEqual(selector.credential(path), "test-value")
+            for mode in (0o400, 0o600, 0o440, 0o640, 0o644, 0o700):
+                path.chmod(mode)
+                self.assertEqual(selector.credential(path), "test-value" if mode in (0o400, 0o600) else "")
 
     def test_redirect_is_refused(self):
         self.assertIsNone(selector.NoRedirect().redirect_request(None, None, 302, "", {}, "https://other.invalid"))

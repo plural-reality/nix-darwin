@@ -103,7 +103,7 @@ def credential(key_file, provider="typesafe"):
     try:
         with open(key_file, encoding="utf-8") as stream:
             info = os.fstat(stream.fileno())
-            return stream.read(8192).strip() if stat.S_ISREG(info.st_mode) and stat.S_IMODE(info.st_mode) == 0o600 else ""
+            return stream.read(8192).strip() if stat.S_ISREG(info.st_mode) and stat.S_IMODE(info.st_mode) in {0o400, 0o600} else ""
     except (OSError, UnicodeError):
         return ""
 
@@ -167,7 +167,7 @@ def with_profiles(data, profiles_file):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--key-file", help="Explicit existing 0600 credential file; never searched")
+    parser.add_argument("--key-file", help="Explicit existing 0400/0600 credential file; never searched")
     parser.add_argument("--provider", choices=tuple(PROVIDERS), default="typesafe", help="Explicit credential issuer; never inferred or tried across providers")
     parser.add_argument("--profiles-file", help="Explicit host-owned defaults, keyed by codex / claude-code")
     args = parser.parse_args()
