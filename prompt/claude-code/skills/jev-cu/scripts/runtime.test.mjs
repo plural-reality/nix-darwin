@@ -114,3 +114,22 @@ test('step budget prevents endless model-driven actions', async () => {
   const f=fixture({maxSteps:1});f.observations[2]='still pending';
   assert.equal((await runPhase(f.config)).reason,'step_budget');assert.deepEqual(f.events,[2]);
 });
+
+
+test('provider routing keeps credentials and fixed destinations separate', async () => {
+  const env = {TYPESAFE_API_KEY:'official', OPENJEV_API_KEY:'relay'};
+  assert.equal((await credential({env,provider:'openjev'})).key,'relay');
+  assert.equal((await credential({env:{TYPESAFE_API_KEY:'official'},provider:'openjev'})).ok,false);
+  assert.equal((await credential({env,provider:'unknown'})).reason,'invalid_provider');
+  const r=await requestDecision({goal:'Enter six',candidates:selectCandidates(ax,targets),key:'relay',provider:'openjev',fetchImpl:async(url,init)=>{
+    assert.equal(url,'https://api.openjev.sh/v1/systemone');
+    assert.equal(init.redirect,'error');
+    assert.equal(JSON.parse(init.body).model,'openjev');
+    return {ok:true,json:async()=>({model:'openjev',answers:{target:answer}})};
+  }});
+  assert.equal(r.ok,true);
+  assert.equal((await requestDecision({provider:'unknown',fetchImpl:()=>assert.fail()})).reason,'invalid_provider');
+  const f=fixture({provider:'unknown'});
+  assert.equal((await runPhase(f.config)).reason,'invalid_phase');
+  assert.equal(f.observations.length,3);
+});
