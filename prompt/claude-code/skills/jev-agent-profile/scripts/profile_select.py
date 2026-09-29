@@ -152,14 +152,30 @@ def select(data, key_file=None, query_fn=None, provider="typesafe"):
         return fallback("transport_error")
 
 
+def with_profiles(data, profiles_file):
+    """An explicit host-owned file supplies defaults; caller candidates still win."""
+    if not profiles_file or not isinstance(data, dict) or "profiles" in data:
+        return data
+    host = data.get("host")
+    if not isinstance(host, str) or host not in {"claude-code", "codex"}:
+        return data
+    with open(profiles_file, encoding="utf-8") as stream:
+        raw = stream.read(65537)
+    profiles = json.loads(raw) if len(raw) <= 65536 else {}
+    return {**data, "profiles": profiles.get(host, []) if isinstance(profiles, dict) else []}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--key-file", help="Explicit existing 0600 credential file; never searched")
     parser.add_argument("--provider", choices=tuple(PROVIDERS), default="typesafe", help="Explicit credential issuer; never inferred or tried across providers")
+    parser.add_argument("--profiles-file", help="Explicit host-owned defaults, keyed by codex / claude-code")
     args = parser.parse_args()
     try:
         raw = sys.stdin.buffer.read(16385)
-        result = select(json.loads(raw), args.key_file, provider=args.provider) if len(raw) <= 16384 else {"status": "blocked", "reason": "input_too_large"}
+        result = select(with_profiles(json.loads(raw), args.profiles_file), args.key_file, provider=args.provider) if len(raw) <= 16384 else {"status": "blocked", "reason": "input_too_large"}
+    except OSError:
+        result = fallback("profiles_unavailable")
     except (ValueError, UnicodeError):
         result = {"status": "blocked", "reason": "invalid_json"}
     print(json.dumps(result, ensure_ascii=False))

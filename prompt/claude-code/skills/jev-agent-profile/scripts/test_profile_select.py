@@ -24,6 +24,22 @@ def response(choice="normal"):
 
 
 class ProfileSelection(unittest.TestCase):
+    def test_host_defaults_preserve_explicit_candidates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "profiles.json"
+            profiles = {host: fixture(host)["profiles"] for host in ("codex", "claude-code")}
+            path.write_text(json.dumps(profiles))
+            for host in profiles:
+                data = {key: value for key, value in fixture(host).items() if key != "profiles"}
+                enriched = selector.with_profiles(data, str(path))
+                self.assertEqual(enriched["profiles"], profiles[host])
+                self.assertTrue(selector.valid_input(enriched))
+                explicit = fixture(host)
+                self.assertIs(selector.with_profiles(explicit, "/missing"), explicit)
+            self.assertEqual(selector.with_profiles({"host": []}, str(path)), {"host": []})
+            path.write_text("[]")
+            self.assertFalse(selector.valid_input(selector.with_profiles({"host": "codex"}, str(path))))
+
     def test_both_hosts_return_only_original_profile(self):
         for host in ("codex", "claude-code"):
             data = fixture(host)
