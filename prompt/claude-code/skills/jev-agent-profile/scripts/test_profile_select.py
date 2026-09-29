@@ -66,6 +66,44 @@ class ProfileSelection(unittest.TestCase):
     def test_default_is_no_override(self):
         self.assertEqual(selector.evaluate(fixture(), response("default")), selector.fallback("no_selection"))
 
+    @patch.dict(os.environ, {"TYPESAFE_API_KEY": "typesafe-test"}, clear=True)
+    def test_provider_credentials_are_not_cross_sent(self):
+        def forbidden(*args):
+            self.fail("wrong provider must not receive this credential")
+        self.assertEqual(selector.select(fixture(), provider="openjev", query_fn=forbidden), selector.fallback("key_unavailable"))
+        self.assertEqual(selector.credential(None, "typesafe"), "typesafe-test")
+
+    @patch.dict(os.environ, {"OPENJEV_API_KEY": "openjev-test"}, clear=True)
+    def test_openjev_model_and_response_are_explicit(self):
+        def fake(body, key):
+            self.assertEqual(body["model"], "openjev")
+            self.assertEqual(key, "openjev-test")
+            result = response()
+            result["model"] = "openjev"
+            return result
+        result = selector.select(fixture(), provider="openjev", query_fn=fake)
+        self.assertEqual(result["status"], "selected")
+        self.assertEqual(result["selectorModel"], "openjev")
+        self.assertEqual(selector.evaluate(fixture(), response(), "openjev"), selector.fallback("invalid_response"))
+        self.assertEqual(selector.credential(None, "typesafe"), "")
+
+    def test_unknown_provider_is_blocked(self):
+        for provider in ("https://other.invalid", [], None):
+            self.assertEqual(selector.select(fixture(), provider=provider), {"status": "blocked", "reason": "invalid_provider"})
+
+    @patch.dict(os.environ, {"OPENJEV_API_KEY": "openjev-test"}, clear=True)
+    def test_production_query_uses_fixed_openjev_endpoint(self):
+        response_data = response()
+        response_data["model"] = "openjev"
+        from unittest.mock import MagicMock
+        opener = MagicMock()
+        opener.open.return_value.__enter__.return_value.read.return_value = json.dumps(response_data).encode()
+        with patch.object(selector.urllib.request, "build_opener", return_value=opener):
+            self.assertEqual(selector.select(fixture(), provider="openjev")["status"], "selected")
+        request = opener.open.call_args.args[0]
+        self.assertEqual(request.full_url, "https://api.openjev.sh/v1/systemone")
+        self.assertEqual(request.get_header("Authorization"), "Bearer openjev-test")
+
     @patch.dict(os.environ, {}, clear=True)
     def test_no_key_or_egress_means_no_request(self):
         def forbidden(*args):

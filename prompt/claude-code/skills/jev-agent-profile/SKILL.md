@@ -12,10 +12,12 @@ Jevは候補の選択だけを行い、実際の起動・権限・検証は呼�
 1. 現在公開されている起動toolのschema、または対象CLIのhelpから、その実行先でモデルと推論量の両方を指定できることを確認する。実行先の利用可能なモデルから候補を作る。利用可否不明のモデル名を投稿から転記しない。本人がモデル・推論量を指定済みならJev選択を省略する。本人の指定を起動経路で満たせない場合はworker起動だけを保留し、親で可能な作業を進める。既定値への変更が必要な直前に理由を示して本人に確認する。本人指定がなく、起動経路が推論量を指定できないだけなら通常の起動へ戻す。
 2. `profiles`にホスト側で許可した候補を2〜6件用意する。各候補は`id`、短い英語の`description`、`sessions`（各要素は`model`と`effort`）を持つ。通常の実装には利用可能なSonnetのmedium、複雑な推論には同じモデルのhighを候補にできる。Codexではそのホストで利用可能なcodingモデルのmedium/highなどを使う。モデルをブランド名だけで順位づけしない。
 3. 既存規約で許可された独立調査、または本人が依頼したレビューを分離できる場合だけ、`allowSecond: true`として2セッション候補を追加する。単一・依存作業には追加しない。2件目にもモデル・推論量を指定する。
-4. TypeSafeへ送るのは、固有名詞・パス・コード・会話本文を除いた短い英語の作業概要と候補の説明だけ。一般的な作業概要なら通常の選択として進める。機微な内容が必要なら送信前にその範囲の承認を得る。概要を確認してから`egressApproved: true`にする。stdin JSONを下記スクリプトへ渡す。秘密は既存の`TYPESAFE_API_KEY`か、本人・downstreamが指定した0600ファイルを`--key-file`で渡すだけ。キー探索・新規発行・チャット貼付をしない。
+4. 接続先へ送るのは、固有名詞・パス・コード・会話本文を除いた短い英語の作業概要と候補の説明だけ。一般的な作業概要なら通常の選択として進める。機微な内容が必要なら送信前にその範囲の承認を得る。概要を確認してから`egressApproved: true`にする。stdin JSONを下記スクリプトへ渡す。発行元がTypeSafeなら既存の`TYPESAFE_API_KEY`、OpenJEVなら`--provider openjev`と`OPENJEV_API_KEY`を使う。本人・downstreamが指定した0600ファイルも`--key-file`で使える。発行元をキーの接頭辞だけで推測せず、別プロバイダへ試し送りしない。キー探索・新規発行・チャット貼付をしない。
 
 ```sh
 python3 <このSKILL.mdのディレクトリ>/scripts/profile_select.py < work/profile-input.json
+# OpenJEVで発行したキーを使う場合（OPENJEV_API_KEYは既存の環境設定）
+python3 <このSKILL.mdのディレクトリ>/scripts/profile_select.py --provider openjev < work/profile-input.json
 ```
 
 入力例（モデルとeffortの組合せは起動先で確認してから使う）:
@@ -47,7 +49,7 @@ python3 <このSKILL.mdのディレクトリ>/scripts/profile_select.py < work/p
 
 スクリプト成功は「設定の選択」であり、起動確認ではない。起動toolの返却またはCLIのセッション情報で実際のモデル・effortを確認できた範囲だけ報告する。確認できなければ「引数指定済み・実セッション設定未確認」とする。速度改善は同じ課題の完了時間と品質を比較して初めて主張する。
 
-APIは[TypeSafe公式](https://docs.typesafe.ai/api)を使用。Jevは`jev-1.13.0`に固定し、変更時は下記の契約テストと実接続を再確認する。
+TypeSafeは[公式API](https://docs.typesafe.ai/api)の`https://api.typesafe.ai/v1/systemone`と`jev-1.13.0`を使う。OpenJEVは[同サービスのAPI](https://api.openjev.sh/docs/advanced)の`https://api.openjev.sh/v1/systemone`と`openjev`を使う。OpenJEVのモデル名は更新され得るaliasで、TypeSafeの固定バージョンと同一のモデルだと検証したものではない。プロバイダ・モデル変更時は下記の契約テストと実接続を再確認する。
 
 ```sh
 python3 -m unittest discover -s <このSKILL.mdのディレクトリ>/scripts -p 'test_*.py'

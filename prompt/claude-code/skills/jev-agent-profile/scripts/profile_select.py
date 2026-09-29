@@ -12,6 +12,10 @@ import urllib.request
 
 ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 MODEL = "jev-1.13.0"
+PROVIDERS = {
+    "typesafe": {"endpoint": ENDPOINT, "model": MODEL, "key_env": "TYPESAFE_API_KEY"},
+    "openjev": {"endpoint": "https://api.openjev.sh/v1/systemone", "model": "openjev", "key_env": "OPENJEV_API_KEY"},
+}
 EFFORTS = {"low", "medium", "high", "xhigh", "max", "ultra"}
 
 
@@ -52,9 +56,9 @@ def valid_input(data):
     return len({p["id"] for p in profiles}) == len(profiles)
 
 
-def request_body(data):
+def request_body(data, provider="typesafe"):
     return {
-        "model": MODEL,
+        "model": PROVIDERS[provider]["model"],
         "state": {"task": data["summary"]},
         "questions": {"profile": {
             "type": "choice",
@@ -69,8 +73,8 @@ def number(value):
     return type(value) in {int, float} and 0 <= value <= 1 and math.isfinite(value)
 
 
-def evaluate(data, body):
-    if not isinstance(body, dict) or body.get("model") != MODEL or not isinstance(body.get("answers"), dict):
+def evaluate(data, body, provider="typesafe"):
+    if not isinstance(body, dict) or body.get("model") != PROVIDERS[provider]["model"] or not isinstance(body.get("answers"), dict):
         return fallback("invalid_response")
     answer = body["answers"].get("profile")
     if not isinstance(answer, dict):
@@ -87,11 +91,11 @@ def evaluate(data, body):
     if choice == "default":
         return fallback("no_selection")
     # Preference selection, not an action authorization: no universal confidence threshold.
-    return {"status": "selected", "profile": next(p for p in data["profiles"] if p["id"] == choice), "selectorModel": MODEL}
+    return {"status": "selected", "profile": next(p for p in data["profiles"] if p["id"] == choice), "selectorModel": PROVIDERS[provider]["model"]}
 
 
-def credential(key_file):
-    key = os.environ.get("TYPESAFE_API_KEY", "").strip()
+def credential(key_file, provider="typesafe"):
+    key = os.environ.get(PROVIDERS[provider]["key_env"], "").strip()
     if key:
         return key
     if not key_file:
@@ -109,8 +113,8 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def query(body, key):
-    request = urllib.request.Request(ENDPOINT, data=json.dumps(body).encode(), method="POST",
+def query(body, key, provider="typesafe"):
+    request = urllib.request.Request(PROVIDERS[provider]["endpoint"], data=json.dumps(body).encode(), method="POST",
                                      headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
     # CLI runs on the main thread on Darwin/Linux. Bound DNS, connect and body together.
     previous = signal.signal(signal.SIGALRM, deadline)
@@ -128,16 +132,20 @@ def deadline(signum, frame):
     raise TimeoutError("request deadline")
 
 
-def select(data, key_file=None, query_fn=query):
+def select(data, key_file=None, query_fn=None, provider="typesafe"):
+    if not isinstance(provider, str) or provider not in PROVIDERS:
+        return {"status": "blocked", "reason": "invalid_provider"}
     if not valid_input(data):
         return {"status": "blocked", "reason": "invalid_input"}
     if not data.get("egressApproved"):
         return fallback("egress_not_approved")
-    key = credential(key_file)
+    key = credential(key_file, provider)
     if not key:
         return fallback("key_unavailable")
     try:
-        return evaluate(data, query_fn(request_body(data), key))
+        body = request_body(data, provider)
+        result = query_fn(body, key) if query_fn else query(body, key, provider)
+        return evaluate(data, result, provider)
     except urllib.error.HTTPError as error:
         return fallback("rate_limited" if error.code == 429 else "http_error")
     except (OSError, ValueError, UnicodeError):
@@ -147,10 +155,11 @@ def select(data, key_file=None, query_fn=query):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--key-file", help="Explicit existing 0600 credential file; never searched")
+    parser.add_argument("--provider", choices=tuple(PROVIDERS), default="typesafe", help="Explicit credential issuer; never inferred or tried across providers")
     args = parser.parse_args()
     try:
         raw = sys.stdin.buffer.read(16385)
-        result = select(json.loads(raw), args.key_file) if len(raw) <= 16384 else {"status": "blocked", "reason": "input_too_large"}
+        result = select(json.loads(raw), args.key_file, provider=args.provider) if len(raw) <= 16384 else {"status": "blocked", "reason": "input_too_large"}
     except (ValueError, UnicodeError):
         result = {"status": "blocked", "reason": "invalid_json"}
     print(json.dumps(result, ensure_ascii=False))
