@@ -1,0 +1,6 @@
+interface:
+  display_name: "call-secretary — takaのAI秘書"
+  short_description: "電話が必要な依頼を引き受け、takaのAI秘書として確認から報告まで進める"
+  default_prompt: "$call-secretary を使い、この依頼に必要な電話の用件を準備して遂行してください。"
+policy:
+  allow_implicit_invocation: true
