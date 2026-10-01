@@ -1,0 +1,6 @@
+interface:
+  display_name: "参画・移行期の相談"
+  short_description: "新しい組織や役割での学習、期待調整、初期成果と協力関係を批判的に点検する"
+  default_prompt: "$transition-coach を使い、この案件の学習・成功条件・協力関係・次に動く順序を批判的に検討してください。"
+policy:
+  allow_implicit_invocation: true
