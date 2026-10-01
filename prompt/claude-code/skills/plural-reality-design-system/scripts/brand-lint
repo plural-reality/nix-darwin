@@ -1,0 +1,347 @@
+#!/usr/bin/env python3
+# brand-lint-disable-file: このファイルは検出パターンそのものを含む
+"""brand-lint — 多元現実の表記・ブランド規約に反する記述を検出する（標準ライブラリのみ）。
+
+規約の正本は同じ skill の style-guide.md と tokens.css。検出は機械的に決まるものだけ:
+
+  corp-name        法人名の誤記（多元現実合同会社 / 合同会社 多元現実 / Plural Reality Inc. / plural reality llc ...）
+  old-product      旧・退役製品名（Baisoku Enquête / 深掘りアンケート / 議員AI秘書）
+  nonprod-url      非本番 URL（*.vercel.app / .preview. を含むホスト）
+  halfwidth-kana   半角カナ
+  forbidden-hex    廃止色 hex（teal 系・#2196F3）
+  forbidden-class  Tailwind の teal クラス
+
+使い方:
+  python3 brand-lint PATH...                    # ファイル・ディレクトリを走査。違反があれば終了コード 1
+  python3 brand-lint --allow 'nonprod-url=ota-city\\.preview\\.' client/
+  python3 brand-lint --allowlist .brand-lint-allow --exclude 'client/public/legacy/**' .
+  python3 brand-lint --format json client/ > report.json
+  python3 brand-lint --summary client/          # rule ごとの件数だけ
+  python3 brand-lint --selftest
+
+抑止:
+  - 行内に brand-lint-disable-line            その行を無視
+  - 行内に brand-lint-disable-next-line       次の行を無視
+  - 先頭10行に brand-lint-disable-file        そのファイルを無視
+  - --allowlist FILE（既定: カレントの .brand-lint-allow があれば読む）
+      1行1件。'#' で始まる行はコメント（regex に # を含められるよう行内コメントは無い）。
+        <rule> <regex>        その rule で、行の本文が regex に一致する違反を無視（rule に * で全 rule）
+        exclude <glob>        パス（走査起点からの相対）が glob に一致するファイルを走査しない
+
+終了コード: 0 = 違反なし / 1 = 違反あり / 2 = 使い方の誤り
+"""
+from __future__ import annotations
+
+import argparse
+import fnmatch
+import json
+import os
+import re
+import sys
+from dataclasses import dataclass, asdict
+from pathlib import Path
+from typing import Iterable, Iterator
+
+# ---------------------------------------------------------------- rules
+
+FORBIDDEN_HEX = {
+    "0F766E": "teal-700（旧 brand）",
+    "2DD4BF": "teal-400（旧 brand・ダーク）",
+    "0D9488": "teal-600",
+    "14B8A6": "teal-500",
+    "5EEAD4": "teal-300",
+    "99F6E4": "teal-200",
+    "115E59": "teal-800",
+    "134E4A": "teal-900",
+    "2196F3": "出所不明の青（generate_whitepaper 由来）",
+}
+
+
+@dataclass(frozen=True)
+class Rule:
+    id: str
+    pattern: re.Pattern[str]
+    message: str
+    fix: str
+
+
+RULES: tuple[Rule, ...] = (
+    Rule("corp-name", re.compile(r"多元現実合同会社"), "法人名の語順が誤り", "合同会社多元現実"),
+    Rule("corp-name", re.compile(r"合同会社[ 　\t]+多元現実"), "法人名にスペースが入っている", "合同会社多元現実"),
+    Rule("corp-name", re.compile(r"[（(]同[）)]\s*多元現実"), "法人格の略記", "合同会社多元現実"),
+    Rule("corp-name", re.compile(r"Plural[ \t]*Reality,?[ \t]+Inc\b\.?", re.I), "法人格が Inc. になっている", "Plural Reality LLC"),
+    Rule(
+        "corp-name",
+        re.compile(r"(?!Plural Reality LLC\b)(?i:plural[ \t]*reality[ \t]*,?[ \t]*l\.?l\.?c\b\.?)"),
+        "英文法人名の大文字小文字・記号が崩れている",
+        "Plural Reality LLC",
+    ),
+    Rule("old-product", re.compile(r"Baisoku[ \t]+Enqu[eê]te", re.I), "旧英語製品名", "Baisoku Survey"),
+    Rule("old-product", re.compile(r"深掘りアンケート"), "旧製品名", "倍速アンケート"),
+    Rule("old-product", re.compile(r"議員\s*AI\s*秘書"), "退役製品名（C3）", "削除する"),
+    Rule(
+        "nonprod-url",
+        re.compile(r"[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.vercel\.app\b|vercel\.app\b"),
+        "非本番 URL（vercel.app）",
+        "本番 URL。意図したプレビューは allowlist",
+    ),
+    Rule(
+        "nonprod-url",
+        re.compile(r"(?:https?://|//|\b)[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.preview\.[A-Za-z0-9.-]+"),
+        "非本番 URL（.preview.）",
+        "本番 URL。意図したプレビューは allowlist",
+    ),
+    Rule("halfwidth-kana", re.compile(r"[｡-ﾟ]+"), "半角カナ", "全角カナ"),
+    Rule(
+        "forbidden-hex",
+        re.compile(r"#(?:" + "|".join(FORBIDDEN_HEX) + r")(?![0-9A-Fa-f])", re.I),
+        "廃止色（teal ほか）",
+        "tokens.css の var(--accent) / var(--accent-ui) など",
+    ),
+    Rule(
+        "forbidden-class",
+        re.compile(
+            r"(?<![\w-])(?:[a-z]+:)*(?:bg|text|border|ring|from|via|to|fill|stroke|outline|decoration|divide|shadow|accent|caret)-teal-\d{2,3}(?:/\d+)?\b"
+        ),
+        "Tailwind の teal クラス",
+        "brand / accent 系の変数",
+    ),
+)
+
+RULE_IDS = sorted({r.id for r in RULES})
+
+# ---------------------------------------------------------------- files
+
+SKIP_DIRS = {
+    ".git", "node_modules", "dist", "build", "out", ".next", ".svelte-kit", ".vercel", ".turbo",
+    ".cache", "coverage", "__pycache__", ".venv", "venv", "result", ".direnv", "target",
+}
+SKIP_FILES = {"pnpm-lock.yaml", "package-lock.json", "yarn.lock", "bun.lockb", "flake.lock", "Cargo.lock"}
+BINARY_EXT = {
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".ico", ".icns", ".pdf", ".zip", ".gz", ".tgz",
+    ".woff", ".woff2", ".ttf", ".otf", ".eot", ".mp4", ".mov", ".webm", ".mp3", ".wav", ".m4a",
+    ".psd", ".ai", ".sketch", ".fig", ".docx", ".xlsx", ".pptx", ".key", ".numbers", ".pages",
+    ".so", ".dylib", ".o", ".a", ".class", ".jar", ".wasm", ".db", ".sqlite",
+}
+MAX_BYTES = 2_000_000
+
+
+@dataclass(frozen=True)
+class Finding:
+    path: str
+    line: int
+    col: int
+    rule: str
+    match: str
+    message: str
+    fix: str
+    text: str
+
+
+@dataclass(frozen=True)
+class Allow:
+    rules: tuple[tuple[str, re.Pattern[str]], ...]
+    excludes: tuple[str, ...]
+
+    def suppresses(self, f: Finding) -> bool:
+        return any((r == "*" or r == f.rule) and p.search(f.text) for r, p in self.rules)
+
+    def excluded(self, rel: str) -> bool:
+        return any(fnmatch.fnmatch(rel, g) or fnmatch.fnmatch(rel, g.rstrip("/") + "/*") for g in self.excludes)
+
+
+def parse_allow(lines: Iterable[str], cli_allow: Iterable[str], cli_exclude: Iterable[str]) -> Allow:
+    rules: list[tuple[str, re.Pattern[str]]] = []
+    excludes: list[str] = list(cli_exclude)
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, _, rest = line.partition(" ")
+        rest = rest.strip()
+        if key == "exclude":
+            excludes.append(rest)
+        elif key == "*" or key in RULE_IDS:
+            rules.append((key, re.compile(rest)))
+        else:
+            raise ValueError(f"allowlist: unknown rule '{key}'")
+    for spec in cli_allow:
+        key, sep, rx = spec.partition("=")
+        if not sep or (key != "*" and key not in RULE_IDS):
+            raise ValueError(f"--allow expects RULE=REGEX (rules: {', '.join(RULE_IDS)}, *): {spec}")
+        rules.append((key, re.compile(rx)))
+    return Allow(tuple(rules), tuple(excludes))
+
+
+def iter_files(root: Path) -> Iterator[Path]:
+    if root.is_file():
+        yield root
+        return
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+        for name in sorted(filenames):
+            if name in SKIP_FILES or Path(name).suffix.lower() in BINARY_EXT:
+                continue
+            yield Path(dirpath) / name
+
+
+def read_text(path: Path) -> str | None:
+    try:
+        if path.stat().st_size > MAX_BYTES:
+            return None
+        data = path.read_bytes()
+    except OSError:
+        return None
+    if b"\x00" in data[:8192]:
+        return None
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def scan_text(display: str, text: str) -> list[Finding]:
+    lines = text.splitlines()
+    if any("brand-lint-disable-file" in l for l in lines[:10]):
+        return []
+    out: list[Finding] = []
+    skip_next = False
+    for i, line in enumerate(lines, 1):
+        if skip_next:
+            skip_next = False
+            continue
+        if "brand-lint-disable-next-line" in line:
+            skip_next = True
+            continue
+        if "brand-lint-disable-line" in line:
+            continue
+        for rule in RULES:
+            for m in rule.pattern.finditer(line):
+                out.append(
+                    Finding(display, i, m.start() + 1, rule.id, m.group(0), rule.message, rule.fix, line.strip()[:240])
+                )
+    # 同じ箇所に複数の nonprod-url パターンが当たった場合は1件にまとめる
+    seen: set[tuple[str, int, str]] = set()
+    uniq: list[Finding] = []
+    for f in sorted(out, key=lambda f: (f.line, f.col)):
+        key = (f.rule, f.line, f.match.split("//")[-1])
+        if key in seen or any(
+            g.rule == f.rule and g.line == f.line and g.col <= f.col < g.col + len(g.match) for g in uniq
+        ):
+            continue
+        seen.add(key)
+        uniq.append(f)
+    return uniq
+
+
+def lint(paths: list[Path], allow: Allow) -> list[Finding]:
+    findings: list[Finding] = []
+    for root in paths:
+        base = root if root.is_dir() else root.parent
+        for path in iter_files(root):
+            rel = os.path.relpath(path, base)
+            if allow.excluded(rel) or allow.excluded(str(path)):
+                continue
+            text = read_text(path)
+            if text is None:
+                continue
+            findings.extend(f for f in scan_text(str(path), text) if not allow.suppresses(f))
+    return findings
+
+
+# ---------------------------------------------------------------- output
+
+
+def report(findings: list[Finding], fmt: str, summary: bool) -> str:
+    counts = {r: sum(1 for f in findings if f.rule == r) for r in RULE_IDS}
+    files = len({f.path for f in findings})
+    if fmt == "json":
+        return json.dumps(
+            {"total": len(findings), "files": files, "by_rule": counts, "findings": [] if summary else [asdict(f) for f in findings]},
+            ensure_ascii=False,
+            indent=2,
+        )
+    body = [] if summary else [f"{f.path}:{f.line}:{f.col}: {f.rule}: 「{f.match}」 {f.message} → {f.fix}" for f in findings]
+    tail = f"brand-lint: {len(findings)} 件 / {files} ファイル (" + ", ".join(f"{k}={v}" for k, v in counts.items()) + ")"
+    return "\n".join(body + [tail])
+
+
+# ---------------------------------------------------------------- selftest
+
+
+def selftest() -> int:
+    bad = {
+        "corp-name": ["© 2026 多元現実合同会社", "合同会社 多元現実", "合同会社　多元現実", "Plural Reality Inc.", "Plural Reality, Inc.", "plural reality llc", "Plural Reality L.L.C.", "(同)多元現実"],
+        "old-product": ["Baisoku Enquête", "baisoku enquete", "深掘りアンケート", "議員AI秘書"],
+        "nonprod-url": ["https://civic-report-plural-reality.vercel.app/x", "https://ota.preview.plural-reality.com"],
+        "halfwidth-kana": ["倍速ｱﾝｹｰﾄ"],
+        "forbidden-hex": ["--brand: #0f766e;", "color:#2DD4BF}", "#2196F3"],
+        "forbidden-class": ['class="text-teal-400"', "hover:bg-teal-700/50"],
+    }
+    good = [
+        "© 2026 Plural Reality LLC",
+        "合同会社多元現実（Plural Reality LLC）",
+        "倍速アンケート / Baisoku Survey",
+        "https://www.plural-reality.com/",
+        "--accent: #00E599; --brand-hex: #0F766EAA;",
+        "preview mode",
+        "emerald-500 steal-400",
+        "議員の秘書",
+    ]
+    failures = []
+    for rule, samples in bad.items():
+        for s in samples:
+            got = {f.rule for f in scan_text("t", s)}
+            if rule not in got:
+                failures.append(f"missed {rule}: {s!r} -> {got}")
+    for s in good:
+        got = scan_text("t", s)
+        if got:
+            failures.append(f"false positive: {s!r} -> {[f.rule for f in got]}")
+    if scan_text("t", "多元現実合同会社 brand-lint-disable-line"):
+        failures.append("disable-line ignored")
+    if scan_text("t", "x brand-lint-disable-next-line\n多元現実合同会社"):
+        failures.append("disable-next-line ignored")
+    allow = parse_allow(["nonprod-url ota\\.preview\\."], [], [])
+    if any(not allow.suppresses(f) for f in scan_text("t", "https://ota.preview.plural-reality.com")):
+        failures.append("allowlist ignored")
+    print("\n".join(failures) if failures else "selftest ok")
+    return 1 if failures else 0
+
+
+# ---------------------------------------------------------------- main
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(prog="brand-lint", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("paths", nargs="*", type=Path)
+    ap.add_argument("--allow", action="append", default=[], metavar="RULE=REGEX")
+    ap.add_argument("--allowlist", type=Path, help="既定: ./.brand-lint-allow があれば読む")
+    ap.add_argument("--exclude", action="append", default=[], metavar="GLOB")
+    ap.add_argument("--format", choices=("text", "json"), default="text")
+    ap.add_argument("--summary", action="store_true", help="件数だけ出す")
+    ap.add_argument("--selftest", action="store_true")
+    a = ap.parse_args(argv)
+    if a.selftest:
+        return selftest()
+    if not a.paths:
+        ap.print_usage(sys.stderr)
+        return 2
+    missing = [p for p in a.paths if not p.exists()]
+    if missing:
+        print(f"brand-lint: not found: {', '.join(map(str, missing))}", file=sys.stderr)
+        return 2
+    allow_file = a.allowlist or (Path(".brand-lint-allow") if Path(".brand-lint-allow").is_file() else None)
+    try:
+        lines = allow_file.read_text(encoding="utf-8").splitlines() if allow_file else []
+        allow = parse_allow(lines, a.allow, a.exclude)
+    except (OSError, ValueError, re.error) as e:
+        print(f"brand-lint: {e}", file=sys.stderr)
+        return 2
+    findings = lint(a.paths, allow)
+    print(report(findings, a.format, a.summary))
+    return 1 if findings else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

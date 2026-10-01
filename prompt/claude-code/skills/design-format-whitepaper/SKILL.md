@@ -1,13 +1,15 @@
 ---
 name: design-format-whitepaper
 description: >
-  形式B: ホワイトペーパー (A4) デザイントークンとパターン集。
-  2カラム (30%/70%)、アクセント見出し、モジュール構造、概念グリッド、下線要旨文。
+  形式B: ホワイトペーパー (A4) のレイアウトとパターン集。
+  print register、2カラム (30%/70%)、モジュール構造、概念グリッド、下線要旨文。値は plural-reality-design-system/tokens.css を参照する。
   Palantir Construction Whitepaper 2022 を参照元として忠実に再現する。
   「ホワイトペーパー」「技術文書」「導入ガイド」で発動。
 ---
 
-> **系統**: 用途特化フォーマット。ブランド基調・canonical・用途→skill 対応は傘 skill `plural-reality-design-system` §0 が単一の正本。本フォーマットのパレットは Palantir 原典準拠で傘（白・角丸0px）と異なる場合がある（用途で使い分ける）。
+> **値の参照**: 色・書体・ウェイト・角丸・余白は傘 skill `plural-reality-design-system/tokens.css` を inline して `var(--*)` で参照する。このファイルには hex・フォント名・角丸の px を書かない。用途の振り分けとロゴは傘 SKILL.md、表記（会社名・日付・数値と出典・図表・脚注・©）は傘の `style-guide.md`、仕上げに傘の `scripts/brand-lint` を通す。
+>
+> **register**: `print`（白・無彩）。`<html data-register="print">`。見出し・矢印・リンクは `--fg`（アクセント色は使わない）。
 
 # 形式B: ホワイトペーパー（A4 縦）
 
@@ -30,25 +32,18 @@ Palantir Construction Whitepaper (2022) のレイアウトを正準パターン�
 
 ---
 
-## CSS変数
+## CSS
+
+使う変数（すべて `tokens.css`）: 地 `--bg`、本文と見出し `--fg`、キャプション・フッター `--fg-muted`、セクション区切りの黒線 `--border-strong`、細線 `--border`、写真の仮置き `--surface-1`。
 
 ```css
-:root {
-  --bg: #FFFFFF;
-  --text: #000000;
-  --accent: #2196F3;       /* 見出し・リンク・矢印 */
-  --muted: #666666;        /* キャプション・フッター */
-  --border: #000000;       /* セクション区切り線 */
-  --border-light: #E0E0E0; /* フッター上線・概念グリッド上線 */
-  --font-sans: "Public Sans", "Noto Sans JP", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
-}
+/* tokens.css をここに inline。<html data-register="print"> */
 body {
-  background: #F0F0F0;
+  background: var(--surface-2);
   font-family: var(--font-sans);
-  font-weight: 400;
+  font-weight: var(--weight-regular);
   line-height: 1.7;
-  color: var(--text);
+  color: var(--fg);
 }
 ```
 
@@ -61,7 +56,6 @@ body {
   max-width: 816px;       /* A4幅 ≈ 210mm */
   margin: 0 auto;
   background: var(--bg);
-  box-shadow: 0 0 40px rgba(0,0,0,0.08);
 }
 .page {
   padding: 48px 60px 40px;
@@ -82,7 +76,7 @@ body {
 
 ## フッター（全ページ共通）
 
-PDF パターン: 左にロゴアイコン、中央〜右に著作権表示。ページ最下部。
+左に会社マーク、その右に著作権表示、右端にページ番号。ページ最下部。自治体向けの印刷物は会議中にページで参照されるので、ページ番号を必ず入れる。
 
 ```css
 .page-footer {
@@ -92,31 +86,29 @@ PDF パターン: 左にロゴアイコン、中央〜右に著作権表示。�
   padding-top: 16px;
   margin-top: auto;
   font-size: 9px;
-  color: var(--muted);
+  color: var(--fg-muted);
   line-height: 1.4;
 }
 .footer-logo {
-  width: 14px;
-  height: 14px;
-  background: var(--text);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 8px;
-  color: var(--bg);
-  font-weight: 700;
-  flex-shrink: 0;
+  height: 12px;
+  width: auto;
+  flex-shrink: 0;        /* 傘 assets/mark.svg。文字の仮ロゴは使わない */
 }
 .footer-text {
   flex: 1;
-  text-align: left;      /* 著作権はロゴの右、左寄せ小文字 */
+  text-align: left;      /* 著作権はロゴの右、左寄せ */
+}
+.footer-page {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
 }
 ```
 
 ```html
 <div class="page-footer">
-  <div class="footer-logo">P</div>
-  <div class="footer-text">Copyright © 2026 Plural Reality Inc. All rights reserved.</div>
+  <img class="footer-logo" src="mark.svg" alt="" />
+  <div class="footer-text">© 2026 Plural Reality LLC</div>
+  <div class="footer-page">3</div>
 </div>
 ```
 
@@ -129,16 +121,16 @@ PDF パターン: 左にロゴアイコン、中央〜右に著作権表示。�
 | cover-title | 44px | 300 (Light) | black | line-height: 1.15 |
 | cover-company | 12px | 400 | muted | ロゴ下の社名 |
 | cover-url | 12px | 400 | muted | `→ plural-reality.com` |
-| section-heading | 20px | 400 | **accent** | 左カラム。複数行OK |
+| section-heading | 20px | 400 | **--fg（見出し）** | 左カラム。複数行OK |
 | body-text | 14px | 400 | black | line-height: 1.8 |
 | thesis-sentence | 14px | 400 | black | **text-decoration: underline** |
 | module-label | 28px | 300 | black | `Module N ↓` |
 | module-subtitle | 16px | 400 | black | モジュールのサブタイトル |
-| concept-number | 14px | 400 | accent | `Concept N` |
-| concept-name | 16px | 400 | accent | `↳ Name` |
+| concept-number | 14px | 400 | --fg | `Concept N` |
+| concept-name | 16px | 400 | --fg | `↳ Name` |
 | concept-desc | 13px | 400 | black | 下線付き要旨文 |
-| case-label | 14px | 400 | accent | `Real-World Example` |
-| case-result | 16px | 400 | accent | `↳ 成果の説明文` |
+| case-label | 14px | 400 | --fg | `Real-World Example` |
+| case-result | 16px | 400 | --fg | `↳ 成果の説明文` |
 | footnote | 10px | 400 | muted | ページ下部、番号付き |
 | arrow-item | 14px | 400 | black | `→` プレフィックス |
 | sub-item | 13px | 400 | black | ローマ数字 (i. ii. iii.) |
@@ -149,7 +141,7 @@ PDF パターン: 左にロゴアイコン、中央〜右に著作権表示。�
 
 ### 1. 2カラムレイアウト（最重要パターン）
 
-全ページで使用。左30%に見出し（accent色）、右70%に本文。
+全ページで使用。左30%に見出し（見出し）、右70%に本文。
 
 ```css
 .two-col {
@@ -160,8 +152,8 @@ PDF パターン: 左にロゴアイコン、中央〜右に著作権表示。�
 }
 .col-heading {
   font-size: 20px;
-  font-weight: 400;       /* 400 — Bold ではない */
-  color: var(--accent);
+  font-weight: var(--weight-regular);       /* 400 — Bold ではない */
+  color: var(--fg);
   line-height: 1.4;
 }
 .col-body {
@@ -198,8 +190,8 @@ PDF パターン: 左にロゴアイコン、中央〜右に著作権表示。�
   content: "→";
   position: absolute;
   left: 0;
-  color: var(--muted);    /* 矢印はmuted、accent ではない */
-  font-weight: 400;
+  color: var(--fg-muted);    /* 矢印は --fg-muted */
+  font-weight: var(--weight-regular);
 }
 ```
 
@@ -223,7 +215,7 @@ PDF パターン: 左にロゴアイコン、中央〜右に著作権表示。�
 .sub-list li::before {
   position: absolute;
   left: 0;
-  color: var(--muted);
+  color: var(--fg-muted);
 }
 .sub-list li:nth-child(1)::before { content: "i."; }
 .sub-list li:nth-child(2)::before { content: "ii."; }
@@ -265,14 +257,14 @@ PDF で一貫して使われる下線の用途:
 .arrow-list u {
   text-decoration: underline;
   text-underline-offset: 2px;
-  font-weight: 400;       /* 太字ではなく下線で強調 */
+  font-weight: var(--weight-regular);       /* 太字ではなく下線で強調 */
 }
 
 /* C. 指標値 — 本文中の定量成果 */
 .metric {
   text-decoration: underline;
   text-underline-offset: 2px;
-  font-weight: 400;
+  font-weight: var(--weight-regular);
 }
 ```
 
@@ -289,21 +281,21 @@ PDF で一貫して使われる下線の用途:
 }
 .module-rule {
   border: none;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-strong);
   margin: 0 0 24px;
 }
 .module-label {
   font-size: 28px;
-  font-weight: 300;
+  font-weight: var(--weight-light);
   line-height: 1.3;
   margin-bottom: 8px;
 }
 .module-label .arrow {
-  color: var(--text);      /* ↓ は本文色 */
+  color: var(--fg);      /* ↓ は本文色 */
 }
 .module-subtitle {
   font-size: 16px;
-  font-weight: 400;
+  font-weight: var(--weight-regular);
   line-height: 1.5;
   margin-bottom: 0;
 }
@@ -338,19 +330,19 @@ PDF で一貫して使われる下線の用途:
 }
 .concept-cell-rule {
   border: none;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-strong);
   margin: 0 0 16px;
 }
 .concept-number {
   font-size: 14px;
-  font-weight: 400;
-  color: var(--accent);
+  font-weight: var(--weight-regular);
+  color: var(--fg);
   margin-bottom: 4px;
 }
 .concept-name {
   font-size: 16px;
-  font-weight: 400;
-  color: var(--accent);
+  font-weight: var(--weight-regular);
+  color: var(--fg);
   margin-bottom: 12px;
 }
 .concept-desc {
@@ -392,15 +384,15 @@ PDF で一貫して使われる下線の用途:
 ```css
 .case-heading {
   font-size: 14px;
-  font-weight: 400;
-  color: var(--accent);
+  font-weight: var(--weight-regular);
+  color: var(--fg);
   line-height: 1.4;
   margin-bottom: 8px;
 }
 .case-result {
   font-size: 16px;
-  font-weight: 400;
-  color: var(--accent);
+  font-weight: var(--weight-regular);
+  color: var(--fg);
   line-height: 1.4;
 }
 ```
@@ -428,26 +420,25 @@ PDF で一貫して使われる下線の用途:
 
 ```css
 .screenshot-placeholder {
-  background: #F5F5F5;
-  border: 1px solid #E0E0E0;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
   min-height: 280px;
   display: flex;
   align-items: center;
   justify-content: center;
   margin: 32px 0;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--fg-muted);
 }
 .photo-placeholder {
-  background: linear-gradient(135deg, #E0E0E0 0%, #F5F5F5 100%);
+  background: var(--surface-2);
   min-height: 300px;
   margin: 32px 0;
 }
 .screenshot-caption {
   font-size: 11px;
-  color: var(--muted);
-  margin-top: -24px;
-  font-style: italic;
+  color: var(--fg-muted);
+  margin-top: -24px;     /* 「図1　タイトル」。斜体は掛けない */
 }
 ```
 
@@ -458,14 +449,11 @@ PDF で一貫して使われる下線の用途:
   margin-top: auto;       /* ページ下部に配置 */
   padding-top: 24px;
   font-size: 10px;
-  color: var(--muted);
+  color: var(--fg-muted);
   line-height: 1.6;
 }
 .footnotes a {
-  color: var(--accent);
-  text-decoration: none;
-}
-.footnotes a:hover {
+  color: var(--fg);
   text-decoration: underline;
 }
 ```
@@ -482,12 +470,12 @@ PDF で一貫して使われる下線の用途:
 ```css
 .section-rule {
   border: none;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-strong);
   margin: 48px 0;
 }
 .section-rule-light {
   border: none;
-  border-top: 1px solid var(--border-light);
+  border-top: 1px solid var(--border);
   margin: 32px 0;
 }
 ```
@@ -541,33 +529,26 @@ PDF 表紙の正確な構造:
   gap: 8px;
 }
 .cover-logo-mark {
-  width: 20px;
   height: 20px;
-  background: var(--text);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  color: var(--bg);
-  font-weight: 700;
+  width: auto;           /* 傘 assets/mark.svg */
 }
 .cover-logo-text {
   font-size: 16px;
-  font-weight: 600;
+  font-weight: var(--weight-medium);
 }
 .cover-separator {
   width: 1px;
-  background: var(--border);
+  background: var(--border-strong);
   align-self: stretch;
 }
 .cover-company {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--fg-muted);
   line-height: 1.6;
 }
 .cover-title {
   font-size: 44px;
-  font-weight: 300;
+  font-weight: var(--weight-light);
   line-height: 1.15;
   letter-spacing: -0.01em;
   padding-top: 4px;
@@ -575,7 +556,7 @@ PDF 表紙の正確な構造:
 .cover-hero {
   flex: 1;
   min-height: 400px;
-  background: #F0F0F0;
+  background: var(--surface-1);
   margin-top: auto;
   display: flex;
   align-items: center;
@@ -593,25 +574,27 @@ PDF 表紙の正確な構造:
   <div class="cover-header">
     <div class="cover-logo-area">
       <div class="cover-logo">
-        <div class="cover-logo-mark">P</div>
-        <span class="cover-logo-text">Plural Reality</span>
+        <img class="cover-logo-mark" src="mark.svg" alt="" />
+        <span class="cover-logo-text">多元現実</span>
       </div>
       <div class="cover-company">
-        Plural Reality Inc.<br>
+        合同会社多元現実（Plural Reality LLC）<br>
+        2026年10月1日<br>
         → plural-reality.com
       </div>
     </div>
     <div class="cover-separator"></div>
-    <h1 class="cover-title">Breaking New Ground<br>with Connected<br>Construction</h1>
+    <h1 class="cover-title">［文書タイトル］<br>複数行可</h1>
   </div>
 
   <div class="cover-hero">
-    <span style="color:var(--muted); font-size:13px;">[ヒーロー写真]</span>
+    <span style="color:var(--fg-muted); font-size:13px;">[ヒーロー写真]</span>
   </div>
 
   <div class="page-footer">
-    <div class="footer-logo">P</div>
-    <div class="footer-text">Copyright © 2026 Plural Reality Inc. All rights reserved.</div>
+    <img class="footer-logo" src="mark.svg" alt="" />
+    <div class="footer-text">© 2026 Plural Reality LLC</div>
+    <div class="footer-page">1</div>
   </div>
 </div>
 ```
@@ -630,19 +613,12 @@ PDF 表紙の正確な構造:
   margin-bottom: 40px;
 }
 .page-header .logo-mark {
-  width: 14px;
   height: 14px;
-  background: var(--text);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 8px;
-  color: var(--bg);
-  font-weight: 700;
+  width: auto;           /* 傘 assets/mark.svg */
 }
 .page-header .logo-text {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--weight-medium);
 }
 ```
 
@@ -658,11 +634,11 @@ PDF 表紙の正確な構造:
 [ページヘッダー: ロゴ]
 
 [2カラム: セクション1]
-  左: "The Future of Construction"（accent色）
+  左: "The Future of Construction"（見出し）
   右: 本文（課題の背景）
 
 [2カラム: セクション2]
-  左: "Challenges facing the Construction Industry"（accent色）
+  左: "Challenges facing the Construction Industry"（見出し）
   右: 本文 + 矢印リスト（→ で列挙）+ 結語段落
 
 [脚注]
@@ -671,7 +647,7 @@ PDF 表紙の正確な構造:
 
 ### P3: モジュールページ
 ```
-[ページヘッダー: ロゴ + "The Palantir Construction Offering"（見出し）]
+[ページヘッダー: ロゴ + ［文書の見出し］]
 
 [hr 黒線]
 [Module N ↓]
@@ -692,8 +668,8 @@ PDF 表紙の正確な構造:
 [2×2 概念グリッド]
   各セル:
     [hr 黒線]
-    Concept N（accent色）
-    ↳ Name（accent色）
+    Concept N（見出し）
+    ↳ Name（見出し）
     下線付き説明文
     矢印リスト
     (サブアイテムはローマ数字)
@@ -705,8 +681,8 @@ PDF 表紙の正確な構造:
 ```
 [2カラム]
   左:
-    Real-World Example（accent色）
-    ↳ 成果の説明文（accent色、複数行）
+    Real-World Example（見出し）
+    ↳ 成果の説明文（見出し、複数行）
   右:
     叙述テキスト（複数段落）
     矢印リスト（→ + 下線役職名 + ローマ数字サブアイテム）
@@ -719,7 +695,7 @@ PDF 表紙の正確な構造:
 ### P11: クロージング
 ```
 [2カラム]
-  左: 結語見出し（accent色）
+  左: 結語見出し（見出し）
   右: 総括テキスト + 矢印リスト（引用形式OK） + CTA
 
 [フッター]
@@ -729,15 +705,14 @@ PDF 表紙の正確な構造:
 
 ## リンクスタイル
 
-本文中のハイパーリンクは accent 色で、下線なし（ホバーで下線）。
+本文中のハイパーリンクは本文と同じ色で、常に下線を引く（印刷・白黒コピーでもリンクと分かるように）。
 
 ```css
 a {
-  color: var(--accent);
-  text-decoration: none;
-}
-a:hover {
+  color: var(--fg);
   text-decoration: underline;
+  text-decoration-color: currentColor;
+  text-underline-offset: 2px;
 }
 ```
 
@@ -748,7 +723,7 @@ a:hover {
 | Do | Don't |
 |----|-------|
 | 全ページ 30%/70% の2カラムで統一 | カラム比率を変えない（45%/55% 等は禁止） |
-| 見出しは accent 色、本文は黒 | 見出しを太字にしない（weight 400） |
+| 見出しも本文も `--fg` | 見出しを太字にしない（weight 400）。アクセント色を使わない |
 | `→` で箇条書き、`↳` でサブ見出し | `•` や `–` を使わない |
 | 要旨文・役職名・指標値に下線 | 太字で代替しない |
 | `Module N ↓` のフォーマット | `MODULE N ↘` にしない |
@@ -756,10 +731,10 @@ a:hover {
 | 水平線で構造を区切る | 余白だけで区切らない |
 | 写真は事例の末尾に配置 | 本文の途中に割り込ませない |
 | 脚注は番号付きでページ下部 | 脚注をインラインにしない |
-| フッターはロゴアイコン + 著作権のみ | ページ番号単体にしない |
+| フッターは会社マーク + © + ページ番号 | 「P」などの仮ロゴを使わない |
 
 ---
 
 ## 参考ファイル
 - 参照元PDF: `~/Library/CloudStorage/GoogleDrive-takagi@plural-reality.com/Shared drives/plural-reality/plural-reality/デザインシステム/presentations/Whitepapers/Supply_Chain_Construction_Whitepaper_2022.pdf`
-- テンプレート: `~/Desktop/plural-reality/plural-reality-whitepaper-style.html`
+- 値: `plural-reality-design-system/tokens.css`
