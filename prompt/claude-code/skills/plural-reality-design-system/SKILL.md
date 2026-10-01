@@ -1,511 +1,125 @@
 ---
 name: plural-reality-design-system
 description: >
-  多元現実（Plural Reality）のウェブサイトから抽出したデザインシステム。
-  プレゼンテーション、IR/PR資料、ドキュメント、スライドなど対外コミュニケーション全般に適用する。
-  白背景をメインに、印刷対応も考慮した構成。
+  多元現実（Plural Reality）のブランド正本。対外の資料・スライド・Web・文書をつくるとき、
+  用途に合う design-format-* への振り分け、ロゴの使い方、会社名・製品名・日付・出典などの表記規約、
+  値の唯一の定義元 tokens.css の使い方を示す。表記と配色は scripts/brand-lint で検査できる。
   トリガー例: "資料を作って", "スライド作成", "デザインに合わせて", "ブランドガイド",
-  "プレゼン", "design system", "corporate identity"
+  "プレゼン", "表記ルール", "会社名の書き方", "design system", "corporate identity"
 ---
 
-# Plural Reality Design System
+# Plural Reality Design System（傘）
 
-多元現実（Plural Reality）ウェブサイトのビジュアルアイデンティティを、対外コミュニケーション全般で再現するためのデザインシステム。
+この skill は「どの形式で作るか」「ロゴ」「表記」「値の参照先」だけを決める。
+色・書体・ウェイト・角丸・余白・動きの値は **`tokens.css` にだけ**書く。この SKILL.md にも design-format-* にも値は書かない。
 
-**適用範囲**: プレゼンテーション（Keynote / PowerPoint / Google Slides）、IR/PR資料、提案書、ホワイトペーパー、名刺、ポスター、Web、メール署名など。
+決定の出典: `_brand-unification-2026-10-01/DECISIONS.md`（A1 色、A2 書体、A3 ブランド構造、A4 会社名、A5 製品名、D1 表記、E3 正本）。
 
-**基本方針**: 白背景をメインとし、印刷適性を確保しつつ、ウェブサイトの持つ「知的で抑制的なモノクロマティック美学」を維持する。
+## 0. この skill の中身
 
----
-
-## 0. canonical・系統・用途（統一方針 / 2026-07-04）
-
-### canonical（source of truth）
-- **正本 = この Claude skill 群**（nix-darwin 管理: `plural-reality-design-system`（傘）+ `design-format-*`）。デザイントークンの唯一の定義元。
-- **Drive「デザインシステム」フォルダ = 原典 / エクスポート置き場**（人間可読の 01–07 スタイルHTML・INDEX.md・kokumyaku 適用例・Palantir 原典PDF）。canonical ではない派生・参照物。
-- `~/Desktop/plural-reality/*.html` = ローカルプレビュー（各 skill が参照）。トークンは各 SKILL.md に inline 済みのため、プレビュー欠損でも再現性は保たれる。
-
-### 2系統（用途で使い分ける — 統合しない）
-| 系統 | 何 | パレット / 形 | 用途 |
-|---|---|---|---|
-| **傘（本 skill）** | 多元現実ブランド基調 | 白 `#FFFFFF` / Teal `#0F766E` / **角丸 0px** | Web・LP・メール・名刺・汎用ブランド資料 |
-| **形式A–E（`design-format-*`）** | 用途特化フォーマット | 各 Palantir 原典準拠（傘と異なる場合あり） | 下表 |
-
-**原則**: 傘と形式A–E は *別のデザイン言語*。無理に統合せず、用途で明示的に分ける（「対外ブランド = 傘 / IR・写経 = 形式」）。違うものに違う名前。
-
-### 用途 → skill 対応（INDEX ↔ skill）
-| 用途 | skill | Drive スタイル | 例パレット |
-|---|---|---|---|
-| Web / LP / デジタル | `design-format-web`（＝傘系） | 01 | 白・0px |
-| IR / 決算 / ピッチ / 千人会議 | `design-format-ir-slides` | 03・07 | グレー `#C5C5C5`・16px |
-| ホワイトペーパー / 技術文書 | `design-format-whitepaper` | 04 | 白 A4・2カラム |
-| 協業 / パートナーシップ / ケーススタディ | `design-format-partnership` | 05 | 白 A4・完全モノクロ |
-| サービス定義 / 調達 / 仕様書 | `design-format-service-def` | 06 | 白 A4・両端揃え |
-| 汎用ブランド・横断 | `plural-reality-design-system`（傘・本 skill） | 01 | 白・0px・Teal |
-
----
-
-## 1. カラーパレット
-
-### プライマリカラー（白背景モード = デフォルト）
-
-| 名称 | Hex | RGB | 用途 |
-|---|---|---|---|
-| **Background** | `#FFFFFF` | 255, 255, 255 | メイン背景 |
-| **Foreground** | `#111111` | 17, 17, 17 | メインテキスト、見出し |
-| **Secondary BG** | `#F3F3F3` | 243, 243, 243 | サブ背景、カードBG、セクション分割 |
-| **Muted Text** | `#525252` | 82, 82, 82 | 本文テキスト、キャプション |
-| **Border** | `#E5E5E5` | 229, 229, 229 | 区切り線、ボーダー |
-
-### アクセントカラー
-
-| 名称 | Hex | RGB | 用途 |
-|---|---|---|---|
-| **Brand Teal** | `#0F766E` | 15, 118, 110 | CTA、リンク、ハイライト、ブランド要素 |
-| **Destructive** | `#EF4444` | 239, 68, 68 | エラー、警告（限定使用） |
-
-### ダークモード（デジタル専用・参考）
-
-ウェブサイトのデフォルトテーマ。画面上のプレゼンやデジタル配布専用。
-
-| 名称 | Hex | 用途 |
+| パス | 役割 | 正本か |
 |---|---|---|
-| **Background** | `#000000` | メイン背景 |
-| **Foreground** | `#FFFFFF` | テキスト |
-| **Card BG** | `#1C2127` | カード・パネル |
-| **Secondary BG** | `#252A31` | セクション背景 |
-| **Muted BG** | `#2F343C` | 補助背景 |
-| **Muted Text** | `#D4D9DF` | セカンダリテキスト |
-| **Border** | `#383E47` | ボーダー |
-| **Brand Teal** | `#2DD4BF` | アクセント（ダーク背景用・明るめ） |
-| **Brand FG** | `#000000` | Brand Teal 上のテキスト |
-| **Destructive** | `#CD4246` | エラー（ダーク用・Blueprint赤） |
+| `tokens.css` | 値の唯一の定義元（色・書体・ウェイト・角丸・余白・動き・register） | **正本** |
+| `style-guide.md` | 表記規約（会社名・製品名・日付・数値と出典・図表・免責・©・用語集） | **正本** |
+| `SKILL.md`（このファイル） | 用途の振り分け・原則・ロゴ規定 | **正本** |
+| `assets/mark.svg`, `assets/mark-white.svg` | 承認済みロゴマーク（HP repo からの複製。下記 §4） | 正本の複製 |
+| `scripts/brand-lint` | 表記・配色の検査（下記 §6） | — |
+| `scripts/deck-to-pdf.py` | HTML デッキを1スライド1ページの PDF にする | — |
+| `reference/design-dna-palantir.json` | Palantir の視覚言語の**観察記録**。参考資料であり正本ではない。値を成果物に写さない | 非正本 |
 
-### カラー使用原則
+Drive「デザインシステム」フォルダは原典 PDF と過去の書き出しの置き場で、正本ではない（2026-10 時点で teal・Public Sans の旧版のまま）。
 
-- **モノクロマティック基調**: 彩度のある色は Brand Teal のみ。装飾目的で色を増やさない
-- **コントラスト確保**: テキストと背景のコントラスト比 4.5:1 以上（WCAG AA）
-- **Brand Teal の使用量**: 画面全体の5%以下。過度な使用で品位を損なわない
-- **印刷時**: Brand Teal は CMYK `C:89 M:0 Y:53 K:54` で指定（Pantone 7722 C 相当）
+## 1. 用途の振り分け
 
----
-
-## 2. タイポグラフィ
-
-### フォントファミリー
-
-| 用途 | フォント | フォールバック |
+| 用途 | skill | register（`tokens.css`） |
 |---|---|---|
-| **メイン（欧文）** | Public Sans | Helvetica Neue, Arial, sans-serif |
-| **メイン（日本語）** | Noto Sans JP | ヒラギノ角ゴ ProN, 游ゴシック, sans-serif |
-| **モノスペース** | JetBrains Mono | SF Mono, Consolas, monospace |
+| Web・LP・プロダクト UI・画面投影 | `design-format-web` | `screen`（既定・ダーク） |
+| IR・決算・ピッチ・事業報告スライド | `design-format-ir-slides` | `document`（白）。印刷・配布するなら `print` |
+| ホワイトペーパー・技術文書・導入ガイド | `design-format-whitepaper` | `print` |
+| 協業資料・ケーススタディ・導入事例 | `design-format-partnership` | `print` |
+| サービス定義書・仕様書・RFP 回答・公的調達 | `design-format-service-def` | `print` |
+| 上のどれにも当たらない汎用の対外物（名刺・メール署名・ポスター） | この skill の §2〜§5 だけで作る | 画面なら `screen`、紙なら `print` |
 
-### フォントウェイト
+- 自治体・企業に渡す資料は印刷され白黒コピーされる前提で `print` を選ぶ。ダークは画面専用。
+- プロダクト（倍速会議・倍速アンケート）は endorsed 構造（A3）。プロダクトのロゴとアクセント1色、LP の演出は製品側で決めてよい。フッターの会社マーク・会社表記・法務リンク・中立色・書体・lucide アイコンはこの skill に揃える。
 
-| ウェイト | 数値 | 用途 |
+## 2. tokens.css の使い方
+
+- **自己完結 HTML**（資料・スライド・単発ページ）: `tokens.css` の中身を `<style>` にそのまま inline する。外部 CSS を参照すると共有時に崩れる。
+- **register の指定**: `<html data-register="document">` のように付ける。要素単位でも付けられる（例: 白いスライドの中の1枚だけ `screen`）。`@media print` では自動的に `print` 相当になる。
+- **書体の読込**（Web で配信する場合）:
+
+  ```html
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet" />
+  ```
+
+  印刷用 PDF を `scripts/deck-to-pdf.py` で出すときは外部フォントの link が除去されるので、ローカルに Geist と Noto Sans JP が入っている環境で書き出す。
+- **値を書かない**: 成果物の CSS には `var(--accent)`、`var(--fg-muted)`、`var(--radius)` のように変数で書く。hex・フォント名・px の角丸を直書きしない。足りない値が必要になったら `tokens.css` に足してから使う。
+- **HP（`plural-reality/website`）**: `client/src/index.css` の `:root` / `.dark` の値を `tokens.css` から同期する（互換名 `--background` `--brand` などを定義済み）。HP 側の移行は別 PR（E1）。
+- **docx / pptx**: 色は `tokens.css` の hex をそのまま使う。書体は欧文 Geist、和文（eastAsia 属性）Noto Sans JP。Office の環境に無い場合の代替は欧文 Arial・和文 BIZ UDPゴシック。
+
+## 3. 原則
+
+- **モノクロ基調＋単一のアクセント**。アクセントは emerald（`--accent` / `--accent-ui`）だけで、面積は画面の5%以下、1画面1〜2箇所。teal は廃止（A1）。
+- **アクセントの上の文字は黒**（`--accent-fg`）。白文字は 2.22:1 で読めない。
+- **アクセントで文字を塗らない**。本文・リンク・見出しは `--fg`。リンクは下線で示す（`text-decoration-color: currentColor`）。白黒コピーでも分かる符号化にする。
+- **チャートは常にモノクロ**。過去は中空、当期は塗り、系列は線種・ハッチ・直接ラベルで区別する。色だけで意味を持たせない。
+- **角丸は 0**。完全な円と pill（ドット・アバター・ステータス）だけ `--radius-pill`。写真・カード・パネル・ボタン・スライドに中間の角丸を付けない。
+- **ウェイトは 300 / 400 / 500**。700 は KPI の数値だけ。見出しは 400 以下。
+- **影とグラデーションは使わない**。例外は写真の上の文字を読ませる暗幕 `--scrim`・`--fg-on-photo`・`--text-shadow-on-photo` だけ。
+- **文字の濃さは3段**（`--fg` / `--fg-muted` / `--fg-subtle`）。不透明度で文字を薄くしない（コントラストが測れなくなる）。
+- **和文に斜体を掛けない**。強調はウェイトか下線。
+- **ラベル**: 日本語で書く。英字ラベルは固有名詞・略語に限る。`text-transform: uppercase` は欧文にしか効かないので、和文ラベルは `--tracking-label-ja` を使う。
+- **アイコン**は lucide（線画、stroke 1.5）。絵文字は使わない。
+- **写真**: 実在のチーム・顧客・現場・プロダクト UI だけ。ストックフォトは使わない。
+- **動き**は意味のあるものだけ（フェード・控えめな上方移動）。`--duration-*` と `--ease` を使う。
+
+## 4. ロゴ
+
+承認済みマークは HP repo `plural-reality/website` の `client/public/brand/mark.svg`（三つのパスでできた承認済みベクターマスター。website #47 で導入、同ディレクトリの README.md に規定）。この skill の `assets/` は複製で、HP 側を更新したら複製も更新する。
+
+| ファイル | sha256（複製時点 2026-10-01） | 用途 |
 |---|---|---|
-| **Light** | 300 | 大見出し（ヒーロー）、長文の本文 |
-| **Regular** | 400 | 標準テキスト、見出し |
-| **Medium** | 500 | 小見出し、ラベル、強調 |
-| **Semibold** | 600 | カードタイトル、重要テキスト |
-| **Bold** | 700 | CTA、数値ハイライト |
+| `assets/mark.svg` | `529a65a991fd14226ffa3fe532f6049fe03f6277989857275e958f4b4eb84459` | 白・明るい地（`document` / `print`） |
+| `assets/mark-white.svg` | `ae8e1d77dd444801260040423ec41e528207308e28a57b824ccbaee68ae1ab07` | 黒・暗い地（`screen`） |
 
-### タイプスケール
+- **色**: 墨（`mark.svg` の色のまま）か白（`mark-white.svg`）の単色だけ。emerald・グラデーション・写真の上の直置きは不可（写真に載せるときは暗幕を敷いて白版）。
+- **最小サイズ**: マークの高さ 16px（画面）／4mm（紙）。これより小さくするときは favicon（`client/public/favicon.svg`）を使う。
+- **余白**: SVG の viewBox に含まれる余白（マーク高さの約7%）を最小とし、ほかの要素との間はマーク高さの 1/4 以上空ける。
+- **変形しない**: パスの形・比率・隙間を変えない。回転・縦横比の変更・影・枠囲みをしない。
+- **ワードマーク**: 輪郭化した承認済みワードマークは無い。社名を添えるときはマークの右に `--font-sans` の 500 で「多元現実」または「Plural Reality」を組む（HP ヘッダーと同じ方式）。「P」の四角などの仮ロゴは使わない。
 
-スライド・資料向け（16:9, 1920x1080想定）:
+## 5. 表記規約（要点）
 
-| レベル | サイズ | ウェイト | 行間 | 字間 | 用途 |
-|---|---|---|---|---|---|
-| **Display** | 72-88pt | 400 | 1.1 | -0.02em | タイトルスライド |
-| **H1** | 48-60pt | 400 | 1.1 | -0.02em | セクション見出し |
-| **H2** | 36-48pt | 400 | 1.2 | -0.02em | サブ見出し |
-| **H3** | 24-30pt | 400 | 1.3 | -0.02em | 小見出し |
-| **Body** | 18-20pt | 300-400 | 1.6 | 0.01em | 本文 |
-| **Caption** | 14-16pt | 400 | 1.5 | 0.01em | キャプション、注釈 |
-| **Label** | 10-12pt | 500 | 1.4 | 0.125em | テックラベル（大文字） |
-| **KPI** | 64-96pt | 700 | 1.0 | -0.02em | 数値ハイライト |
+全文は `style-guide.md`。迷ったらそちらが正。
 
-### タイポグラフィ原則
+- 会社名: 和文の法人名は **合同会社多元現実**、英文は **Plural Reality LLC**。本文の略称は「多元現実」「Plural Reality」。© は `© 2026 Plural Reality LLC`（年は発行年）。
+- 製品名: **倍速会議**（Baisoku Kaigi）と **倍速アンケート**（Baisoku Survey）の2つだけ。千人会議・倍速商談・マンション版は「倍速会議の活用シーン」。Cartographer・Sonar は社内コードネームなので対外物に出さない。
+- 日付: 本文は `2026年10月1日`、範囲は `2025年9月〜12月`、データ・メタは ISO `2026-10-01`。
+- 数値: 数えられる実績だけ実数で書き、図表の直下に `出典：…（年）` を置く。出典のない率は書かない。
+- 図表: `図1　タイトル`（図は下、表は上）。本文から番号で参照する。
+- 機密区分: `社外秘` / `先方限り（…）` / 表示なし（公開）。英字の CONFIDENTIAL は使わない。
+- URL: Vercel のデプロイ URL やプレビュー URL を対外物に載せない。
 
-- **見出しは軽く**: h1-h3 はウェイト 400（Regular）。h4-h6 は 500（Medium）
-- **字間 -0.02em**: 見出しは必ずタイトに。本文は 0.01em でわずかに広げる
-- **行間 1.6**: 本文は relaxed（1.6）。見出しは tight（1.1-1.2）
-- **大文字ラベル**: 技術用語・カテゴリは `font-mono` + `uppercase` + `tracking-widest`（0.125em）
-- **数値は大きく**: KPI・実績は画面の主役にする（64pt以上）
+## 6. lint
 
----
-
-## 3. スペーシング
-
-### 基本単位
-
-4px グリッドベース。以下のスケールを使用:
-
-| トークン | 値 | 用途 |
-|---|---|---|
-| **xs** | 4px (0.25rem) | 最小余白 |
-| **sm** | 8px (0.5rem) | テキスト間 |
-| **md** | 16px (1rem) | 要素間 |
-| **lg** | 24px (1.5rem) | グループ間 |
-| **xl** | 32px (2rem) | セクション内 |
-| **2xl** | 48px (3rem) | セクション間 |
-| **3xl** | 64px (4rem) | 大セクション間 |
-| **4xl** | 96px (6rem) | ページセクション間 |
-| **5xl** | 128px (8rem) | ヒーローセクション |
-
-### マージン・パディング
-
-- **スライドマージン**: 上下左右 60px 以上
-- **コンテナ最大幅**: 1440px（Web） / スライドは 16:9 全幅
-- **コンテナパディング**: 24px（モバイル） → 32px（タブレット） → 48px（デスクトップ）
-
-### 余白の原則
-
-- **余白を恐れない**: ネガティブスペースを大胆に使用
-- **1スライド1メッセージ**: 情報密度は低く保つ
-- **呼吸感**: 要素間に十分な間隔を取り、窮屈さを排除する
-
----
-
-## 4. レイアウト
-
-### グリッドシステム
-
-- **12カラムグリッド**: 基本レイアウト
-- **コンテンツ分割**: 7:5（メイン:サブ）または 4:8（サイドバー:メイン）
-- **カードグリッド**: 1列（モバイル）→ 2列（タブレット）→ 4列（デスクトップ）
-
-### スライドレイアウトパターン
-
-```
-[タイトルスライド]
-  白背景 / Display サイズの見出し / Brand Teal のアクセントライン
-
-[KPIスライド]
-  白背景 / 大きな数値（64-96pt, Bold）/ 補足テキスト（Caption）
-  数値は横並び 2-4個まで
-
-[引用スライド]
-  #F3F3F3 背景 / イタリック大文字の引用文 / 出典を小さく
-
-[コンテンツスライド]
-  白背景 / 左:テキスト(7col) + 右:ビジュアル(5col)
-  上部に tech-label スタイルのセクション名
-
-[セクション区切り]
-  #111111 背景 + 白テキスト（ダーク反転。強調したい場面のみ）
+```bash
+python3 ~/.claude/skills/plural-reality-design-system/scripts/brand-lint <file-or-dir>...
+python3 .../brand-lint --summary .            # rule ごとの件数だけ
+python3 .../brand-lint --format json . > brand-lint.json
+python3 .../brand-lint --selftest
 ```
 
-### ブレークポイント（Web）
+法人名の誤記、旧・退役製品名、非本番 URL、半角カナ、廃止色 hex（teal 系）、Tailwind の teal クラスを検出し、1件でもあれば終了コード 1 を返す。抑止と allowlist は `style-guide.md` §9 とスクリプトの `--help`。
+成果物を渡す前に必ず実行する。
 
-| 名前 | 幅 |
+## 7. 移行状況（2026-10-01）
+
+| 対象 | 状態 |
 |---|---|
-| Mobile | 0px |
-| sm | 640px |
-| md | 768px |
-| lg | 1024px |
-| xl | 1280px |
-| 2xl | 1536px |
-
----
-
-## 5. ボーダー・シェイプ
-
-### ボーダー半径
-
-- **デフォルト: 0px**（角丸なし）
-- シャープで幾何学的な印象がブランドの核心
-- Tailwind トークンスケール: sm(-4px), md(-2px), lg(0px=base), xl(4px), 2xl(8px)
-- **丸みの強い角丸は禁止**（border-radius > 8px）
-
-### ボーダースタイル
-
-- **線幅**: 1px（デフォルト）
-- **色**: `#E5E5E5`（白背景時）/ `#383E47`（ダーク時）
-- **用途**: セクション区切り（border-top）、カード上部ライン
-- **ホバー時**: ボーダー色を `#111111` に変化
-
----
-
-## 6. コンポーネント
-
-### ボタン
-
-```
-[Ghost / Default]
-  背景: transparent
-  ボーダー: 1px solid #111111
-  テキスト: #111111
-  角丸: 0px
-  高さ: 48px
-  パディング: 0 24px
-  フォント: Public Sans, 14px, Medium(500)
-  ホバー: 背景 #111111, テキスト #FFFFFF
-
-[Primary]
-  背景: #111111
-  テキスト: #FFFFFF
-  ボーダー: none
-  ホバー: 背景 #111111/90%
-
-[Brand]
-  背景: #0F766E
-  テキスト: #FFFFFF
-  ホバー: 背景 #0F766E/90%
-```
-
-### カード
-
-```
-  背景: #FFFFFF
-  上部ボーダー: 1px solid #E5E5E5
-  パディング: 32px 0
-  ホバー: 上部ボーダー色 → #111111
-  トランジション: 300ms
-```
-
-### テックラベル（カテゴリ表示）
-
-```
-  フォント: JetBrains Mono
-  サイズ: 10-12px
-  ウェイト: 500
-  テキスト変換: uppercase
-  字間: 0.125em（tracking-widest）
-  色: #525252
-```
-
-**テックラベルの使用基準**:
-- テックラベルは見出しの**上位カテゴリ**を示す。見出しと同じ内容を繰り返さない
-- 例: ラベル「Sonar」→ 見出し「倍速アンケート」（プロダクト名 → 説明）
-- 例: ラベル「導入事例」→ 見出し「南陽市での実証実験」（カテゴリ → 具体名）
-- 見出しだけで文脈が十分伝わる場合は、テックラベルを省略する
-- テックラベルなしの見出しは許容。テックラベルだけで見出しなしは不可
-
----
-
-## 7. アニメーション・モーション
-
-### 原則
-
-- **最小限で意味のある動き**: 装飾的なアニメーションは禁止
-- **ease-out**: 基本のイージング
-- **時間**: 300-700ms（インタラクション）、1000ms（ヒーロー入場）
-
-### パターン
-
-| パターン | 時間 | 内容 |
-|---|---|---|
-| フェードイン | 600ms | 不透明度 0→1 + 20px 上方移動 |
-| スタガー | 100ms間隔 | 子要素が順番に出現 |
-| ホバースケール | 700ms | 画像 scale 1.05 |
-| ページ入場 | 1000ms | 下から8px スライド + フェード |
-
-### スライド・資料でのアニメーション
-
-- **推奨**: フェードイン、ディゾルブ
-- **許容**: 控えめなスライドイン
-- **禁止**: バウンス、フラッシュ、回転、3Dフリップ
-
----
-
-## 8. 画像・ビジュアル
-
-### 写真
-
-- プロダクトUIのスクリーンショットを優先
-- 人物写真はストックフォト禁止。実際のチーム・顧客のみ
-- トーン: 高コントラスト、彩度控えめ
-- アスペクト比: 16:9（ワイド）または 4:3（カード）
-
-### オーバーレイ
-
-- 画像の上にテキストを置く場合: グラデーションオーバーレイ
-  - 白背景時: `linear-gradient(to top, #FFFFFF, rgba(255,255,255,0.2), transparent)`
-  - ダーク時: `linear-gradient(to top, #000000, rgba(0,0,0,0.2), transparent)`
-
-### アイコン
-
-- **スタイル**: アウトライン（線画）、1-2px 線幅
-- **ライブラリ**: Lucide React（ウェブサイトで使用）
-- **カラー**: 単色（#111111 または #525252）
-
----
-
-## 9. トーン & ボイス
-
-### 文体
-
-| 属性 | する | しない |
-|---|---|---|
-| **簡潔** | 短く明確な文章 | 冗長な修飾、バズワード |
-| **確信** | データに基づく断定 | 曖昧な「〜かもしれません」 |
-| **技術的正確性** | 正しい専門用語 | 過度な簡略化 |
-| **抑制** | 事実とインパクトで語る | 感情的な煽り |
-| **行動志向** | 具体的な成果を示す | 抽象的ビジョンだけ |
-
-### 避ける表現
-
-- 「革命的」「画期的」「ゲームチェンジャー」
-- 「シナジー」「レバレッジ」
-- 装飾的な絵文字
-- 過剰な形容詞
-
-### 言語ルール
-
-- **テックラベル・セクション見出しは日本語で書く**: 英語のみのラベル（"PERFORMANCE METRICS", "COLOR PALETTE" 等）は使わない。日本語に翻訳する
-- **固有名詞・ブランド名は英語OK**: "Plural Reality", "Sonar", "Cartographer" 等はそのまま
-- **KPI単位・略語は英語OK**: "YoY", "NPS", "ROI" 等の定着した略語はそのまま
-- **数値**: 具体的に。"significant growth" ではなく "47% YoY"
-- **日本語見出し**: 簡潔な体言止め or 常体
-
----
-
-## 10. Do's & Don'ts
-
-### Do（推奨）
-
-- 白背景をデフォルトにする（印刷対応）
-- 余白を十分に取る
-- 数値データを大きく目立たせる
-- 1スライド/1セクション = 1メッセージ
-- モノクロマティックな配色を基本にする
-- Brand Teal は控えめなアクセントとして使う
-- Public Sans + Noto Sans JP の組み合わせを維持する
-- ボーダー半径 0px のシャープなデザインを貫く
-
-### Don't（禁止）
-
-- 装飾的なグラデーション、シャドウ、3Dエフェクト
-- ストックフォトやクリップアート
-- カラフルな配色（虹色チャートなど）
-- 丸みの強い角丸（border-radius > 8px）
-- セリフフォント、手書き風フォント
-- 絵文字やカジュアルなアイコン
-- 密集した情報レイアウト
-- 過剰なアニメーション
-
----
-
-## 11. メディア別適用ガイド
-
-### プレゼンテーション（Keynote / PowerPoint / Google Slides）
-
-- **スライドサイズ**: 16:9（1920x1080）
-- **背景色**: `#FFFFFF`（デフォルト）/ `#111111`（セクション区切りのみ）
-- **テキスト色**: `#111111`（プライマリ）/ `#525252`（セカンダリ）
-- **フォント**: Public Sans + Noto Sans JP
-- **見出し**: 36-60pt, Regular(400), 字間 -0.02em
-- **KPI数値**: 64-96pt, Bold(700)
-- **本文**: 18-20pt, Light(300)-Regular(400)
-- **マージン**: 上下左右 60px 以上
-- **アクセントライン**: Brand Teal `#0F766E` で控えめに
-
-### ドキュメント（Word / PDF / Google Docs）
-
-- **用紙**: A4
-- **背景**: 白
-- **本文サイズ**: 10.5-11pt
-- **見出し**: 16-24pt
-- **行間**: 1.6
-- **マージン**: 上下左右 25mm 以上
-- **ヘッダー**: ロゴを左上に小さく
-- **フッター**: ページ番号を右下に
-
-### メール・デジタル
-
-- HTML メールは白背景 + #111111 テキスト
-- Brand Teal はリンク色として使用
-- フォントフォールバック: Helvetica Neue, Arial, sans-serif
-
----
-
-## 12. CSS実装リファレンス
-
-白背景モードのCSS変数（ウェブサイトの `:root` と同一）:
-
-```css
-:root {
-  /* Backgrounds */
-  --background: #ffffff;
-  --foreground: #111111;
-  --secondary: #f3f3f3;
-  --muted-foreground: #525252;
-
-  /* Brand */
-  --brand: #0f766e;
-  --brand-foreground: #ffffff;
-
-  /* Borders */
-  --border: #e5e5e5;
-
-  /* Typography */
-  --font-sans: "Public Sans", "Noto Sans JP", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
-
-  /* Shape */
-  --radius: 0px;
-}
-
-/* Heading Style */
-h1, h2, h3 {
-  font-family: var(--font-sans);
-  font-weight: 400;
-  letter-spacing: -0.02em;
-}
-
-/* Body Style */
-body {
-  font-family: var(--font-sans);
-  letter-spacing: 0.01em;
-  line-height: 1.6;
-  color: var(--foreground);
-}
-
-/* Tech Label */
-.tech-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.125em;
-  color: var(--muted-foreground);
-}
-
-/* Button */
-.btn {
-  height: 48px;
-  padding: 0 24px;
-  font-size: 14px;
-  font-weight: 500;
-  border: 1px solid var(--foreground);
-  border-radius: 0px;
-  background: transparent;
-  color: var(--foreground);
-  transition: all 300ms;
-}
-.btn:hover {
-  background: var(--foreground);
-  color: var(--background);
-}
-```
-
-### Google Fonts 読み込み
-
-```html
-<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-```
-
----
-
-## 使い方
-
-このスキルは以下のシナリオで参照してください:
-
-1. **プレゼン資料作成**: セクション4のスライドレイアウト + セクション11のプレゼン指針
-2. **IR/PR資料**: セクション1のカラー + セクション9のトーン&ボイス
-3. **Webページ作成**: セクション12のCSS実装リファレンス
-4. **ドキュメント作成**: セクション2のタイポグラフィ + セクション11のドキュメント指針
-5. **データ可視化**: モノクロマティック基調 + Brand Teal アクセント
-
-**最重要原則**: 白背景 + シャープな幾何学（角丸0px） + モノクロマティック + Public Sans。この4要素がブランドの核心。
+| この skill と design-format-* | `tokens.css` 参照に移行済み |
+| HP（`plural-reality/website`） | 未移行。`client/src/index.css` に teal と Public Sans が残る（E1 で別 PR） |
+| 旧 `examples/*.html` プレビュー | この版には含めない。teal・Public Sans・誤った法人名を含むため、`tokens.css` から作り直すまで参照しない |
+| Drive「デザインシステム」 | 旧版のまま。INDEX 冒頭に「正本は skill」と書く作業が残る |

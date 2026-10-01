@@ -1,0 +1,180 @@
+/*
+ * Plural Reality / 多元現実 — design tokens
+ *
+ * このファイルが値（色・書体・ウェイト・角丸・余白・動き）の唯一の定義元。
+ * SKILL.md・design-format-*・HP（plural-reality/homepage の index.css）は値を直書きせず、
+ * ここを inline するか同期して var(--*) で参照する。値を変えるときはこのファイルだけを変える。
+ *
+ * 決定の出典: _brand-unification-2026-10-01/DECISIONS.md
+ *   A1 色 = emerald #00E599 / #00C868、emerald 上の文字は黒（白は 2.22:1 で不可）、teal は廃止
+ *   A2 書体 = Geist + Noto Sans JP、mono は JetBrains Mono の後に和文フォールバック
+ *   E3 正本 = この tokens.css
+ *
+ * register（表示の文脈）:
+ *   screen   … 既定。ダーク。Web・LP・プロダクト・画面投影。            :root / [data-register="screen"]
+ *   document … 白。画面で読む資料・スライド・PDF。アクセントは1〜2点まで。 [data-register="document"]
+ *   print    … 白・無彩。印刷・白黒コピー前提。アクセントは墨に落ちる。    [data-register="print"] と @media print
+ * register は <html> だけでなく任意の要素（例: .slide）にも付けられる。派生トークンは各 register で再計算する。
+ *
+ * 角丸ルール（1つだけ）: 角丸は 0。例外は完全な円・pill（ドット・アバター・ステータス pill）だけで --radius-pill を使う。
+ *   写真・カード・パネル・ボタン・スライドを含め、それ以外に中間の角丸（4px, 16px 等）は使わない。
+ */
+
+/* ---------- register に依存しない値 ---------- */
+:root {
+  /* アクセント（A1）。面積は画面の5%以下、1画面1〜2箇所。チャート・本文・リンク文字には使わない */
+  --accent: #00e599; /* emerald。ダーク地の点・線・塗り */
+  --accent-ui: #00c868; /* UI の塗り（ボタン地・選択状態） */
+  --accent-fg: #000000; /* accent / accent-ui の上の文字は必ず黒（#00C868 上の白は 2.22:1） */
+
+  --destructive: #cd4246; /* 塗りとして使い、上の文字は白（4.7:1）。黒地の文字色には使わない（4.46:1） */
+  --destructive-fg: #ffffff;
+
+  /* 書体（A2）。欧文 Geist → 和文 Noto Sans JP。和文を mono で描画しても豆腐・明朝落ちしないよう mono にも和文を置く */
+  --font-sans: "Geist", "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Hiragino Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Noto Sans JP", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* ウェイト。700 は KPI の数値だけ。600 / 800 は使わない */
+  --weight-light: 300;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-kpi: 700;
+
+  /* 文字（Web / screen 基準。紙の pt 換算は SKILL.md の媒体別表） */
+  --text-display: clamp(3rem, 6vw, 5.5rem);
+  --text-h1: clamp(2.5rem, 4.5vw, 3.5rem);
+  --text-h2: clamp(1.875rem, 3vw, 2.5rem);
+  --text-h3: 1.5rem;
+  --text-h4: 1.25rem;
+  --text-lead: 1.25rem;
+  --text-body: 1rem;
+  --text-caption: 0.875rem;
+  --text-label: 0.75rem;
+  --text-label-sm: 0.625rem;
+  --text-kpi: clamp(2.25rem, 5vw, 4rem);
+  --leading-tight: 1.15;
+  --leading-body: 1.7;
+  --tracking-heading: -0.02em;
+  --tracking-body: 0.01em;
+  --tracking-label: 0.125em; /* 欧文ラベル。和文ラベルは --tracking-label-ja、uppercase は欧文にしか効かない */
+  --tracking-label-ja: 0.08em;
+
+  /* 角丸（上の「角丸ルール」） */
+  --radius: 0;
+  --radius-pill: 9999px;
+
+  /* 余白（4px グリッド） */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 32px;
+  --space-6: 48px;
+  --space-7: 64px;
+  --space-8: 96px;
+  --space-9: 128px;
+  --container: 1440px;
+
+  /* 動き */
+  --duration-fast: 150ms;
+  --duration-base: 300ms;
+  --duration-enter: 600ms;
+  --duration-slow: 700ms;
+  --ease: cubic-bezier(0, 0, 0.2, 1); /* ease-out */
+
+  /* 影は使わない。写真の上の文字を読ませるときだけ、暗幕と文字影を使う（register に関係なく黒） */
+  --scrim: rgb(0 0 0 / 0.72);
+  --fg-on-photo: #ffffff;
+  --text-shadow-on-photo: 0 1px 2px rgb(0 0 0 / 0.6);
+}
+
+/* ---------- screen（既定・ダーク） ---------- */
+:root,
+[data-register="screen"] {
+  color-scheme: dark;
+  /* 中立色 5段階（地 → 面1 → 面2 → 面3 → 罫線） */
+  --bg: #000000;
+  --surface-1: #1c2127;
+  --surface-2: #252a31;
+  --surface-3: #2f343c;
+  --border: #383e47;
+  /* 文字 3段階 */
+  --fg: #ffffff;
+  --fg-muted: #d4d9df; /* 黒地 14.8:1 */
+  --fg-subtle: #8f99a8; /* 黒地 7.3:1、面1上 5.6:1。これより薄い文字は作らない */
+  --ring: #ffffff;
+}
+
+/* ---------- document（白・画面で読む資料） ---------- */
+[data-register="document"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface-1: #f3f3f3;
+  --surface-2: #ebebeb;
+  --surface-3: #e0e0e0;
+  --border: #d9d9d9;
+  --fg: #111111; /* 白地 18.9:1 */
+  --fg-muted: #525252; /* 白地 7.8:1 */
+  --fg-subtle: #6b6b6b; /* 白地 5.3:1、面1上 4.8:1 */
+  --ring: #111111;
+}
+
+/* ---------- print（白・無彩） ---------- */
+[data-register="print"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface-1: #f3f3f3;
+  --surface-2: #ebebeb;
+  --surface-3: #e0e0e0;
+  --border: #d9d9d9;
+  --fg: #111111;
+  --fg-muted: #525252;
+  --fg-subtle: #6b6b6b;
+  --ring: #111111;
+  --accent: #111111; /* 白黒コピーで消える色に情報を持たせない */
+  --accent-ui: #111111;
+  --accent-fg: #ffffff;
+}
+
+@media print {
+  :root,
+  [data-register] {
+    color-scheme: light;
+    --bg: #ffffff;
+    --surface-1: #f3f3f3;
+    --surface-2: #ebebeb;
+    --surface-3: #e0e0e0;
+    --border: #d9d9d9;
+    --fg: #111111;
+    --fg-muted: #525252;
+    --fg-subtle: #6b6b6b;
+    --ring: #111111;
+    --accent: #111111;
+    --accent-ui: #111111;
+    --accent-fg: #ffffff;
+  }
+}
+
+/* ---------- 派生トークンと互換名（register ごとに再計算させるため [data-register] にも宣言） ---------- */
+:root,
+[data-register] {
+  --border-strong: var(--fg);
+  /* shadcn / Tailwind 互換名（HP はこの名前で同期する） */
+  --background: var(--bg);
+  --foreground: var(--fg);
+  --card: var(--surface-1);
+  --card-foreground: var(--fg);
+  --popover: var(--surface-1);
+  --popover-foreground: var(--fg);
+  --primary: var(--fg);
+  --primary-foreground: var(--bg);
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--fg);
+  --muted: var(--surface-3);
+  --muted-foreground: var(--fg-muted);
+  --input: var(--border);
+  --brand: var(--accent);
+  --brand-ui: var(--accent-ui);
+  --brand-foreground: var(--accent-fg);
+  --destructive-foreground: var(--destructive-fg);
+}
